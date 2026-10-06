@@ -1,2 +1,0 @@
-[test]
-preload = ["./components/design-system/__tests__/setup-dom.ts"]

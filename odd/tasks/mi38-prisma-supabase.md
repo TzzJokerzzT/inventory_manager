@@ -122,9 +122,16 @@ datasource db {
   `createPrismaClient(connectionString?)` con `PrismaPg` y error explícito si falta `DATABASE_URL`.
   Ver: `@prisma/adapter-pg` + URL **pooled**. Superficies: `apps/api/src/infrastructure/database/prisma-client.ts`.
 - [ ] **T4 — Primera migración aplicada.** `migrate dev --create-only`, después editar el SQL para
-  agregar al inicio `CREATE EXTENSION IF NOT EXISTS pg_trgm;` y al final los `CHECK`
-  (`stock_quantity >= 0`, `quantity > 0`), y aplicar. Evidencia: `migrate status` OK y `psql` con
-  las tablas, el índice unique y los checks.
+  agregar al inicio `CREATE EXTENSION IF NOT EXISTS pg_trgm;` y las cuatro CHECK
+  (`products.stock_quantity >= 0`, `stock_movements.quantity > 0`, `users.email` y
+  `memberships.invited_email` en minúsculas — el email es la llave de unión de §5.8 y un unique de
+  `text` es case-sensitive), y aplicar. Evidencia: `migrate status` OK y `psql` con las tablas, el
+  índice unique y los checks.
+  **BLOQUEADA por un superusuario**: quedó una tabla sobrante `public.users`
+  (`id bigint, email, password_hash`, 0 filas, dueña `postgres`) con el diseño descartado; `migrate dev`
+  detecta drift y quiere resetear `public`, y el rol `prisma` no puede borrarla ni crear un schema
+  propio. El usuario eligió borrarla desde el SQL Editor del dashboard (`DROP TABLE public.users;`).
+  Nunca correr `prisma migrate reset`.
   Superficies: `apps/api/prisma/migrations/**`.
 - [ ] **T5 — Adaptador Prisma de Company.** `PrismaCompanyRepository implements CompanyRepository`
   (recibe el `PrismaClient` por constructor, devuelve entidades de dominio) y cableado en `main.ts`.
@@ -152,3 +159,21 @@ datasource db {
 ## Bitácora
 
 - 2026-10-06 — Documento creado. Decisiones 1–6 tomadas por el usuario. Evidencia de entorno medida.
+- 2026-10-06 — T1–T3 hechas y commiteadas (`050c13f` deps + config + schema, `cb85237` cliente Prisma).
+  Dos defectos propios corregidos tras la revisión: el schema había quedado **sin relations**, es decir
+  sin ninguna `FOREIGN KEY` (el doc listaba campos escalares y el worker lo siguió literal), y los
+  timestamps eran `timestamp(3)` sin zona cuando §3.2 pide `timestamptz`. Ahora: 7 modelos, 11 FK con
+  `ON DELETE RESTRICT`, 16 columnas `timestamptz(3)`, verificado con `prisma validate` y con un
+  `prisma migrate diff --from-empty --to-schema` (preview SQL sin tocar la base).
+- 2026-10-06 — **Hallazgo de seguridad** (ver memoria `inventory-manager/setup/supabase-privileges`):
+  Supabase otorga CRUD completo a `anon`/`authenticated` por defecto en `public`, pero **sólo** para
+  tablas creadas por `postgres`/`supabase_admin`. Las que crea el rol `prisma` **no reciben grants**
+  (probado con una tabla temporal en una transacción revertida). Como decidimos no usar RLS (§3.1),
+  esto es load-bearing: **cada tabla creada a mano por el editor SQL sí queda expuesta**. Va como check
+  explícito en T7 y merece una línea en §3.1.
+- 2026-10-06 — T4 bloqueada por la tabla sobrante `public.users`; el usuario optó por borrarla él.
+- 2026-10-06 — **Revisión nativa (RDD) sobre este mismo doc**: el cambio sin commitear de este archivo
+  fue el candidato (`sha256:2816e9ba…`), `review.start` lo cerró directo — `risk_tier: low`,
+  `lenses_required: false`, motivo `non_executable_only` — y el acknowledgement quemó la autoridad
+  (`authority: burned`, `gentle-ai.review-acknowledged/v1`). Sin lentes, sin consentimiento, sin
+  envelope: un cambio sólo de documentación no justifica el ciclo de cuatro lentes.

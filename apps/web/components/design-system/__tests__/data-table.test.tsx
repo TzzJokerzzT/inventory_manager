@@ -1,4 +1,3 @@
-import { describe, expect, it } from "bun:test";
 import { render, screen } from "@testing-library/react";
 import { type Column, DataTable } from "../data-table";
 import { StockBadge, type StockStatus } from "../stock-badge";

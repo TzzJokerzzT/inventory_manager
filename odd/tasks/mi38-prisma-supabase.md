@@ -156,6 +156,25 @@ datasource db {
   (por ejemplo en un clon nuevo), la contingencia es resolver la URL con `process.env` en
   `prisma.config.ts` para que sólo los comandos de migración fallen. Hay que reportar lo observado.
 
+## Follow-ups de la revisión nativa (informacionales, no bloqueantes)
+
+La lente `review-reliability` aprobó el slice `2076ee6..HEAD`. Los cinco hallazgos son
+`informational`: ninguno abre corrección, ninguno reabre la revisión y **no se re-verifica este
+candidato por ellos**. El envelope trae id, lente, ubicación, severidad y disposición, pero **no el
+texto del hallazgo**; lo que sigue es la ubicación exacta más mi lectura de esa línea.
+
+| Id | Sev. | Ubicación | Qué hay en esa línea (lectura mía, a confirmar) |
+|---|---|---|---|
+| R3-001 | WARNING | `schema.prisma:86-90` | `@@unique([userId, companyId])` + los dos índices de `memberships`. Con `user_id IS NULL` el unique no aplica, así que **dos invitaciones para el mismo email y la misma empresa son posibles** y el match por email de §5.8 podría devolver más de una fila. |
+| R3-002 | WARNING | `prisma-client.ts:19` | `connectionString ?? resolveDatabaseUrl()`: la validación (incluido el rechazo de vacío) sólo corre en el camino por defecto; `""` explícito la esquiva, y no se valida el esquema `postgresql://` como sí hace `env.ts`. |
+| R3-003 | WARNING | `package.json:17` | `"postinstall": "prisma generate"` con `prisma` en devDependencies: en una instalación de sólo producción el script falla. Es el mismo riesgo que el worker había marcado. |
+| R3-004 | SUGGESTION | `prisma.config.ts:24` | `url: process.env.DIRECT_URL` sin validar: si falta, las migraciones fallan con un error opaco en vez de decir que falta la variable. |
+| R3-005 | SUGGESTION | `database-url.test.ts:1-36` | El archivo de test completo (36 líneas, 4 casos). |
+
+Criterio para tratarlos: son trabajo posterior, no motivo para re-correr la revisión. Los que tocan
+el modelo (R3-001) pertenecen a MI-44/MI-45; los de configuración (R3-002 a R3-004) se resuelven
+cuando T7 cierre, o en la tarea de `.env.example` de la raíz (MI-37).
+
 ## Bitácora
 
 - 2026-10-06 — Documento creado. Decisiones 1–6 tomadas por el usuario. Evidencia de entorno medida.
@@ -172,6 +191,16 @@ datasource db {
   esto es load-bearing: **cada tabla creada a mano por el editor SQL sí queda expuesta**. Va como check
   explícito en T7 y merece una línea en §3.1.
 - 2026-10-06 — T4 bloqueada por la tabla sobrante `public.users`; el usuario optó por borrarla él.
+- 2026-10-06 — **Revisión nativa (RDD), dos intentos**: el primer START, sobre el alcance que el
+  controlador derivó del punto de rama (`6d5c5d3..HEAD`, 46 archivos, incluida toda la migración a
+  Jest/Cypress de MI-41), falló con **`lens_context_budget_exceeded`**: el candidato no entra en el
+  presupuesto de contexto de las lentes y no se creó ninguna autoridad. La continuación que indica el
+  propio nativo es **encadenar porciones más chicas**, así que se reencuadró a este slice
+  (`2076ee6..HEAD`, 10 archivos, 735 líneas) y ahí sí cerró: `risk_tier: medium`, una sola lente
+  (`review-reliability`), `state: approved`, autoridad quemada
+  (`gentle-ai.review-acknowledged/v1`). El controlador normaliza el `base-ref` al **tree** del commit
+  base (`e87e72d685…` = tree de `2076ee6`, `b965481e…` = tree de `HEAD`), así que el rango revisado
+  es exactamente el que se pidió.
 - 2026-10-06 — **Revisión nativa (RDD) sobre este mismo doc**: el cambio sin commitear de este archivo
   fue el candidato (`sha256:2816e9ba…`), `review.start` lo cerró directo — `risk_tier: low`,
   `lenses_required: false`, motivo `non_executable_only` — y el acknowledgement quemó la autoridad

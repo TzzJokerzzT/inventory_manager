@@ -16,7 +16,7 @@ Sin estos, ninguna otra cosa avanza. Los cinco son de **MI-2** (setup).
 | Clave | Qué | Por qué bloquea | Estado real del repo |
 | --- | --- | --- | --- |
 | ~~**MI-35**~~ ✅ | Control de versiones (Git) | **HECHO (2026-10-06)**: repositorio propio en `TzzJokerzzT/inventory_manager`, ramas `production`, `development` y `feat/login-register-backend-frontend`, 110 archivos versionados. **Desbloqueó MI-36 y MI-42** | ✅ repo propio |
-| **MI-38** | Prisma + Supabase | Sin `schema.prisma` no hay entidades, ni migraciones, ni tests de integración. Bloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y toda la Fase 2 | ❌ no existe `apps/api/prisma/` |
+| **MI-38** | Prisma + Supabase | Sin `schema.prisma` no hay entidades, ni migraciones, ni tests de integración. Bloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y toda la Fase 2 | ✅ schema + migración `20261006223356_init` aplicada + adaptador `PrismaCompanyRepository` cableado (`35eccee`, `58fef79`). Cierra en T7 |
 | **MI-39** | Auth0 | Sin tenant no hay credenciales contra las que probar el login. Bloquea MI-44, MI-46, MI-50, MI-52 a MI-55 | ❌ `express-oauth2-jwt-bearer` declarado, sin cablear |
 | **MI-37** | `.env.example` de la raíz | Sin esto no hay onboarding reproducible ni CI que arranque | ❌ no existe |
 | **MI-43** | Contrato frontend ↔ backend | Sin tipos compartidos, cada validación se duplica y se desincroniza | ❌ sin definir |
@@ -29,8 +29,8 @@ Cada una bloquea implementación. **Ninguna es código: son decisiones tuyas.**
 | --- | --- | --- | --- |
 | 1 | **Cómo se testean los endpoints protegidos** con Supertest: clave de prueba firmada localmente o stub del middleware de Auth0 | **MI-50** (y MI-52 a MI-55) | Es la segunda mitad de MI-39 |
 | 2 | **Store compartido del rate limit**: Vercel KV o Upstash Redis | **MI-55** y **MI-38** | Con ROPG el rate limit del login **no es opcional**; el contador en memoria no limita en serverless |
-| 3 | **`pg_trgm`** para búsqueda difusa de productos y clientes: sí o no | MI-7, MI-11, MI-15 | Extensión de Postgres |
-| 4 | **Versión *major* de PostgreSQL** | MI-38 | Fijarla al aprovisionar Supabase |
+| 3 | ~~**`pg_trgm`** para búsqueda difusa de productos y clientes: sí o no~~ ✅ **resuelta**: sí, activada en la primera migración | — | `pg_trgm` (1.6) instalada en `20261006223356_init` |
+| 4 | ~~**Versión *major* de PostgreSQL**~~ ✅ **resuelta**: **17** (servidor reporta 17.6) | — | Medido en el proyecto aprovisionado |
 | 5 | **Renombrar `Mode 1` → `Light`** en la colección de variables del `.fig` | — | MI-17; prolijidad del archivo de diseño |
 | 6 | **`Company.owner_user_id` en el `.fig`** | — | El diseño todavía tiene el modelo de dueño único; hay que alinearlo con §5.8 |
 | 7 | **El estado "sin empresas" no está diseñado** | MI-48 | El mockup del dashboard asume una empresa ya seleccionada. Lo señala MI-48 |
@@ -62,6 +62,9 @@ mencionaba ninguna de las 12 tareas nuevas (MI-44 a MI-55). Corregido el 2026-10
 
 Jira **no permite anidar subtareas** y MI-38 ya es subtarea de MI-2. El error fue explícito:
 `Parent issue ID: '10142' / Key: 'MI-38' can not be sub-task.` Queda bajo MI-2 con una nota.
+
+**Estado (2026-10-06):** el esquema multi-usuario que lleva MI-51 ya está en `schema.prisma` y
+aplicado en la migración `20261006223356_init` (commit `35eccee`).
 
 ## 4. Capas de trabajo por dependencia
 
@@ -111,8 +114,6 @@ contraseña. **Vistas asociadas:** MI-23 tablet, MI-27 flujo de navegación, MI-
 | **El `.fig` sin guardar** | `design/inventory-manager.fig` en disco tiene 28 tokens; el documento vivo de OpenPencil tiene 33. Necesita un `Ctrl+S`. El bridge MCP no puede guardarlo (`RPC_TIMEOUT = 2e4` hardcodeado sobre 224 KB) |
 | **`/registro` da 404** | El enlace "Crear cuenta" de MI-19 apunta a `/registro`, que construye MI-22 |
 | **El theme toggle flota sobre el login** | `apps/web/app/layout.tsx` lo renderiza en todas las rutas. Es una ayuda de la app, no parte del producto; el mockup no lo tiene |
-| **Sin `apps/api/prisma/`** | Lo crea MI-38. El modelo del acceso multi-usuario ya está especificado en `docs/stack.md` §5.8 y lo lleva MI-51 |
-| **Sin tests en `apps/api` más allá del smoke** | MI-41 |
 
 ## 6. Camino crítico
 

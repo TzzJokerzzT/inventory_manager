@@ -138,6 +138,14 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
 > **Consecuencia importante:** al no usar RLS, **el aislamiento por empresa depende por completo del
 > código de la API**. Cada consulta del repositorio debe filtrar por `company_id` y debe existir un
 > test que lo verifique. Es el mayor riesgo de seguridad del proyecto.
+>
+> **Hecho de seguridad medido (load-bearing):** Supabase otorga CRUD completo a `anon`,
+> `authenticated` y `service_role` en el esquema `public` **por defecto, pero sólo** para las tablas
+> creadas por `postgres`/`supabase_admin`. Las tablas que crea el rol `prisma` **no reciben grants**
+> (verificado con una tabla de prueba en una transacción revertida, y tras la migración para las
+> siete tablas: `has_table_privilege` devuelve `false`). Consecuencia: mantener `public` es seguro
+> **sólo mientras** las migraciones corran como `prisma`; cualquier tabla creada a mano por el
+> editor SQL de Supabase quedaría **expuesta por la Data API por defecto**.
 
 ### 3.2 Esquema: implicancias del dominio
 
@@ -154,12 +162,31 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
 | Usuarios (Auth0) | `auth0_sub` **UNIQUE**; **nunca** se guardan contraseñas ni hashes |
 | Auditoría (MOV-05) | `created_at timestamptz DEFAULT now()` + `user_id` en movimientos |
 
+> **CHECKs y minúsculas van a mano en la migración.** Prisma no modela `CHECK` constraints ni
+> extensiones, así que `CHECK (stock_quantity >= 0)` y `CHECK (quantity > 0)` se escriben a mano en
+> la primera migración (`20261006223356_init`). Ahí también se fuerza el invariante de minúsculas
+> sobre `users.email` y `memberships.invited_email`: el email es la llave de unión del modelo de
+> acceso (§5.8) y un índice único sobre `text` distingue mayúsculas, así que `Foo@x.com` no
+> matchearía `foo@x.com` sin ese CHECK.
+
 ### 3.3 Migraciones y entornos
 
-- `schema.prisma` es la **fuente de verdad** del esquema.
-- Local: `prisma migrate dev` genera y aplica la migración.
-- CI: `prisma migrate deploy` contra una base efímera antes de correr los tests.
-- **Producción:** las migraciones corren en el pipeline, **nunca** en el runtime de la función.
+- `schema.prisma` sigue siendo la **fuente de verdad**, pero en Prisma 7 el `datasource` **ya no
+  declara `url` ni `directUrl`** (`directUrl` fue **removido** en v7): la URL vive en
+  `apps/api/prisma.config.ts` (`datasource.url`, leída de `DIRECT_URL`).
+- El generador es `prisma-client` (no `prisma-client-js`) con `output` **obligatorio**. El cliente
+  generado vive en `apps/api/src/infrastructure/database/generated/prisma`, está **gitignored** y lo
+  produce `db:generate` (que también corre `postinstall`).
+- Extensiones (`pg_trgm`) y `CHECK` constraints **no se modelan en el schema**: llegan por
+  migraciones editadas a mano (ver §3.2).
+- Comandos: `db:generate` · `db:migrate` (desarrollo local) · `db:deploy` (CI/producción) ·
+  `db:status` · `db:studio`.
+- **Producción:** las migraciones corren en el pipeline (`db:deploy`), **nunca** en el runtime de la
+  función.
+- **`prisma migrate reset` nunca es la respuesta** sobre la base compartida de Supabase: la vacía y
+  la recrea.
+- `prisma migrate diff --from-migrations` requiere además `datasource.shadowDatabaseUrl` en
+  `prisma.config.ts` (el flag `--shadow-database-url` fue **removido** en Prisma 7).
 
 ---
 
@@ -239,12 +266,16 @@ payload y de tiempo). Eso tensiona varias librerías elegidas:
 
 ### 5.3 Prisma + Supabase en serverless
 
-Cada instancia de función abre sus propias conexiones y puede **agotar el pool** de Postgres.
-Recomendado: usar el **pooler de Supabase (Supavisor, puerto 6543)** con `?pgbouncer=true`,
-o el driver serverless-friendly de Prisma. Las **migraciones no deben correr en el runtime** de
-la función: van en el pipeline de CI.
+Cada instancia de función abre sus propias conexiones y puede **agotar el pool** de Postgres. La
+solución ya está **decidida y construida**:
 
-**Confirmado:** `prisma` no requiere configuración especial en el runtime de Vercel.
+- El **cliente de runtime** va por el driver adapter **`@prisma/adapter-pg`** con la **URL pooled**
+  (pooler de Supabase, puerto 6543, `?pgbouncer=true`). El adapter es el dueño de la conexión, así
+  que **no queda ningún workaround de `pgbouncer` del lado del cliente**.
+- El **CLI y las migraciones** usan la **URL directa** (session pooler, puerto 5432), configurada en
+  `prisma.config.ts` desde `DIRECT_URL`.
+
+Las **migraciones no corren en el runtime** de la función: van en el pipeline de CI (`db:deploy`).
 
 ### 5.4 Autenticación con Auth0
 
@@ -552,10 +583,12 @@ se indica la clave en cada punto.
       el rate limiting del login pasa a ser obligatorio.
 - [ ] **Cómo se testean los endpoints protegidos** con `supertest` (**MI-39**): clave de prueba o stub del
       middleware de validación de Auth0.
-- [ ] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: sí o no (**MI-38**).
-- [ ] **Limpieza del `package.json` del backend** (sin subtarea propia): confirmar que `bcrypt`,
-      `jsonwebtoken` y `multer` salen de la lista de dependencias.
-- [ ] **Versión *major* de PostgreSQL** (**MI-38**): fijarla en 3.1 cuando se aprovisione el proyecto en Supabase.
+- [x] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: **sí** (**MI-38**).
+      Activada en la primera migración (`20261006223356_init`); disponible (1.6) e instalada.
+- [x] **Limpieza del `package.json` del backend** (sin subtarea propia): **confirmado** — `bcrypt`,
+      `jsonwebtoken` y `multer` no están en `apps/api/package.json`.
+- [x] **Versión *major* de PostgreSQL** (**MI-38**): **17**, medido en el proyecto aprovisionado
+      (el servidor reporta 17.6). «Última estable soportada por Supabase» resultó ser 17.
 - [ ] **Contrato entre frontend y backend** (**MI-43**). Al no haber código compartido, hay que decidir cómo se
       evita duplicar las reglas de validación. Recomendado: **generar los tipos del frontend desde
       la especificación OpenAPI** que el backend ya produce con `swagger + yamljs`.

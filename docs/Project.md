@@ -112,16 +112,19 @@ Company
 ├── id, name, tax_id, address, phone, created_at, updated_at
 │   sin owner_user_id: el dueño es la Membership con role = OWNER
 │
+Category              ← única por empresa (UNIQUE company_id + name)
+├── id, company_id, name, created_at, updated_at
+│
 Product
 ├── id, company_id, name, description, sku, price, photo_url,
-│   stock_quantity, low_stock_threshold, created_at, updated_at, deleted_at
+│   stock_quantity, low_stock_threshold, category_id (nullable), created_at, updated_at, deleted_at
 │
 Customer
 ├── id, company_id, name, email, phone, address, created_at, updated_at, deleted_at
 │
-StockMovement
+StockMovement         ← inmutable: sólo created_at, sin updated_at
 ├── id, product_id, company_id, type (IN|OUT), quantity,
-│   reason, user_id, customer_id (nullable), created_at, updated_at
+│   reason, user_id, customer_id (nullable), created_at
 ```
 
 ---
@@ -137,12 +140,13 @@ StockMovement
 
 ### Fase 1 — Fundamentos
 
-- [ ] **Setup del proyecto (backend + frontend)** — **[MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)**, en progreso. **7 de 15 configuraciones
+- [ ] **Setup del proyecto (backend + frontend)** — **[MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)**, en progreso. **8 de 15 configuraciones
       ya hechas** (monorepo, Biome, entorno local, comandos en el README, base de la API con Clean
-      Architecture, design system con modo oscuro y control de versiones). Pendientes, como subtareas
-      de MI-2: **MI-36** CI · **MI-37** `.env.example` de la raíz ·
-      **MI-38** Prisma + Supabase · **MI-39** Auth0 · **MI-40** Cloudinary · **MI-41** tests ·
-      **MI-42** Husky · **MI-43** contrato frontend ↔ backend.
+      Architecture, design system con modo oscuro, control de versiones y **Prisma + Supabase** —
+      schema, migración `20261006223356_init` aplicada y adaptador `PrismaCompanyRepository`
+      cableado). Pendientes, como subtareas de MI-2: **MI-36** CI · **MI-37** `.env.example` de la
+      raíz · **MI-39** Auth0 · **MI-40** Cloudinary · **MI-41** tests · **MI-42** Husky ·
+      **MI-43** contrato frontend ↔ backend. **MI-38 no se cierra hasta la verificación de T7**.
 - [ ] **Autenticación (register, login, logout)** — **[MI-3](https://alexbuelvas92.atlassian.net/browse/MI-3)**; depende de
       **MI-39** (Auth0). Incluye el modelo de membresías y roles por empresa
       (`docs/stack.md` §5.8) y el registro abierto con email verificado.

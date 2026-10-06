@@ -17,7 +17,8 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 ## Estado del proyecto
 
 ⚠️ **El proyecto está en construcción.** Las dos aplicaciones ya existen y el tooling está
-funcionando, pero **el stack de datos, autenticación y almacenamiento todavía no está configurado**.
+funcionando. **La capa de datos (Prisma + Supabase) ya está configurada** (schema, migración
+aplicada y adaptador); quedan pendientes **autenticación (Auth0) y almacenamiento (Cloudinary)**.
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
@@ -29,11 +30,11 @@ El repositorio y el stack de tests ya están en pie.
 | **Tokens del design system** | ✅ los 38 (19 claros + 19 oscuros) aplicados al tema |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
 | Typecheck | ✅ `apps/web` y `apps/api` limpios (`tsc --noEmit`) |
-| **Prisma + Supabase** | ❌ no configurados |
+| **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y adaptador `PrismaCompanyRepository` cableado |
 | **Auth0** | ❌ no configurado |
 | **Cloudinary** | ❌ no configurado |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
-| **Tests** | ✅ **Jest** como único runner: 137 tests (26 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
+| **Tests** | ✅ **Jest** como único runner: 144 tests (33 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
 | **CI** | ❌ no configurado |
 
 Las configuraciones pendientes están desglosadas como **subtareas de [MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del
@@ -257,8 +258,8 @@ Todos desde la raíz del monorepo:
 | `bun run check-types` | Verificación de tipos en todos los workspaces |
 | `bun run format` | Formatea todo el repo con Biome (`biome format --write .`) |
 | `bun run format:check` | Verifica el formato sin escribir (para el CI) |
-| `bun run test` | Jest en todos los workspaces (unitarios e integración) |
-| `bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`) |
+| `bun run test` | Jest en todos los workspaces, vía Turborepo |
+| `cd apps/web && bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`). Todavía no hay alias en la raíz |
 
 ### Build de producción
 
@@ -363,15 +364,16 @@ Puntos a tener en cuenta:
 
 ### Variables de entorno
 
-**Parcialmente configuradas.** `apps/api/.env.example` ya existe: documenta `PORT` y los
-placeholders de `DATABASE_URL`, `DIRECT_URL` y `AUTH0_*` (sin valores inventados). Falta el
-`.env.example` de la raíz (**MI-37**), que conviene cerrar junto con Prisma, Auth0 y Cloudinary.
+**Parcialmente configuradas.** `apps/api/.env.example` ya existe y documenta `PORT`,
+`DATABASE_URL` (URL pooled del pooler, puerto 6543, con `?pgbouncer=true`) y `DIRECT_URL` (URL
+directa, puerto 5432, para migraciones), además de los placeholders de `AUTH0_*`. Falta el
+`.env.example` de la raíz (**MI-37**), que conviene cerrar junto con Auth0 y Cloudinary.
 Debe documentar al menos:
 
 | Variable | Para qué |
 |----------|----------|
-| `DATABASE_URL` | Conexión a Postgres **vía pooler de Supabase** (puerto 6543) |
-| `DIRECT_URL` | Conexión **directa** (5432), solo para migraciones de Prisma |
+| `DATABASE_URL` | Conexión a Postgres **vía pooler de Supabase** (puerto 6543, `?pgbouncer=true`) — la usa el cliente de runtime |
+| `DIRECT_URL` | Conexión **directa** (session pooler, puerto 5432) — la usan el CLI y las migraciones de Prisma |
 | `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | Validación del JWT en la API |
 | `NEXT_PUBLIC_AUTH0_DOMAIN` / `NEXT_PUBLIC_AUTH0_CLIENT_ID` | SDK de Auth0 en el frontend |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de subida directa |
@@ -404,8 +406,9 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
 - [ ] **Crear el workflow de CI** en `.github/workflows/` — **MI-36**. Depende de MI-35.
 - [ ] **Crear el `.env.example` de la raíz** — **MI-37**. El de `apps/api` ya existe; falta el del
       monorepo y el del frontend.
-- [ ] **Configurar Prisma + Supabase** — **MI-38**: `schema.prisma`, migraciones y conexión vía
-      pooler.
+- [x] **Configurar Prisma + Supabase** — **MI-38**: `schema.prisma`, migración
+      `20261006223356_init` aplicada y conexión vía pooler con el adapter `@prisma/adapter-pg`.
+      Cierra con la verificación de T7.
 - [ ] **Configurar Auth0** — **MI-39**: tenant, aplicación SPA, API con *audience* y validación
       JWKS en la API. Hoy `express-oauth2-jwt-bearer` está declarado pero sin cablear.
 - [ ] **Configurar Cloudinary** — **MI-40** para subida directa firmada desde el cliente.
@@ -427,8 +430,9 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
       se implementan tal cual, y el rate limiting del login pasa a ser **obligatorio**.
 - [ ] **Cómo se testean los endpoints protegidos** con Supertest (**MI-39**): clave de prueba o stub del
       middleware de validación de Auth0.
-- [ ] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: sí o no (**MI-38**).
-- [ ] **Versión *major* de PostgreSQL**, a fijar al aprovisionar el proyecto en Supabase (**MI-38**).
+- [x] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: **sí** (**MI-38**),
+      activada en la primera migración.
+- [x] **Versión *major* de PostgreSQL**: **17** (el servidor aprovisionado reporta 17.6).
 - [ ] **Renombrar el modo `Mode 1` a `Light`** en la colección de variables del archivo de diseño (**MI-17**).
 
 **El mapa completo de lo pendiente** — con dependencias, bloqueantes y el camino crítico — está en
@@ -438,7 +442,8 @@ inconsistencias detectadas que no estaban en ninguna tarea.
 
 ### Modelo de datos
 
-El esquema aún no existe. Las reglas que debe respetar están en
+El esquema ya existe en [`apps/api/prisma/schema.prisma`](apps/api/prisma/schema.prisma) y está
+aplicado con la migración `20261006223356_init`. Las reglas de negocio que materializa están en
 [`docs/stack.md` § 3.2](docs/stack.md#32-esquema-implicancias-del-dominio) — entre ellas:
 `UNIQUE (company_id, sku)`, `numeric(12,2)` para dinero, `CHECK (stock >= 0)`, `uuid` como PK,
 `auth0_sub UNIQUE` en usuarios y actualización de stock en la misma transacción que el movimiento.

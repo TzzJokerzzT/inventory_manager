@@ -144,10 +144,21 @@ datasource db {
   borrado de una empresa contra Supabase, con `public.companies` en 0 filas antes y después. Commit de T5
   registrado en el commit siguiente.
   Superficies: `apps/api/src/infrastructure/database/prisma-company-repository.ts`, `apps/api/src/main.ts`.
-- [ ] **T6 — Documentación.** `apps/api/.env.example` descomentado con nota del pooler;
-  `docs/stack.md` §3.3 y §5.3 con Prisma 7 (`prisma.config.ts` + driver adapter) y la decisión de
-  `pg_trgm`; `docs/Project.md` entidades (`Category`, `StockMovement` sin `updated_at`);
-  `docs/plan-de-trabajo.md` (decisiones #3 y #4 resueltas, MI-38/MI-51 hechas).
+- [x] **T6 — Documentación.** ✅ `apps/api/.env.example` (URL pooled vs directa, con el porqué de cada
+  una), `docs/stack.md` §3.1 (hecho de seguridad medido), §3.2 (CHECKs y minúsculas a mano en la
+  migración), §3.3 (Prisma 7: `prisma.config.ts`, `prisma-client` con `output`, comandos `db:*`,
+  `migrate reset` prohibido), §5.3 (driver adapter sobre la URL pooled) y §6.2 (`pg_trgm` y la major 17,
+  más la limpieza de `bcrypt`/`jsonwebtoken`/`multer` confirmada); `docs/Project.md` (entidad
+  `Category`, `StockMovement` inmutable, `Product.category_id`); `docs/plan-de-trabajo.md` (decisiones #3
+  y #4 resueltas, MI-38/MI-51 con sus commits); `README.md`.
+  **Defecto encontrado y corregido en el camino**: el `README` documentaba `bun run test` y `bun run
+  test:e2e` en la raíz, y **ninguno de los dos existía** — `bun run test` caía a `/usr/bin/test`. Se
+  agregó el alias `test` → `turbo run test` (la tarea ya existía en `turbo.json`) y el de e2e quedó
+  documentado con el comando que sí funciona (`cd apps/web && bun run test:e2e`). También se corrigieron
+  los conteos de tests del README (137 → **144**: 33 api + 111 web) y se sacó la fila
+  "sin tests en `apps/api` más allá del smoke", que MI-41 ya había dejado obsoleta.
+  Superficies: `apps/api/.env.example`, `docs/stack.md`, `docs/Project.md`, `docs/plan-de-trabajo.md`,
+  `README.md`, `package.json` (alias de test).
 - [ ] **T7 — Verificación y cierre.** `biome check .`, `check-types`, `bun test`, `build` verde,
   `migrate status` limpio, end-to-end contra Supabase, commits por work-unit y cierre de MI-38 y MI-51
   en Jira.
@@ -218,6 +229,12 @@ cuando T7 cierre, o en la tarea de `.env.example` de la raíz (MI-37).
   `20261006223356_init` pasó sin drift. Dos verificaciones propias: (a) el estado de la base por `psql`;
   (b) el invariante de seguridad — los tres roles de la Data API sin privilegios en las 7 tablas, que es
   lo que hace que no usar RLS sea seguro (ver `inventory-manager/setup/supabase-privileges`).
+- 2026-10-06 — **T5 y T6 hechas.** T5: `PrismaCompanyRepository` (import type-only del cliente generado
+  para no romper Jest en CommonJS, dependencia reducida al delegate `company`, filas mapeadas a la
+  entidad) cableado en el composition root, con test propio RED → GREEN y prueba real contra Supabase
+  (alta, listado y borrado; `public.companies` en 0 antes y después). T6: documentación alineada y dos
+  defectos de veracidad corregidos (los comandos `bun run test`/`test:e2e` de la raíz no existían; los
+  conteos del README estaban viejos).
 - 2026-10-06 — **Revisión nativa (RDD) sobre este mismo doc**: el cambio sin commitear de este archivo
   fue el candidato (`sha256:2816e9ba…`), `review.start` lo cerró directo — `risk_tier: low`,
   `lenses_required: false`, motivo `non_executable_only` — y el acknowledgement quemó la autoridad

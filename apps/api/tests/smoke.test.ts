@@ -1,4 +1,3 @@
-import { describe, expect, it } from "bun:test";
 import request from "supertest";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";

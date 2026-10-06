@@ -17,8 +17,8 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 ## Estado del proyecto
 
 ⚠️ **El proyecto está en construcción.** Las dos aplicaciones ya existen y el tooling está
-funcionando, pero **el stack de datos, autenticación y almacenamiento todavía no está configurado**
-y los tests están apenas esbozados.
+funcionando, pero **el stack de datos, autenticación y almacenamiento todavía no está configurado**.
+El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
 |------------|--------|
@@ -32,8 +32,8 @@ y los tests están apenas esbozados.
 | **Prisma + Supabase** | ❌ no configurados |
 | **Auth0** | ❌ no configurado |
 | **Cloudinary** | ❌ no configurado |
-| **Repositorio Git** | ❌ el proyecto no tiene repo propio — `git` resuelve a `$HOME` (rama `master`, 0 commits) |
-| **Tests** | ⚠️ la API tiene smoke test con `bun:test`; Jest/RTL/Supertest/Cypress sin configurar |
+| **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
+| **Tests** | ✅ **Jest** como único runner: 137 tests (26 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
 | **CI** | ❌ no configurado |
 
 Las configuraciones pendientes están desglosadas como **subtareas de [MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del
@@ -257,6 +257,8 @@ Todos desde la raíz del monorepo:
 | `bun run check-types` | Verificación de tipos en todos los workspaces |
 | `bun run format` | Formatea todo el repo con Biome (`biome format --write .`) |
 | `bun run format:check` | Verifica el formato sin escribir (para el CI) |
+| `bun run test` | Jest en todos los workspaces (unitarios e integración) |
+| `bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`) |
 
 ### Build de producción
 
@@ -291,7 +293,7 @@ inventory-manager/
 │       ├── src/interfaces/http/  # app.ts, controladores, rutas, middlewares, validadores
 │       ├── src/config/           # env
 │       ├── src/main.ts           # composition root
-│       ├── tests/                # smoke test (bun:test + supertest)
+│       ├── tests/                # unitarios (Jest) + integración (supertest)
 │       └── .env.example
 ├── design/                       # design system y mockups (.fig + previews .png)
 ├── docs/                         # Project.md (requerimientos) y stack.md (stack)
@@ -350,7 +352,7 @@ Puntos a tener en cuenta:
 
 - `build` declara `.env*` como **input**, así que cambiar una variable de entorno invalida la caché.
 - `dev` no se cachea y es persistente (queda corriendo).
-- **Falta la tarea `test`**, que hay que agregar cuando se configuren Jest, Supertest y Cypress.
+- **La tarea `test`** ya está en `turbo.json` y corre Jest en los dos workspaces.
 
 ### Puertos
 

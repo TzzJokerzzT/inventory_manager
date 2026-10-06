@@ -67,11 +67,35 @@ Por etapas, cada una verificable y con su propio commit. La etapa 1 se elige pri
 
 ### T3 — Cypress en `apps/web`
 
-- [ ] **T3.1** `apps/web/cypress.config.ts` con `baseUrl` apuntando al dev server y `video` desactivado.
-- [ ] **T3.2** Un spec de E2E mínimo que ejerza la vista de login: cargar `/login`, ver los campos,
-      enviar vacío y comprobar que aparecen los errores de validación de cliente.
-- [ ] **T3.3** Script `test:e2e` en `apps/web/package.json`.
+- [x] **T3.1** `apps/web/cypress.config.ts` con `baseUrl` apuntando al dev server y `video` desactivado.
+      Requirió además `viewportWidth: 1440` / `viewportHeight: 900`: el layout de login es de dos
+      columnas desde `lg`, y el viewport por defecto de Cypress (1000×660) esconde el panel de marca.
+- [x] **T3.2** Spec de E2E sobre la vista de login: carga, valida en cliente y muestra el aviso.
+- [x] **T3.3** Script `test:e2e` en `apps/web/package.json`.
 - [ ] **T3.4** Documentar en el README cómo se corre (requiere el dev server levantado).
+
+### T5 — Defecto encontrado por el E2E: el login depende de la animación
+
+El E2E destapó algo real. La reestructuración a vertical slices envolvió la vista de login en un
+elemento `motion` con `initial={{ opacity: 0, x: 20 }}`, así que el HTML del servidor sale con
+`style="opacity:0;transform:translateX(20px)"` y **el contenido es invisible hasta que la animación de
+cliente corre**.
+
+Medido en tres entornos:
+
+| Entorno | Animación | Contenido |
+| --- | --- | --- |
+| Chromium real (1440×900) | completa en ~3 s | visible (`opacity: 1`) |
+| Electron de Cypress | **nunca corre** | **invisible** (opacidad queda en `0`) |
+| JS que falla o no carga | — | **página en blanco** |
+
+En un navegador real funciona, pero **la pantalla más crítica de la aplicación queda en blanco si el
+JS no corre**. Decisión del usuario (2026-10-06): **dejar la animación como está** y relajar el E2E de
+`be.visible` a `exist`, documentando la limitación. Queda como riesgo aceptado y consciente, no como
+descuido.
+
+- [x] **T5.1** Spec relajado a `exist` con la limitación documentada en el propio archivo.
+- [ ] **T5.2** Riesgo abierto: si el bundle de cliente no carga, el login no muestra nada.
 
 ### T4 — Orquestación y verificación final
 

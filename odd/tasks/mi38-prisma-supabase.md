@@ -121,17 +121,18 @@ datasource db {
 - [ ] **T3 — Cliente singleton.** `src/infrastructure/database/prisma-client.ts`: factory
   `createPrismaClient(connectionString?)` con `PrismaPg` y error explícito si falta `DATABASE_URL`.
   Ver: `@prisma/adapter-pg` + URL **pooled**. Superficies: `apps/api/src/infrastructure/database/prisma-client.ts`.
-- [ ] **T4 — Primera migración aplicada.** `migrate dev --create-only`, después editar el SQL para
-  agregar al inicio `CREATE EXTENSION IF NOT EXISTS pg_trgm;` y las cuatro CHECK
-  (`products.stock_quantity >= 0`, `stock_movements.quantity > 0`, `users.email` y
-  `memberships.invited_email` en minúsculas — el email es la llave de unión de §5.8 y un unique de
-  `text` es case-sensitive), y aplicar. Evidencia: `migrate status` OK y `psql` con las tablas, el
-  índice unique y los checks.
-  **BLOQUEADA por un superusuario**: quedó una tabla sobrante `public.users`
-  (`id bigint, email, password_hash`, 0 filas, dueña `postgres`) con el diseño descartado; `migrate dev`
-  detecta drift y quiere resetear `public`, y el rol `prisma` no puede borrarla ni crear un schema
-  propio. El usuario eligió borrarla desde el SQL Editor del dashboard (`DROP TABLE public.users;`).
-  Nunca correr `prisma migrate reset`.
+- [x] **T4 — Primera migración aplicada.** ✅ `20261006223356_init`, aplicada contra Supabase.
+  `CREATE EXTENSION IF NOT EXISTS pg_trgm;` al inicio (línea 3) y las cuatro `CHECK` dentro de los
+  `CREATE TABLE` (`products_stock_quantity_non_negative`, `stock_movements_quantity_positive`,
+  `users_email_lowercase`, `memberships_invited_email_lowercase`).
+  **No hay drift**: un segundo `migrate dev` dice *"Already in sync"* y
+  `migrate diff --from-config-datasource --to-schema --script` devuelve *"This is an empty
+  migration."* sin `DROP CONSTRAINT` ni `DROP EXTENSION` — Prisma ignora los CHECK y la extensión, así
+  que las migraciones futuras **no** los van a borrar. Verificado por mí con psql: 7 tablas +
+  `_prisma_migrations`, `pg_trgm 1.6`, 4 CHECK, 11 FK, `applied=true`.
+  **Privilegios**: `anon`, `authenticated` y `service_role` en **false** para SELECT en las 7 tablas.
+  Nota de Prisma 7: el flag `--shadow-database-url` ya no existe; para `migrate diff
+  --from-migrations` hay que declarar `datasource.shadowDatabaseUrl` en `prisma.config.ts`.
   Superficies: `apps/api/prisma/migrations/**`.
 - [ ] **T5 — Adaptador Prisma de Company.** `PrismaCompanyRepository implements CompanyRepository`
   (recibe el `PrismaClient` por constructor, devuelve entidades de dominio) y cableado en `main.ts`.
@@ -191,16 +192,26 @@ cuando T7 cierre, o en la tarea de `.env.example` de la raíz (MI-37).
   esto es load-bearing: **cada tabla creada a mano por el editor SQL sí queda expuesta**. Va como check
   explícito en T7 y merece una línea en §3.1.
 - 2026-10-06 — T4 bloqueada por la tabla sobrante `public.users`; el usuario optó por borrarla él.
-- 2026-10-06 — **Revisión nativa (RDD), dos intentos**: el primer START, sobre el alcance que el
-  controlador derivó del punto de rama (`6d5c5d3..HEAD`, 46 archivos, incluida toda la migración a
-  Jest/Cypress de MI-41), falló con **`lens_context_budget_exceeded`**: el candidato no entra en el
-  presupuesto de contexto de las lentes y no se creó ninguna autoridad. La continuación que indica el
-  propio nativo es **encadenar porciones más chicas**, así que se reencuadró a este slice
-  (`2076ee6..HEAD`, 10 archivos, 735 líneas) y ahí sí cerró: `risk_tier: medium`, una sola lente
-  (`review-reliability`), `state: approved`, autoridad quemada
-  (`gentle-ai.review-acknowledged/v1`). El controlador normaliza el `base-ref` al **tree** del commit
-  base (`e87e72d685…` = tree de `2076ee6`, `b965481e…` = tree de `HEAD`), así que el rango revisado
-  es exactamente el que se pidió.
+- 2026-10-06 — **Revisión nativa (RDD), dos pasadas sobre el slice de Prisma.** El primer intento,
+  sobre el alcance que el controlador derivó del punto de rama (`6d5c5d3..HEAD`, 46 archivos, incluida
+  toda la migración a Jest/Cypress de MI-41), falló con **`lens_context_budget_exceeded`**: el candidato
+  no entra en el presupuesto de contexto de las lentes y no se creó ninguna autoridad. La continuación
+  que indica el propio nativo es **encadenar porciones más chicas**, así que se reencuadró a este slice
+  (`2076ee6..HEAD`, 10 archivos) y ahí sí cerró: `review-reliability`, `medium`, `approved`, autoridad
+  quemada (`gentle-ai.review-acknowledged/v1`). El controlador normaliza el `base-ref` al **tree** del
+  commit base (`e87e72d685…` = tree de `2076ee6`, `b965481e…` = tree de `HEAD`), así que el rango
+  revisado es exactamente el que se pidió.
+- 2026-10-06 — **Segunda pasada** (el commit `d1f3a75` movió el árbol, el controlador volvió a ofrecer el
+  rango de rama muerto y hubo que reencuadrar otra vez al slice): linaje `review-6ebec87cbc865089`,
+  `review-reliability`, `medium`, `approved`, autoridad quemada. Los cinco hallazgos son los mismos de la
+  primera pasada, con `R3-004` apuntando a `database-url.ts:27`.
+  **Aprendizaje de proceso**: el `base-ref` derivado **no avanza** tras una aprobación, así que cada
+  commit nuevo vuelve a ofrecer la rama entera y hay que reencuadrar con `baseRef` explícito. Por eso las
+  actualizaciones de este doc van plegadas en commits de código y no sueltas.
+- 2026-10-06 — **T4 aplicada.** El usuario corrió `DROP TABLE public.users;` y la migración
+  `20261006223356_init` pasó sin drift. Dos verificaciones propias: (a) el estado de la base por `psql`;
+  (b) el invariante de seguridad — los tres roles de la Data API sin privilegios en las 7 tablas, que es
+  lo que hace que no usar RLS sea seguro (ver `inventory-manager/setup/supabase-privileges`).
 - 2026-10-06 — **Revisión nativa (RDD) sobre este mismo doc**: el cambio sin commitear de este archivo
   fue el candidato (`sha256:2816e9ba…`), `review.start` lo cerró directo — `risk_tier: low`,
   `lenses_required: false`, motivo `non_executable_only` — y el acknowledgement quemó la autoridad

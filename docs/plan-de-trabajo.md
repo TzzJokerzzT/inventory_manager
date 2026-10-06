@@ -1,7 +1,7 @@
 # Plan de trabajo — Inventory Manager
 
 **Generado:** 2026-10-06 · **Fuente:** Jira proyecto `MI` (55 issues) + estado real del repo + `docs/stack.md`
-**Estado:** 10 `Done` · 2 `In Progress` · **43 `To Do`**
+**Estado:** 12 `Done` · 2 `In Progress` · **41 `To Do`**
 
 Este documento es el mapa de lo que falta, ordenado por **dependencia**, no por fase. El roadmap por
 fases vive en [`Project.md`](./Project.md#-roadmap--fases); acá está qué bloquea a qué y qué
@@ -16,7 +16,7 @@ Sin estos, ninguna otra cosa avanza. Los cinco son de **MI-2** (setup).
 | Clave | Qué | Por qué bloquea | Estado real del repo |
 | --- | --- | --- | --- |
 | ~~**MI-35**~~ ✅ | Control de versiones (Git) | **HECHO (2026-10-06)**: repositorio propio en `TzzJokerzzT/inventory_manager`, ramas `production`, `development` y `feat/login-register-backend-frontend`, 110 archivos versionados. **Desbloqueó MI-36 y MI-42** | ✅ repo propio |
-| **MI-38** | Prisma + Supabase | Sin `schema.prisma` no hay entidades, ni migraciones, ni tests de integración. Bloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y toda la Fase 2 | ✅ schema + migración `20261006223356_init` aplicada + adaptador `PrismaCompanyRepository` cableado (`35eccee`, `58fef79`). Cierra en T7 |
+| ~~**MI-38**~~ ✅ | Prisma + Supabase | **HECHO (2026-10-06)**: `schema.prisma` + migración `20261006223356_init` aplicada + adaptador `PrismaCompanyRepository` cableado (`35eccee`, `58fef79`). Verificado por un verificador independiente y cerrado en Jira (comentario `10042`). **Desbloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y la Fase 2** | ✅ schema + migración aplicada + adaptador |
 | **MI-39** | Auth0 | Sin tenant no hay credenciales contra las que probar el login. Bloquea MI-44, MI-46, MI-50, MI-52 a MI-55 | ❌ `express-oauth2-jwt-bearer` declarado, sin cablear |
 | **MI-37** | `.env.example` de la raíz | Sin esto no hay onboarding reproducible ni CI que arranque | ❌ no existe |
 | **MI-43** | Contrato frontend ↔ backend | Sin tipos compartidos, cada validación se duplica y se desincroniza | ❌ sin definir |
@@ -64,7 +64,10 @@ Jira **no permite anidar subtareas** y MI-38 ya es subtarea de MI-2. El error fu
 `Parent issue ID: '10142' / Key: 'MI-38' can not be sub-task.` Queda bajo MI-2 con una nota.
 
 **Estado (2026-10-06):** el esquema multi-usuario que lleva MI-51 ya está en `schema.prisma` y
-aplicado en la migración `20261006223356_init` (commit `35eccee`).
+**aplicado** en la migración `20261006223356_init` (commit `35eccee`); MI-51 quedó `Done` en Jira
+(comentario `10043`). El único follow-up no bloqueante es que el `UNIQUE (user_id, company_id)` no
+impide dos invitaciones pendientes para el mismo email y empresa (con `user_id IS NULL` los NULL son
+distintos en PostgreSQL), así que MI-46 tiene que decidir explícitamente qué hace con más de una.
 
 ## 4. Capas de trabajo por dependencia
 

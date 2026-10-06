@@ -137,10 +137,10 @@ StockMovement
 
 ### Fase 1 — Fundamentos
 
-- [ ] **Setup del proyecto (backend + frontend)** — **[MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)**, en progreso. **6 de 15 configuraciones
+- [ ] **Setup del proyecto (backend + frontend)** — **[MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)**, en progreso. **7 de 15 configuraciones
       ya hechas** (monorepo, Biome, entorno local, comandos en el README, base de la API con Clean
-      Architecture y el design system con modo oscuro). Pendientes, como subtareas de MI-2:
-      **MI-35** control de versiones (Git) · **MI-36** CI · **MI-37** `.env.example` de la raíz ·
+      Architecture, design system con modo oscuro y control de versiones). Pendientes, como subtareas
+      de MI-2: **MI-36** CI · **MI-37** `.env.example` de la raíz ·
       **MI-38** Prisma + Supabase · **MI-39** Auth0 · **MI-40** Cloudinary · **MI-41** tests ·
       **MI-42** Husky · **MI-43** contrato frontend ↔ backend.
 - [ ] **Autenticación (register, login, logout)** — **[MI-3](https://alexbuelvas92.atlassian.net/browse/MI-3)**; depende de

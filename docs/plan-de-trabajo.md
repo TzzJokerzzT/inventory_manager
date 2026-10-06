@@ -1,7 +1,7 @@
 # Plan de trabajo — Inventory Manager
 
 **Generado:** 2026-10-06 · **Fuente:** Jira proyecto `MI` (55 issues) + estado real del repo + `docs/stack.md`
-**Estado:** 9 `Done` · 2 `In Progress` · **44 `To Do`**
+**Estado:** 10 `Done` · 2 `In Progress` · **43 `To Do`**
 
 Este documento es el mapa de lo que falta, ordenado por **dependencia**, no por fase. El roadmap por
 fases vive en [`Project.md`](./Project.md#-roadmap--fases); acá está qué bloquea a qué y qué
@@ -15,7 +15,7 @@ Sin estos, ninguna otra cosa avanza. Los cinco son de **MI-2** (setup).
 
 | Clave | Qué | Por qué bloquea | Estado real del repo |
 | --- | --- | --- | --- |
-| **MI-35** | Control de versiones (Git) | **El proyecto no tiene repositorio propio**: `git rev-parse --show-toplevel` resuelve a `/home/alex_buelvas` (rama `master`, **0 commits**) y los archivos están *untracked*. Bloquea MI-36 y MI-42, y hace imposible revisar cualquier cambio | ❌ sin repo propio |
+| ~~**MI-35**~~ ✅ | Control de versiones (Git) | **HECHO (2026-10-06)**: repositorio propio en `TzzJokerzzT/inventory_manager`, ramas `production`, `development` y `feat/login-register-backend-frontend`, 110 archivos versionados. **Desbloqueó MI-36 y MI-42** | ✅ repo propio |
 | **MI-38** | Prisma + Supabase | Sin `schema.prisma` no hay entidades, ni migraciones, ni tests de integración. Bloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y toda la Fase 2 | ❌ no existe `apps/api/prisma/` |
 | **MI-39** | Auth0 | Sin tenant no hay credenciales contra las que probar el login. Bloquea MI-44, MI-46, MI-50, MI-52 a MI-55 | ❌ `express-oauth2-jwt-bearer` declarado, sin cablear |
 | **MI-37** | `.env.example` de la raíz | Sin esto no hay onboarding reproducible ni CI que arranque | ❌ no existe |
@@ -52,11 +52,11 @@ Estas no estaban en ninguna tarea y hay que resolverlas antes de que muerdan.
 `apps/web` como `devDependencies` pero **`jest` no se usa**. Supertest y Cypress no tienen conflicto:
 son un cliente HTTP y un runner E2E, funcionan con cualquiera de los dos.
 
-### 3.2 El `README.md` quedó desactualizado
+### 3.2 El `README.md` estaba desactualizado — **corregido**
 
-Su sección **Pendientes → Decisiones abiertas** todavía lista la UX de autenticación de Auth0 como
-abierta, cuando **se resolvió** el 2026-10-06 (formulario propio mediado por el backend, §5.4). Y no
-menciona ninguna de las 12 tareas nuevas (MI-44 a MI-55).
+Su sección **Pendientes → Decisiones abiertas** listaba la UX de autenticación de Auth0 como
+abierta, cuando **se resolvió** el 2026-10-06 (formulario propio mediado por el backend, §5.4), y no
+mencionaba ninguna de las 12 tareas nuevas (MI-44 a MI-55). Corregido el 2026-10-06.
 
 ### 3.3 `MI-51` cuelga de `MI-2` aunque pertenece a `MI-38`
 
@@ -119,8 +119,8 @@ contraseña. **Vistas asociadas:** MI-23 tablet, MI-27 flujo de navegación, MI-
 La cadena más corta hasta una app con login funcionando y datos aislados por empresa:
 
 ```
-MI-35 (Git) ─┬─> MI-36 (CI)
-             └─> MI-42 (Husky)
+MI-35 (Git) ✅ ─┬─> MI-36 (CI)
+                └─> MI-42 (Husky)
 
 MI-38 (Prisma) ──> MI-51 (esquema multi-usuario)
                      │
@@ -136,8 +136,10 @@ MI-4 (empresas) ──> MI-49 (último OWNER)
 MI-3 + MI-5 ──────> MI-45 (asignar con rol) ──> MI-47 (reglas de autorización)
 ```
 
-**Primeros tres pasos recomendados:** MI-35 (Git), la decisión #1, y MI-38. Sin esos tres, todo lo
-demás sigue bloqueado o se construye a ciegas.
+**Primeros dos pasos recomendados:** la **decisión #1** (cómo se testean los endpoints protegidos) y
+**MI-38** (Prisma + Supabase). Sin esos dos, el login y el aislamiento se construyen a ciegas.
+
+**MI-36 (CI) y MI-42 (Husky)** ya están desbloqueados: dependían de MI-35 y MI-35 está hecho.
 
 ---
 
@@ -145,10 +147,10 @@ demás sigue bloqueado o se construye a ciegas.
 
 | Fase | Pendientes |
 | --- | --- |
-| Setup (MI-2) | 10 |
+| Setup (MI-2) | 9 |
 | Fase 1 — Fundamentos | 14 |
 | Fase 2 — Core de inventario | 4 |
 | Fase 3 — Clientes y alertas | 3 |
 | Fase 4 — Polish | 4 |
 | Diseño (MI-17) | 9 |
-| **Total** | **44** |
+| **Total** | **43** |

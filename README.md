@@ -396,9 +396,9 @@ propio** (MI-35).
 
 Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del proyecto (backend + frontend).
 
-- [ ] **Configurar control de versiones (Git)** — **MI-35**. El proyecto **no tiene repositorio
-      propio**: `git rev-parse --show-toplevel` resuelve hoy a `/home/alex_buelvas` (rama `master`,
-      **0 commits**) y los archivos del proyecto están *untracked*. Bloquea al CI y a Husky.
+- [x] **Configurar control de versiones (Git)** — **MI-35**. **Hecho**: repositorio propio en
+      `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y
+      `feat/login-register-backend-frontend`. Desbloquea el CI y Husky.
 - [ ] **Crear el workflow de CI** en `.github/workflows/` — **MI-36**. Depende de MI-35.
 - [ ] **Crear el `.env.example` de la raíz** — **MI-37**. El de `apps/api` ya existe; falta el del
       monorepo y el del frontend.

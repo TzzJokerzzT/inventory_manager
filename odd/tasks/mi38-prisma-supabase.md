@@ -133,10 +133,16 @@ datasource db {
   **Privilegios**: `anon`, `authenticated` y `service_role` en **false** para SELECT en las 7 tablas.
   Nota de Prisma 7: el flag `--shadow-database-url` ya no existe; para `migrate diff
   --from-migrations` hay que declarar `datasource.shadowDatabaseUrl` en `prisma.config.ts`.
-  Superficies: `apps/api/prisma/migrations/**`.
-- [ ] **T5 — Adaptador Prisma de Company.** `PrismaCompanyRepository implements CompanyRepository`
-  (recibe el `PrismaClient` por constructor, devuelve entidades de dominio) y cableado en `main.ts`.
-  Los tests siguen inyectando el adaptador in-memory. Evidencia: alta y listado reales contra Supabase.
+  Commit `35eccee`. Superficies: `apps/api/prisma/migrations/**`.
+- [x] **T5 — Adaptador Prisma de Company.** ✅ `PrismaCompanyRepository` cableado en `main.ts`; los
+  tests siguen inyectando el in-memory (el smoke test no se tocó). El import del cliente generado es
+  **type-only** a propósito: es ESM-first y Jest corre en CommonJS con `@swc/jest`, así que un import de
+  runtime rompería la suite; la dependencia se reduce al delegate `company` (`Pick<PrismaClient,
+  "company">`), así que el puerto sigue sin saber nada de Prisma. Las filas se mapean siempre a la
+  entidad `Company` y el id que genera el dominio se escribe explícito para que el default de la base no
+  lo pise. Test propio con un doble a mano (RED → GREEN) y **prueba end-to-end real**: alta, listado y
+  borrado de una empresa contra Supabase, con `public.companies` en 0 filas antes y después. Commit de T5
+  registrado en el commit siguiente.
   Superficies: `apps/api/src/infrastructure/database/prisma-company-repository.ts`, `apps/api/src/main.ts`.
 - [ ] **T6 — Documentación.** `apps/api/.env.example` descomentado con nota del pooler;
   `docs/stack.md` §3.3 y §5.3 con Prisma 7 (`prisma.config.ts` + driver adapter) y la decisión de

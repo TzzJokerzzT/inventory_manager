@@ -409,9 +409,9 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
 - [x] **Configurar Prisma + Supabase** — **MI-38**: `schema.prisma`, migración
       `20261006223356_init` aplicada y conexión vía pooler con el adapter `@prisma/adapter-pg`.
       Cerrada en Jira (`Done`, comentario `10042`) tras la verificación independiente del layer de datos.
-      **Nota**: `bun run check-types` y `bun run build` de la raíz están en rojo por un defecto
-      pre-existente de `apps/web` (tipos de Cypress que pisan los matchers de Jest), ajeno a esta tarea
-      y que bloquea **MI-36**.
+      **Nota**: el defecto pre-existente de `apps/web` que dejaba en rojo `bun run check-types` y
+      `bun run build` (los tipos de Cypress pisaban los matchers de Jest) **ya está corregido**: la capa
+      de Cypress tiene su propio `tsconfig` y los comandos de la raíz están en verde.
 - [ ] **Configurar Auth0** — **MI-39**: tenant, aplicación SPA, API con *audience* y validación
       JWKS en la API. Hoy `express-oauth2-jwt-bearer` está declarado pero sin cablear.
 - [ ] **Configurar Cloudinary** — **MI-40** para subida directa firmada desde el cliente.

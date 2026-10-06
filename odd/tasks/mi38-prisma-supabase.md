@@ -174,8 +174,11 @@ datasource db {
   la **raíz**, y eso **no era cierto**. `bun run check-types` y `bun run build` fallan por `apps/web`: su
   `tsconfig` incluye `cypress/**` y el `expect` global resuelve a la `Assertion` de chai, así que `tsc`
   no reconoce los matchers de Jest (`error TS2339: Property 'toBe' does not exist on type 'Assertion'`,
-  reproducido por mí). Es un **defecto pre-existente de MI-41** que además bloquea MI-36, y queda fuera
-  del alcance de MI-38: el layer de datos no está afectado.
+  reproducido por mí). Es un **defecto pre-existente de MI-41** que además bloqueaba MI-36, y quedó fuera
+  del alcance de MI-38: el layer de datos nunca estuvo afectado. **Arreglado el mismo día** (ver el
+  commit siguiente): el `tsconfig` de la app excluye la capa de Cypress y esta tiene el suyo propio con
+  `types: ["cypress", "node", "@testing-library/cypress"]`, y `check-types` de web typechequea las dos,
+  así que los specs no quedan sin verificar. Con eso `check-types` y `build` de la raíz están en verde.
 
   **Jira**: MI-38 → `Done` (comentario `10042`) y MI-51 → `Done` (comentario `10043`), ambos con los
   criterios verificados uno por uno.
@@ -257,7 +260,9 @@ cuando T7 cierre, o en la tarea de `.env.example` de la raíz (MI-37).
   original de T7 era **falso** en un punto: `bun run check-types` y `bun run build` de la raíz **no**
   están verdes, fallan por `apps/web` (el `tsconfig` incluye `cypress/**` y el `expect` global resuelve a
   la `Assertion` de chai → `TS2339: Property 'toBe' does not exist on type 'Assertion'`). Es un defecto
-  **pre-existente de MI-41** que bloquea MI-36; se reprodujo a mano y se documentó como fuera de alcance.
+  **pre-existente de MI-41** que bloqueaba MI-36; se reprodujo a mano, se documentó como fuera de alcance
+  y se arregló en la unidad de trabajo siguiente (capa de Cypress aislada en su propio `tsconfig`, con
+  `check-types` cubriendo los specs).
   Todo el resto del layer de datos quedó verificado: CHECKs que rechazan inserts de verdad, 21/21
   privilegios de la Data API en false, end-to-end con el id preservado, `generate` sin `.env`.
   Jira: MI-38 y MI-51 en `Done` (comentarios `10042` y `10043`).

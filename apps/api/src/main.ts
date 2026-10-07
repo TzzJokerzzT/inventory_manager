@@ -1,6 +1,7 @@
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
+import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
@@ -63,6 +64,7 @@ const app = buildApp({
 		userRepository,
 	}),
 	registerUser: new RegisterUserUseCase({ identityProvider }),
+	refreshSession: new RefreshSessionUseCase({ identityProvider }),
 	requireAuth: createRequireAuth({
 		issuerBaseURL: `https://${domain}/`,
 		audience,

@@ -54,3 +54,27 @@ export function createAuthRegisterRateLimiter() {
 		limit: AUTH_REGISTER_RATE_LIMIT,
 	});
 }
+
+/**
+ * Attempts allowed against `POST /auth/refresh` per window. Without it the
+ * endpoint is a token oracle: each attempt trades one refresh token for a
+ * fresh access token, so a dedicated limiter is as load-bearing here as on
+ * login.
+ */
+export const AUTH_REFRESH_RATE_LIMIT = 5;
+
+/**
+ * Dedicated limiter for the refresh endpoint, mirroring the login limiter
+ * (same window, same strictness, separate counter).
+ *
+ * The shared store is MI-55: today this counter is in memory, so in a
+ * serverless runtime it does not limit globally — each function instance has
+ * its own counter. The stricter limit is still applied per instance, but the
+ * real anti-abuse guarantee arrives with the shared store.
+ */
+export function createAuthRefreshRateLimiter() {
+	return rateLimit({
+		windowMs: 15 * 60 * 1000,
+		limit: AUTH_REFRESH_RATE_LIMIT,
+	});
+}

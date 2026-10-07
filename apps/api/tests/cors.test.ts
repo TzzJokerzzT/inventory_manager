@@ -28,6 +28,7 @@ function createTestApp() {
 		createCompany: {} as never,
 		listCompanies: {} as never,
 		loginWithCredentials: {} as unknown as LoginWithCredentialsUseCase,
+		refreshSession: {} as never,
 		requireAuth: (_request, _response, next) => next(),
 		requireUser: (_request, _response, next) => next(),
 		authCookieOptions: cookieOptions,

@@ -6,6 +6,7 @@ import type {
 } from "../../application/ports/identity-provider.js";
 import { IdentityProviderUnavailableError } from "../../domain/errors/identity-provider-unavailable-error.js";
 import { InvalidCredentialsError } from "../../domain/errors/invalid-credentials-error.js";
+import { RefreshTokenRejectedError } from "../../domain/errors/refresh-token-rejected-error.js";
 import { SignUpRejectedError } from "../../domain/errors/sign-up-rejected-error.js";
 
 /**
@@ -146,6 +147,67 @@ export class Auth0IdentityProvider implements IdentityProvider {
 			console.error(
 				"Auth0 token exchange succeeded but returned an unexpected shape",
 			);
+			throw new IdentityProviderUnavailableError();
+		}
+
+		return {
+			accessToken: payload.access_token,
+			...(payload.refresh_token ? { refreshToken: payload.refresh_token } : {}),
+			expiresIn: payload.expires_in,
+		};
+	}
+
+	async refreshTokens(refreshToken: string): Promise<IdentityTokens> {
+		const url = `${this.issuerBaseURL}oauth/token`;
+		const body = new URLSearchParams({
+			grant_type: "refresh_token",
+			refresh_token: refreshToken,
+			client_id: this.clientId,
+			client_secret: this.clientSecret,
+			audience: this.audience,
+			scope: MINIMAL_SCOPE,
+		});
+
+		let response: Response;
+		try {
+			response = await fetch(url, {
+				method: "POST",
+				headers: { "content-type": "application/x-www-form-urlencoded" },
+				body: body.toString(),
+				signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+			});
+		} catch {
+			// Network failure or timeout: no provider response arrived. The
+			// rejection reason is deliberately not logged so the refresh token
+			// (a credential) can never leak.
+			console.error("Auth0 refresh failed: no response received");
+			throw new IdentityProviderUnavailableError();
+		}
+
+		if (!response.ok) {
+			const { code, description } = await readErrorDetail(response);
+			// Log only the provider's error code and description. The refresh
+			// token is never logged.
+			console.error(
+				`Auth0 refresh failed: ${code}${description ? ` — ${description}` : ""}`,
+			);
+
+			if (response.status >= 400 && response.status < 500) {
+				throw new RefreshTokenRejectedError();
+			}
+			throw new IdentityProviderUnavailableError();
+		}
+
+		const payload = (await response.json()) as Auth0TokenResponse;
+
+		// Never trust the upstream shape: a 200 missing `access_token` or
+		// `expires_in` must not resolve silently as a success — it is mapped to
+		// the same "provider unavailable" the caller already understands (503).
+		if (
+			typeof payload.access_token !== "string" ||
+			typeof payload.expires_in !== "number"
+		) {
+			console.error("Auth0 refresh succeeded but returned an unexpected shape");
 			throw new IdentityProviderUnavailableError();
 		}
 

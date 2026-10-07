@@ -9,6 +9,7 @@ import type {
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "../src/application/use-cases/login-with-credentials.js";
+import { RefreshSessionUseCase } from "../src/application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "../src/application/use-cases/register-user.js";
 import { User } from "../src/domain/entities/user.js";
 import { IdentityProviderUnavailableError } from "../src/domain/errors/identity-provider-unavailable-error.js";
@@ -54,6 +55,10 @@ class FakeIdentityProvider implements IdentityProvider {
 		}
 	}
 
+	async refreshTokens(_refreshToken: string): Promise<IdentityTokens> {
+		throw new Error("refresh not used in register tests");
+	}
+
 	async getIdentity(_accessToken: string): Promise<Identity> {
 		throw new Error("identity not used in register tests");
 	}
@@ -93,6 +98,7 @@ function createTestApp(provider: IdentityProvider) {
 			userRepository,
 		}),
 		registerUser: new RegisterUserUseCase({ identityProvider: provider }),
+		refreshSession: new RefreshSessionUseCase({ identityProvider: provider }),
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
 		authCookieOptions: defaultCookieOptions,

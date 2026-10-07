@@ -39,6 +39,17 @@ export interface IdentityProvider {
 	): Promise<IdentityTokens>;
 
 	/**
+	 * Exchanges a refresh token for a fresh token pair
+	 * (`grant_type=refresh_token`).
+	 *
+	 * The returned `refreshToken` is only present when the provider rotates
+	 * the refresh token; a `200` that carries no access token is mapped by the
+	 * adapter to `IdentityProviderUnavailableError` rather than resolving as a
+	 * success.
+	 */
+	refreshTokens(refreshToken: string): Promise<IdentityTokens>;
+
+	/**
 	 * Creates an account in the provider's user database.
 	 *
 	 * The caller gets nothing meaningful back: a rejection is reported as a

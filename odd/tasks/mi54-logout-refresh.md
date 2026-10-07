@@ -91,18 +91,32 @@ justifica U3.
   y reintenta la request original una vez; `useLogout`; la guardia esperando `resolved`; y el **carve-out
   de auth**: login y logout marcan sus propios requests con `skipAuthRefresh`, así un login fallido no
   acuña token. **Spot check del padre**: 33 suites / 213 tests.
-- [ ] **U3 — Hacer el cableado independiente del orden (hallazgo de la verificación de U2).**
-  `getApiClient` cachea sus opciones en la **primera llamada** (`client.ts:209-211`, `cached ??=`) y los
-  cuatro callers pasan sólo `{ getAccessToken }` (`use-companies.ts:23`, `use-create-company.ts:25`,
-  `use-login.ts:27`, `use-register.ts:20`). Hoy funciona **por orden de efectos de React**, no por
-  contrato: si cualquier otro caller gana la primera llamada, `onUnauthorized` se descarta en silencio y
-  **el refresh del 401 queda muerto sin que nada falle**. El verificador lo midió: `SessionBootstrap` es
-  el primer hermano y su efecto escribe primero, pero eso es un detalle de implementación de React
-  (`useSyncExternalStore` dispara el fetch en un efecto pasivo), no una garantía. **Objetivo**: que el
-  manejador se resuelva de forma perezosa en tiempo de request, como ya se hace con el token, de modo que
-  ningún orden de llamada pueda desactivarlo; y un test que monte el provider con un hook de datos y
-  pruebe que un 401 refresca **sin importar quién construyó el cliente**. No es un defecto activo hoy;
-  es la misma trampa que ya causó el bug de orden de MI-48, y este unit la volvió load-bearing.
+- [x] **U3 — Cableado independiente del orden.** ✅ Commit `063adad` (`fix(web): resolve the 401 refresh
+  handler lazily`). El cliente guarda el manejador a nivel de módulo (`client.ts:136`), lo registra una
+  vez (`setOnUnauthorized`, `client.ts:145-149`) y lo **resuelve por request** dentro del interceptor
+  (`client.ts:184`); el feature de auth lo registra **al importar el módulo** (`refresh-session.ts:27`),
+  alcanzado sin condición por `Provider` → `SessionBootstrap`. Test de integración nuevo que monta el
+  árbol real con un hook de datos y prueba un refresh y un reintento en los dos órdenes. **Spot check del
+  padre**: 34 suites / 215 tests.
+
+## Verificación de U3 (independiente, `gentle-ai-verify`)
+
+**7/7 claims PASS, cero defectos.** El verificador re-ejecutó la suite **6 veces** (34/215 cada vez) para
+sustanciar el claim de no-flakiness, y contestó la pregunta decisiva: el cliente que el test reusa se
+construye **sólo** con `{ getAccessToken }` (`session-refresh.test.tsx:133`), su `options.onUnauthorized`
+es `undefined`, y la inyección del adaptador toca `defaults.adapter`, no `options` — así que la única
+fuente del manejador es `sharedOnUnauthorized`. **El test prueba el holder, no su propio setup.** Y ambos
+tests nuevos **fallan si se revierte** la resolución perezosa: son guardias de regresión reales.
+
+También confirmó que el cliente sigue importando sólo `axios`, que las cinco pruebas previas de 401 siguen
+verdes, y que la redundancia de `onUnauthorized` explícito en `refresh-session.ts:35` y `use-logout.ts:29`
+es **inofensiva**: ambos pasan la misma función que la registrada, y el request de refresh lleva
+`skipAuthRefresh`, así que ese camino nunca se ejecuta.
+
+**Asimetría documentada, sin dependencia viva**: `getAccessToken` **sí** sigue capturándose de las opciones
+del primer caller (`client.ts:177`), mientras el manejador ya es perezoso. No es un defecto: los **seis**
+callers pasan la misma función, así que no queda dependencia de orden. Queda anotado como deuda de
+simetría — si algún día un caller pasara otro getter, el problema volvería.
 
 ## Verificación de U1 (independiente, `gentle-ai-verify`)
 
@@ -158,3 +172,14 @@ unidad, dentro del presupuesto de la cadena.
   cerrada sin registrar el hueco. Además, el caso borde del login fallido (401 de `/auth/login` disparando
   el refresh y acuñando token) se detectó por el worker y se cerró **antes** del commit, con tests de
   comportamiento en vez de tests de bandera.
+- 2026-10-07 — **U3 hecha y verificada** (commit `063adad`, 7/7 PASS): el manejador se resuelve por request
+  y se registra al importar el módulo, así que ningún orden puede desactivar el refresh. **MI-54 queda
+  completa** (U1 + U2 + U3), las tres verificadas de forma independiente.
+
+## Aprendizaje transversal de MI-54
+
+**"El primero que llame gana" es un contrato roto disfrazado de optimización.** Dos incidentes en el mismo
+código: el bug de orden de MI-48 (el `Authorization` dependía de qué página cargaba primero) y este, donde
+el refresh del 401 quedaba muerto si cualquier otro caller construía el cliente antes. La regla que queda:
+**lo que el interceptor necesita en tiempo de request se resuelve en tiempo de request** — no se captura
+en la construcción ni se confía al orden de montaje.

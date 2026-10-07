@@ -138,3 +138,33 @@ describe("error normalization", () => {
 		expect((error as AxiosError).code).toBe("ERR_CANCELED");
 	});
 });
+
+describe("access-token interceptor", () => {
+	function clientWithTokenProvider(getAccessToken: () => string | undefined) {
+		const client = createApiClient(BASE_URL, { getAccessToken });
+		client.defaults.adapter = async (config) => ({
+			data: { authorization: config.headers.get("Authorization") },
+			status: 200,
+			statusText: "OK",
+			headers: {},
+			config,
+		});
+		return client;
+	}
+
+	it("attaches the bearer token when the provider returns one", async () => {
+		const client = clientWithTokenProvider(() => "token-value");
+
+		const response = await client.get("/companies");
+
+		expect(response.data.authorization).toBe("Bearer token-value");
+	});
+
+	it("omits the Authorization header when the provider returns none", async () => {
+		const client = clientWithTokenProvider(() => undefined);
+
+		const response = await client.get("/companies");
+
+		expect(response.data.authorization).toBeUndefined();
+	});
+});

@@ -99,8 +99,20 @@ function toApiError(error: unknown): unknown {
  * `withCredentials` is on because the refresh token is an `httpOnly` cookie
  * that the API sets from a different origin: without it the browser would
  * neither store nor send it.
+ *
+ * The `getAccessToken` callback keeps this module generic: it cannot import a
+ * feature, so the auth feature hands over a provider that reads the token from
+ * its session store. When the provider returns a token it is attached as
+ * `Authorization: Bearer`; when it returns none the header is simply omitted.
  */
-export function createApiClient(baseURL?: string): AxiosInstance {
+export interface ApiClientOptions {
+	getAccessToken?: () => string | undefined;
+}
+
+export function createApiClient(
+	baseURL?: string,
+	options: ApiClientOptions = {},
+): AxiosInstance {
 	const resolved = baseURL ?? process.env.NEXT_PUBLIC_API_URL;
 	if (!resolved) {
 		// Fail fast: a silent localhost fallback would point at nothing once
@@ -113,6 +125,14 @@ export function createApiClient(baseURL?: string): AxiosInstance {
 	const client = axios.create({
 		baseURL: resolved,
 		withCredentials: true,
+	});
+
+	client.interceptors.request.use((config) => {
+		const token = options.getAccessToken?.();
+		if (token) {
+			config.headers.set("Authorization", `Bearer ${token}`);
+		}
+		return config;
 	});
 
 	client.interceptors.response.use(
@@ -130,8 +150,19 @@ let cached: AxiosInstance | undefined;
 /**
  * The client used by the app. Built lazily so importing this module never
  * requires the environment to be configured (tests import the factory).
+ *
+ * The access-token provider is wired by the auth feature and read lazily on
+ * every request, so a token set after the client was built is still attached.
+ *
+ * The first caller fixes the options for the lifetime of the process: the
+ * `cached ??=` below captures `options` only once. That is why every feature
+ * hook that can be the first to touch the client (`useLogin`, `useRegister`,
+ * `useCompanies`) passes the same access-token provider. Leaving the provider
+ * to whichever hook happens to run first would make `Authorization` depend on
+ * import order — the kind of bug that shows up as a 401 nobody can reproduce
+ * locally.
  */
-export function getApiClient(): AxiosInstance {
-	cached ??= createApiClient();
+export function getApiClient(options?: ApiClientOptions): AxiosInstance {
+	cached ??= createApiClient(undefined, options);
 	return cached;
 }

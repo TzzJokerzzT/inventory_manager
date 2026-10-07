@@ -5,6 +5,7 @@ import { getApiClient } from "@/lib/api/client";
 import { type LoginResponse, parseLoginResponse } from "@/lib/api/schemas";
 import type { LoginValues } from "@/lib/auth/validation";
 import { useSessionStore } from "../store/session-store";
+import { getAccessToken } from "./get-access-token";
 
 /**
  * Sends the credentials to our API, which exchanges them with Auth0.
@@ -18,7 +19,10 @@ export function useLogin() {
 
 	return useMutation<LoginResponse, unknown, LoginValues>({
 		mutationFn: async (values) => {
-			const response = await getApiClient().post("/auth/login", values);
+			const response = await getApiClient({ getAccessToken }).post(
+				"/auth/login",
+				values,
+			);
 			return parseLoginResponse(response.data);
 		},
 		onSuccess: (data) => {

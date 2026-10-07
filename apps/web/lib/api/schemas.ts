@@ -1,4 +1,11 @@
-import { type InferOutput, number, object, safeParse, string } from "valibot";
+import {
+	array,
+	type InferOutput,
+	number,
+	object,
+	safeParse,
+	string,
+} from "valibot";
 import { ApiError } from "./client";
 
 /**
@@ -25,6 +32,39 @@ const UNEXPECTED_RESPONSE =
  */
 export function parseLoginResponse(data: unknown): LoginResponse {
 	const result = safeParse(loginResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Shape of one company exactly as `Company.toJSON()` serializes it in the API:
+ * `{ id, name, createdAt }` with `createdAt` already an ISO string.
+ */
+export const companySchema = object({
+	id: string(),
+	name: string(),
+	createdAt: string(),
+});
+
+export type Company = InferOutput<typeof companySchema>;
+
+/** Shape of `GET /companies`: the companies the authenticated user belongs to. */
+export const companiesResponseSchema = array(companySchema);
+
+export type CompaniesResponse = InferOutput<typeof companiesResponseSchema>;
+
+/**
+ * Validates the companies response at the boundary.
+ *
+ * Same contract as {@link parseLoginResponse}: a backend that changes shape
+ * fails as an {@link ApiError} with a readable message instead of exploding
+ * inside a view.
+ */
+export function parseCompaniesResponse(data: unknown): CompaniesResponse {
+	const result = safeParse(companiesResponseSchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

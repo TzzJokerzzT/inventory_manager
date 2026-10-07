@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { getApiClient } from "@/lib/api/client";
 import type { LoginValues } from "@/lib/auth/validation";
+import { getAccessToken } from "./get-access-token";
 
 /**
  * Creates the account in Auth0 through our API.
@@ -16,7 +17,10 @@ import type { LoginValues } from "@/lib/auth/validation";
 export function useRegister() {
 	return useMutation<unknown, unknown, LoginValues>({
 		mutationFn: async (values) => {
-			const response = await getApiClient().post("/auth/register", values);
+			const response = await getApiClient({ getAccessToken }).post(
+				"/auth/register",
+				values,
+			);
 			return response.data;
 		},
 	});

@@ -138,6 +138,7 @@ function createTestApp(options: {
 			options.registerUser ??
 			new RegisterUserUseCase({ identityProvider: options.provider }),
 		requireAuth: passthroughAuth,
+		requireUser: passthroughAuth,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: TEST_WEB_ORIGIN,
 	});

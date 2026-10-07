@@ -23,6 +23,7 @@ export interface AppDependencies {
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;
 	requireAuth: RequestHandler;
+	requireUser: RequestHandler;
 	authCookieOptions: AuthCookieOptions;
 	/**
 	 * Browser origin allowed to call the API. It has to be an explicit origin
@@ -67,6 +68,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 				cookieOptions: dependencies.authCookieOptions,
 			}),
 			requireAuth: dependencies.requireAuth,
+			requireUser: dependencies.requireUser,
 		}),
 	);
 

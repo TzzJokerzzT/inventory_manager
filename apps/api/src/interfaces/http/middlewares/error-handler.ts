@@ -5,6 +5,7 @@ import { DomainError } from "../../../domain/errors/domain-error.js";
 import { EmailNotVerifiedError } from "../../../domain/errors/email-not-verified-error.js";
 import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
 import { InvalidCredentialsError } from "../../../domain/errors/invalid-credentials-error.js";
+import { UserNotProvisionedError } from "../../../domain/errors/user-not-provisioned-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
 	if (typeof error !== "object" || error === null) {
@@ -94,6 +95,15 @@ export const errorHandler: ErrorRequestHandler = (
 		// machine-readable discriminator.
 		response.status(StatusCodes.FORBIDDEN).json({
 			error: { message: error.message, code: "email_not_verified" },
+		});
+		return;
+	}
+
+	if (error instanceof UserNotProvisionedError) {
+		// Same pattern as `email_not_verified`: the fixed message is for humans,
+		// the `code` is the discriminator the client keys on.
+		response.status(StatusCodes.FORBIDDEN).json({
+			error: { message: error.message, code: "user_not_provisioned" },
 		});
 		return;
 	}

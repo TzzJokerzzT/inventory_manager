@@ -9,13 +9,14 @@ export interface HttpRoutesDependencies {
 	company: CompanyController;
 	auth: AuthController;
 	requireAuth: RequestHandler;
+	requireUser: RequestHandler;
 }
 
 export function buildRoutes(dependencies: HttpRoutesDependencies): Router {
 	const router = Router();
 	router.use(healthRoutes());
 	router.use(authRoutes(dependencies.auth));
-	router.use("/companies", dependencies.requireAuth);
+	router.use("/companies", dependencies.requireAuth, dependencies.requireUser);
 	router.use(companyRoutes(dependencies.company));
 	return router;
 }

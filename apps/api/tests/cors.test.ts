@@ -29,6 +29,7 @@ function createTestApp() {
 		listCompanies: {} as never,
 		loginWithCredentials: {} as unknown as LoginWithCredentialsUseCase,
 		requireAuth: (_request, _response, next) => next(),
+		requireUser: (_request, _response, next) => next(),
 		authCookieOptions: cookieOptions,
 		corsOrigin: ALLOWED_ORIGIN,
 	});

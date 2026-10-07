@@ -94,6 +94,7 @@ function createTestApp(provider: IdentityProvider) {
 		}),
 		registerUser: new RegisterUserUseCase({ identityProvider: provider }),
 		requireAuth: passthroughAuth,
+		requireUser: passthroughAuth,
 		authCookieOptions: defaultCookieOptions,
 		corsOrigin: "http://localhost:3000",
 	});

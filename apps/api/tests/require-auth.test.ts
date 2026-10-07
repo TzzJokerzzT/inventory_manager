@@ -1,9 +1,15 @@
 import request from "supertest";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
+import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
+import { createRequireUser } from "../src/interfaces/http/middlewares/require-user.js";
+import {
+	createFakeUserRepository,
+	TEST_SUB,
+} from "./support/fake-user-repository.js";
 import {
 	generateRsaKeyPair,
 	type LocalIssuer,
@@ -26,6 +32,9 @@ describe("requireAuth on the company routes", () => {
 
 	function createTestApp() {
 		const companyRepository = new InMemoryCompanyRepository();
+		const userRepository = createFakeUserRepository([
+			User.create({ auth0Sub: TEST_SUB, email: "owner@example.com" }),
+		]);
 
 		return buildApp({
 			createCompany: new CreateCompanyUseCase({ companyRepository }),
@@ -34,6 +43,7 @@ describe("requireAuth on the company routes", () => {
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,
 			}),
+			requireUser: createRequireUser({ userRepository }),
 			corsOrigin: TEST_WEB_ORIGIN,
 		});
 	}

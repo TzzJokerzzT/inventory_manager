@@ -13,6 +13,7 @@ import {
 	REFRESH_TOKEN_MAX_AGE_MS,
 } from "./interfaces/http/controllers/auth-controller.js";
 import { createRequireAuth } from "./interfaces/http/middlewares/require-auth.js";
+import { createRequireUser } from "./interfaces/http/middlewares/require-user.js";
 
 // Composition root: the only place where concrete implementations are chosen.
 // Production wires the Prisma adapter over the Supabase pooler; the in-memory
@@ -66,6 +67,7 @@ const app = buildApp({
 		issuerBaseURL: `https://${domain}/`,
 		audience,
 	}),
+	requireUser: createRequireUser({ userRepository }),
 	authCookieOptions,
 	corsOrigin,
 });

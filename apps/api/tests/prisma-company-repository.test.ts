@@ -3,32 +3,47 @@ import type { PrismaClient } from "../src/infrastructure/database/generated/pris
 import { PrismaCompanyRepository } from "../src/infrastructure/database/prisma-company-repository.js";
 
 /**
- * The adapter only talks to the `company` delegate, so the fake narrows the
- * injected surface to the two methods the repository actually calls. It is a
- * hand-written double: no database and no generated client is loaded here.
+ * The adapter talks to the `company` and `membership` delegates plus
+ * `$transaction`, so the fake narrows the injected surface to exactly those
+ * three. It is a hand-written double: no database and no generated client is
+ * loaded here.
  */
-type CompanyDelegate = Pick<PrismaClient, "company">;
+type CompanyDelegate = Pick<
+	PrismaClient,
+	"company" | "membership" | "$transaction"
+>;
 
 function buildFakeDelegate() {
 	const create = jest.fn();
 	const findMany = jest.fn();
+	const membershipCreate = jest.fn();
+	const transaction = jest.fn(async (operations: unknown[]) =>
+		Promise.all(operations),
+	);
 
 	const delegate = {
 		company: { create, findMany },
+		membership: { create: membershipCreate },
+		$transaction: transaction,
 	} as unknown as CompanyDelegate;
 
-	return { delegate, create, findMany };
+	return { delegate, create, findMany, membershipCreate, transaction };
 }
 
 describe("PrismaCompanyRepository", () => {
-	it("create forwards the domain values and returns the Company entity", async () => {
-		const { delegate, create } = buildFakeDelegate();
+	it("createOwnedBy writes the company and its OWNER membership in one transaction", async () => {
+		const { delegate, create, membershipCreate, transaction } =
+			buildFakeDelegate();
 		create.mockResolvedValue({ id: "company-1", name: "Acme" });
+		membershipCreate.mockResolvedValue({ id: "membership-1" });
 
 		const repository = new PrismaCompanyRepository({ prisma: delegate });
 		const company = Company.create({ id: "company-1", name: "Acme" });
 
-		const result = await repository.create(company);
+		const result = await repository.createOwnedBy(company, {
+			userId: "user-1",
+			email: "Owner@Example.com",
+		});
 
 		expect(create).toHaveBeenCalledTimes(1);
 		expect(create).toHaveBeenCalledWith({
@@ -38,12 +53,32 @@ describe("PrismaCompanyRepository", () => {
 				createdAt: company.createdAt,
 			},
 		});
+
+		expect(membershipCreate).toHaveBeenCalledTimes(1);
+		const membershipArgs = membershipCreate.mock.calls[0][0] as {
+			data: Record<string, unknown>;
+		};
+		expect(membershipArgs.data).toMatchObject({
+			userId: "user-1",
+			companyId: company.id,
+			role: "OWNER",
+			status: "ACTIVE",
+			invitedEmail: "owner@example.com",
+			invitedBy: "user-1",
+		});
+		expect(membershipArgs.data.acceptedAt).toBeInstanceOf(Date);
+
+		// Both writes share one transaction, so a company can never exist
+		// without its owner.
+		expect(transaction).toHaveBeenCalledTimes(1);
+		const operations = transaction.mock.calls[0][0] as unknown[];
+		expect(operations).toHaveLength(2);
+
 		expect(result).toBeInstanceOf(Company);
 		expect(result.id).toBe(company.id);
-		expect(result.name).toBe(company.name);
 	});
 
-	it("findAll maps several rows into domain entities in a deterministic order", async () => {
+	it("findAllForUser filters through memberships and maps rows into entities", async () => {
 		const { delegate, findMany } = buildFakeDelegate();
 		findMany.mockResolvedValue([
 			{
@@ -60,10 +95,15 @@ describe("PrismaCompanyRepository", () => {
 
 		const repository = new PrismaCompanyRepository({ prisma: delegate });
 
-		const result = await repository.findAll();
+		const result = await repository.findAllForUser("user-1");
 
 		expect(findMany).toHaveBeenCalledTimes(1);
 		expect(findMany).toHaveBeenCalledWith({
+			where: {
+				memberships: {
+					some: { userId: "user-1", status: "ACTIVE" },
+				},
+			},
 			orderBy: [{ createdAt: "asc" }, { id: "asc" }],
 		});
 		expect(result).toHaveLength(2);
@@ -89,7 +129,7 @@ describe("PrismaCompanyRepository", () => {
 
 		const repository = new PrismaCompanyRepository({ prisma: delegate });
 
-		const result = await repository.findAll();
+		const result = await repository.findAllForUser("user-1");
 
 		expect(result[0]).toBeInstanceOf(Company);
 		expect(result[0].id).toBe("c1");

@@ -17,7 +17,7 @@ Sin estos, ninguna otra cosa avanza. Los cinco son de **MI-2** (setup).
 | --- | --- | --- | --- |
 | ~~**MI-35**~~ ✅ | Control de versiones (Git) | **HECHO (2026-10-06)**: repositorio propio en `TzzJokerzzT/inventory_manager`, ramas `production`, `development` y `feat/login-register-backend-frontend`, 110 archivos versionados. **Desbloqueó MI-36 y MI-42** | ✅ repo propio |
 | ~~**MI-38**~~ ✅ | Prisma + Supabase | **HECHO (2026-10-06)**: `schema.prisma` + migración `20261006223356_init` aplicada + adaptador `PrismaCompanyRepository` cableado (`35eccee`, `58fef79`). Verificado por un verificador independiente y cerrado en Jira (comentario `10042`). **Desbloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y la Fase 2** | ✅ schema + migración aplicada + adaptador |
-| **MI-39** | Auth0 | Sin tenant no hay credenciales contra las que probar el login. Bloquea MI-44, MI-46, MI-50, MI-52 a MI-55 | ❌ `express-oauth2-jwt-bearer` declarado, sin cablear |
+| **MI-39** | Auth0 | Sin tenant no hay credenciales contra las que probar el login. Bloquea MI-44, MI-46, MI-50, MI-52 a MI-55 | ✅ tenant verificado (JWKS + discovery 200); middleware `requireAuth` cableado sobre `/companies` y probado (43 tests); el grant `Password` está pendiente y lo habilita **MI-52** |
 | **MI-37** | `.env.example` de la raíz | Sin esto no hay onboarding reproducible ni CI que arranque | ❌ no existe |
 | **MI-43** | Contrato frontend ↔ backend | Sin tipos compartidos, cada validación se duplica y se desincroniza | ❌ sin definir |
 
@@ -27,7 +27,7 @@ Cada una bloquea implementación. **Ninguna es código: son decisiones tuyas.**
 
 | # | Decisión | Bloquea | Nota |
 | --- | --- | --- | --- |
-| 1 | **Cómo se testean los endpoints protegidos** con Supertest: clave de prueba firmada localmente o stub del middleware de Auth0 | **MI-50** (y MI-52 a MI-55) | Es la segunda mitad de MI-39 |
+| 1 | ~~**Cómo se testean los endpoints protegidos** con Supertest: clave de prueba firmada localmente o stub del middleware de Auth0~~ ✅ **resuelta**: clave de prueba + JWKS local | — | Se elige sobre el stub porque un `issuer`/`audience` mal configurado pasaría la suite sin detectarse |
 | 2 | **Store compartido del rate limit**: Vercel KV o Upstash Redis | **MI-55** y **MI-38** | Con ROPG el rate limit del login **no es opcional**; el contador en memoria no limita en serverless |
 | 3 | ~~**`pg_trgm`** para búsqueda difusa de productos y clientes: sí o no~~ ✅ **resuelta**: sí, activada en la primera migración | — | `pg_trgm` (1.6) instalada en `20261006223356_init` |
 | 4 | ~~**Versión *major* de PostgreSQL**~~ ✅ **resuelta**: **17** (servidor reporta 17.6) | — | Medido en el proyecto aprovisionado |

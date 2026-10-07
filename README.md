@@ -17,8 +17,9 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 ## Estado del proyecto
 
 ⚠️ **El proyecto está en construcción.** Las dos aplicaciones ya existen y el tooling está
-funcionando. **La capa de datos (Prisma + Supabase) ya está configurada** (schema, migración
-aplicada y adaptador); quedan pendientes **autenticación (Auth0) y almacenamiento (Cloudinary)**.
+funcionando. **La capa de datos (Prisma + Supabase) y la validación JWT de Auth0 ya están
+configuradas** (schema, migración aplicada, adaptador y middleware `requireAuth` sobre `/companies`);
+quedan pendientes **el grant `Password` de Auth0 (MI-52)** y **almacenamiento (Cloudinary)**.
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
@@ -31,10 +32,10 @@ El repositorio y el stack de tests ya están en pie.
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
 | Typecheck | ✅ `apps/web` y `apps/api` limpios (`tsc --noEmit`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y adaptador `PrismaCompanyRepository` cableado |
-| **Auth0** | ❌ no configurado |
+| **Auth0** | ✅ tenant verificado (JWKS + discovery) y middleware `requireAuth` cableado; falta el grant `Password` (MI-52) |
 | **Cloudinary** | ❌ no configurado |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
-| **Tests** | ✅ **Jest** como único runner: 144 tests (33 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
+| **Tests** | ✅ **Jest** como único runner: 154 tests (43 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
 | **CI** | ❌ no configurado |
 
 Las configuraciones pendientes están desglosadas como **subtareas de [MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del
@@ -92,7 +93,7 @@ Detalle completo y observaciones en **[`docs/stack.md`](docs/stack.md)**.
 | **CI/CD** | **GitHub Actions** |
 | **Contenedores** | No se usan |
 
-**Frontend:** Axios · @auth0/auth0-react · Zustand · TanStack Query · Valibot · shadcn/ui ·
+**Frontend:** Axios · Zustand · TanStack Query · Valibot · shadcn/ui ·
 Framer Motion · Recharts · Tailwind CSS · lucide-react · Biome · Jest · React Testing Library ·
 Cypress · Husky
 
@@ -367,7 +368,7 @@ Puntos a tener en cuenta:
 **Parcialmente configuradas.** `apps/api/.env.example` ya existe y documenta `PORT`,
 `DATABASE_URL` (URL pooled del pooler, puerto 6543, con `?pgbouncer=true`) y `DIRECT_URL` (URL
 directa, puerto 5432, para migraciones), además de los placeholders de `AUTH0_*`. Falta el
-`.env.example` de la raíz (**MI-37**), que conviene cerrar junto con Auth0 y Cloudinary.
+`.env.example` de la raíz (**MI-37**), que conviene cerrar junto con Cloudinary.
 Debe documentar al menos:
 
 | Variable | Para qué |
@@ -375,7 +376,6 @@ Debe documentar al menos:
 | `DATABASE_URL` | Conexión a Postgres **vía pooler de Supabase** (puerto 6543, `?pgbouncer=true`) — la usa el cliente de runtime |
 | `DIRECT_URL` | Conexión **directa** (session pooler, puerto 5432) — la usan el CLI y las migraciones de Prisma |
 | `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | Validación del JWT en la API |
-| `NEXT_PUBLIC_AUTH0_DOMAIN` / `NEXT_PUBLIC_AUTH0_CLIENT_ID` | SDK de Auth0 en el frontend |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de subida directa |
 | `NEXT_PUBLIC_API_URL` | URL base de la API desde el frontend |
 
@@ -412,8 +412,9 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
       **Nota**: el defecto pre-existente de `apps/web` que dejaba en rojo `bun run check-types` y
       `bun run build` (los tipos de Cypress pisaban los matchers de Jest) **ya está corregido**: la capa
       de Cypress tiene su propio `tsconfig` y los comandos de la raíz están en verde.
-- [ ] **Configurar Auth0** — **MI-39**: tenant, aplicación SPA, API con *audience* y validación
-      JWKS en la API. Hoy `express-oauth2-jwt-bearer` está declarado pero sin cablear.
+- [x] **Configurar Auth0** — **MI-39**: tenant verificado (JWKS + discovery) y validación JWKS
+      cableada (`requireAuth` sobre `/companies`, `/health` público). La aplicación es **Regular
+      Web Application** (no SPA); falta habilitar el grant `Password`, que es de **MI-52**.
 - [ ] **Configurar Cloudinary** — **MI-40** para subida directa firmada desde el cliente.
 - [ ] **Configurar los tests** — **MI-41** (Jest, React Testing Library, Supertest, Cypress) y
       agregar la tarea `test` a `turbo.json`. La API ya tiene un smoke test con el runner de Bun que
@@ -431,8 +432,8 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
 - [x] **UX de autenticación con Auth0** (**MI-39**): **resuelta** — formulario propio mediado por el backend
       (ROPG). Ver [`docs/stack.md` §5.4](./docs/stack.md). Efecto: las pantallas de Login/Registro del diseño
       se implementan tal cual, y el rate limiting del login pasa a ser **obligatorio**.
-- [ ] **Cómo se testean los endpoints protegidos** con Supertest (**MI-39**): clave de prueba o stub del
-      middleware de validación de Auth0.
+- [x] **Cómo se testean los endpoints protegidos** con Supertest (**MI-39**): **resuelta** — clave de
+      prueba + JWKS local (el stub no detectaría un `issuer`/`audience` mal configurado).
 - [x] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: **sí** (**MI-38**),
       activada en la primera migración.
 - [x] **Versión *major* de PostgreSQL**: **17** (el servidor aprovisionado reporta 17.6).

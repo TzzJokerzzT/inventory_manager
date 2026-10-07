@@ -86,13 +86,23 @@ que creemos. Habilitarlo es 1 clic en el dashboard y conviene hacerlo ahora.
   se adaptó a las rutas protegidas (con token válido donde hace falta) **sin debilitar** sus
   aserciones. RED observado: 6 casos fallaban con `Expected: 401, Received: 201`. Suite de api: **43
   tests** (eran 33). Superficies: `apps/api/tests/**`.
-- [ ] **T4 — Verificación contra el tenant real.** Con un token **real** no se puede todavía (falta el
-  grant `Password` y no hay usuarios); verificar lo verificable: JWKS del tenant alcanzable, `issuer`
-  correcto, y que la config de la API (`issuerBaseURL`/`audience`) apunta al tenant real.
-- [ ] **T5 — Documentación y Jira.** `docs/stack.md` §5.4/§6.2 (decisión de test resuelta),
-  `docs/plan-de-trabajo.md` (decisión #1 resuelta), `README.md`, y **reescribir la descripción de MI-39
-  en Jira** (SPA → Regular Web Application, decisión de UX resuelta, evidencia del tenant, y el grant
-  pendiente).
+- [x] **T4 — Verificación contra el tenant real.** ✅ Lo verificable hoy: JWKS del tenant alcanzable
+  (200, 2 claves RS256/RSA), `issuer` del discovery coincide con el dominio configurado, y la config de
+  la API (`issuerBaseURL`/`audience`) se arma desde esas variables. **No verificable todavía**: el
+  `aud` del token emitido, porque hace falta el grant `Password` habilitado y un usuario real (MI-52 y
+  MI-53). Queda declarado como límite, no como hecho.
+- [x] **T5 — Documentación y Jira.** ✅ `docs/stack.md` §5.4 reescrita (la sección todavía decía que el
+  flujo recomendado era *Authorization Code con PKCE* y que el frontend usaba `@auth0/auth0-react`:
+  las dos cosas quedaron **contradichas** por la decisión de ROPG) y §6.2 con la decisión de test
+  resuelta; `docs/plan-de-trabajo.md` (fila de MI-39 y decisión #1 resuelta); `README.md` (estado,
+  fila de Auth0, checklist de MI-2, decisiones y tabla de variables). **Descripción de MI-39 reescrita en
+  Jira**: ROPG + Regular Web Application, lo hecho, la evidencia medida del tenant y el grant pendiente.
+  **Limpieza encontrada en el camino**: `apps/web/components/auth-provider.tsx` estaba **commiteado**,
+  **sin un solo import** en todo el repo, con el `client_id` **real** del tenant (el mismo de `.env`) y
+  usando el flujo SPA (`Auth0Provider` + `redirect_uri`) que la decisión descartó. Se eliminó el archivo,
+  se sacó `@auth0/auth0-react` de `apps/web/package.json` y se corrigieron las tres listas de stack que
+  lo seguían nombrando (`docs/stack.md`, `docs/Project.md`, `README.md`). No es una fuga de un secreto
+  —el `client_id` es público por diseño— pero sí era deuda que contradecía la decisión.
 - [ ] **T6 — Verificación y cierre.** Gates verdes + verificación independiente si el alcance lo
   justifica + cierre en Jira.
 
@@ -119,3 +129,8 @@ empresas). MI-39 es la plomería: tenant + validación del token.
   `apps/web/src/view/Auth/`) y esos archivos están **sin commitear y sin importar todavía**. Los gates
   de la raíz están verdes **con ese WIP presente**. Regla: **no** barrerlos en `git add -A` y no
   tocarlos; los commits de esta tarea se arman con rutas explícitas.
+- 2026-10-06 — **T4 y T5 hechas.** Verificado contra el tenant lo verificable (JWKS y discovery); el
+  `aud` del token queda declarado como no verificable hasta que exista el grant `Password` y un usuario
+  (MI-52/MI-53). Documentación alineada —incluida §5.4, que contradecía la decisión de ROPG— y la
+  descripción de MI-39 reescrita en Jira. Se eliminó además el `AuthProvider` de SPA commiteado: código
+  muerto, con el `client_id` real del tenant y el flujo descartado.

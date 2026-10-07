@@ -38,7 +38,7 @@
 | Propósito | Librería |
 |-----------|----------|
 | Cliente HTTP / fetching | **Axios** |
-| Autenticación (Auth0) | **@auth0/auth0-react** |
+| Autenticación (Auth0) | **validación del JWT en el backend** (`express-oauth2-jwt-bearer`); el frontend **no** usa SDK de Auth0 (ROPG mediado por el backend, ver 5.4) |
 | Estado local (UI) | **Zustand** |
 | Estado del servidor (caché, fetching) | **TanStack Query** |
 | Validación de esquemas | **Valibot** |
@@ -284,19 +284,29 @@ Supabase Auth ni autenticación propia.
 
 Qué implica en el código:
 
-- El **backend no emite ni firma tokens: los valida.** La verificación se hace contra el **JWKS**
-  de Auth0 con `express-oauth2-jwt-bearer` (o `jwks-rsa` + `jsonwebtoken`).
+- El **backend no emite ni firma tokens: los valida y media el intercambio.** La **validación** va
+  contra el **JWKS** de Auth0 con `express-oauth2-jwt-bearer`; la **mediación** de credenciales es
+  el grant *Resource Owner Password*, servidor a servidor (ver más abajo). No se usa
+  `jwks-rsa` + `jsonwebtoken`.
 - **`bcrypt` deja de ser necesario**: no hay tabla de credenciales ni hashing propio.
-- **`jsonwebtoken` solo hace falta** si se elige el camino `jwks-rsa`; con
-  `express-oauth2-jwt-bearer` es redundante.
-- **`cookie-parser` pasa a opcional**: el flujo recomendado para SPA + API es *Authorization Code
-  con PKCE* y el access token viajando como `Authorization: Bearer`. Solo se necesita cookie si se
-  decide guardar el refresh token en una cookie `httpOnly`.
+- **`jsonwebtoken` no se usa**: la validación la hace `express-oauth2-jwt-bearer`, no un JWT
+  firmado en local.
+- **La aplicación de Auth0 es una Regular Web Application** (confidencial, con `client_secret`, y
+  con el grant `Password` habilitado), **no una SPA**: el frontend no habla con Auth0.
+- **`cookie-parser` y el almacenamiento del token** son decisiones de **MI-52/MI-54** (login y
+  logout), no de esta plomería.
 - **AUTH-04 (recuperación de contraseña), MFA y login social salen del alcance de desarrollo**:
   los provee Auth0.
 - **Tabla `users` local:** el vínculo con Auth0 es el claim `sub`. Guardar `auth0_sub UNIQUE` y
   **no** almacenar contraseñas.
-- **Frontend:** `@auth0/auth0-react` maneja el flujo, la sesión y el refresh.
+- **Frontend: sin SDK de Auth0 y sin variables `NEXT_PUBLIC_AUTH0_*`.** Con ROPG el SPA envía las
+  credenciales a nuestra API; no hay `@auth0/auth0-react`, sesión ni refresh en el cliente.
+
+**Ya cableado (2026-10-06).** `createRequireAuth({ issuerBaseURL, audience })` (en
+`middlewares/require-auth.ts`) valida el JWT contra el JWKS del tenant; `main.ts` lo construye desde
+`AUTH0_DOMAIN`/`AUTH0_AUDIENCE` (y falla rápido si faltan); `router.use("/companies", requireAuth)`
+protege las rutas de empresas y deja `/health` público. El 401 lleva el challenge
+`WWW-Authenticate` (RFC 6750), reenviado por una allowlist explícita en `error-handler.ts`.
 
 Dos consecuencias a tener presentes:
 
@@ -581,8 +591,9 @@ se indica la clave en cada punto.
 - [x] **UX de autenticación con Auth0** (**MI-39**): **resuelto** — formulario propio mediado por el backend
       (ROPG). Ver §5.4. Efecto: las pantallas de Login/Registro del diseño se implementan tal cual, y
       el rate limiting del login pasa a ser obligatorio.
-- [ ] **Cómo se testean los endpoints protegidos** con `supertest` (**MI-39**): clave de prueba o stub del
-      middleware de validación de Auth0.
+- [x] **Cómo se testean los endpoints protegidos** con `supertest` (**MI-39**): **resuelta** — clave
+      de prueba + JWKS local. Se descartó el stub porque un `issuer`/`audience` mal configurado
+      pasaría la suite en verde sin ejercitar nunca esa configuración.
 - [x] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: **sí** (**MI-38**).
       Activada en la primera migración (`20261006223356_init`); disponible (1.6) e instalada.
 - [x] **Limpieza del `package.json` del backend** (sin subtarea propia): **confirmado** — `bcrypt`,

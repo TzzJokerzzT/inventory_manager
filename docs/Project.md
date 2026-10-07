@@ -225,7 +225,7 @@ expresa con superficie más clara, no con sombras.
 | **CI/CD** | **GitHub Actions** |
 | **Contenedores** | No se usan |
 
-**Frontend:** Axios · @auth0/auth0-react · Zustand · TanStack Query · Valibot · shadcn/ui ·
+**Frontend:** Axios · Zustand · TanStack Query · Valibot · shadcn/ui ·
 Framer Motion · Recharts · Tailwind CSS · lucide-react · Biome · Jest · React Testing Library ·
 Cypress · Husky
 

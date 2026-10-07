@@ -8,6 +8,7 @@ import { Alert, Checkbox, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { type LoginErrors, validateLogin } from "@/lib/auth/validation";
+import { AlertMessage } from "@/src/shared/components/AlertMessage";
 
 export function LoginForm() {
 	const [values, setValues] = useState({ email: "", password: "" });
@@ -121,15 +122,11 @@ export function LoginForm() {
 				{notice ? (
 					// Provisional until MI-39 (Auth0 setup) lands: a valid submit has
 					// no other observable response yet.
-					<Alert
+					<AlertMessage
 						variant="warning"
 						title="La autenticación aún no está disponible"
-					>
-						<p>
-							Todavía no podés iniciar sesión ni recuperar tu contraseña. Volvé
-							a intentarlo más adelante.
-						</p>
-					</Alert>
+						message="Todavía no podés iniciar sesión ni recuperar tu contraseña. Vuelve a intentarlo más adelante."
+					/>
 				) : null}
 
 				<p className="text-center text-sm text-text-secondary">

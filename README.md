@@ -395,6 +395,8 @@ Debe documentar al menos:
 | `DATABASE_URL` | Conexión a Postgres **vía pooler de Supabase** (puerto 6543, `?pgbouncer=true`) — la usa el cliente de runtime |
 | `DIRECT_URL` | Conexión **directa** (session pooler, puerto 5432) — la usan el CLI y las migraciones de Prisma |
 | `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | Validación del JWT en la API |
+| `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` / `AUTH0_CONNECTION` | Intercambio de credenciales con Auth0 (ROPG). El `client_secret` es un secreto: sólo en el `.env` local y en las variables del deploy |
+| `WEB_ORIGIN` | Origen del navegador autorizado a llamar al API **con credenciales** (la cookie del refresh). Obligatoria en producción; en desarrollo cae a `http://localhost:3000` |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de subida directa |
 | `NEXT_PUBLIC_API_URL` | URL base de la API desde el frontend |
 

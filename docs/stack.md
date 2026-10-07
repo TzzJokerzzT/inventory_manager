@@ -64,6 +64,23 @@
   (`design/inventory-manager.fig`): colores, radios y espaciados ya están especificados con
   sus dos modos (claro/oscuro).
 
+#### Estado de la capa de datos del frontend (implementada)
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| Cliente HTTP | `apps/web/lib/api/client.ts` | Axios con `withCredentials` (la cookie del refresh es cross-origin), factory + acceso perezoso, y **un solo tipo de error** (`ApiError`) con `status` y mensaje. Un pedido cancelado se re-lanza tal cual; una respuesta HTML de un proxy no se filtra a la UI |
+| Frontera | `apps/web/lib/api/schemas.ts` | Valibot valida **lo que devuelve el API** en vez de castearlo: si el backend cambia de forma, falla como error de datos legible |
+| Caché de servidor | `apps/web/src/providers/query-provider.tsx` | `QueryClient` creado **por montaje**, no como singleton de módulo (uno compartido filtraría caché entre usuarios) |
+| Estado local | `apps/web/src/features/auth/store/session-store.ts` | Sólo el **access token, en memoria**. El refresh vive en la cookie `httpOnly`; `localStorage` queda descartado porque un XSS se llevaría la sesión |
+| Formularios | `apps/web/lib/auth/validation.ts` | Valibot con los mensajes del UI; el contrato es el mismo que consumían las vistas |
+| Peticiones de auth | `apps/web/src/features/auth/api/{use-login,use-register}.ts` | `useMutation` sobre el cliente, con la validación de frontera y el store |
+
+**El CORS dejó de ser un supuesto**: el API envía `Access-Control-Allow-Credentials` y responde
+**sólo** el origen configurado en `WEB_ORIGIN`, que es lo que hace que la cookie `httpOnly` del refresh
+funcione desde el navegador. Sin eso, el login devolvía el access token pero el refresh nunca llegaba ni
+se guardaba. `WEB_ORIGIN` se valida como **origen http(s)** (sin path, query ni fragmento): un origen con
+path nunca coincide con lo que manda el navegador y el CORS dejaría de funcionar en silencio.
+
 ---
 
 ## 2. Backend

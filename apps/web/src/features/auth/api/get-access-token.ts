@@ -1,4 +1,4 @@
-import { useSessionStore } from "../store/session-store";
+import { useSessionStore } from "@/src/store/session-store/session-store";
 
 /**
  * Reads the access token for the API client's request interceptor.

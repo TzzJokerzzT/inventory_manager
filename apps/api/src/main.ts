@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
 import { buildApp } from "./interfaces/http/app.js";
+import { createRequireAuth } from "./interfaces/http/middlewares/require-auth.js";
 
 // Composition root: the only place where concrete implementations are chosen.
 // Production wires the Prisma adapter over the Supabase pooler; the in-memory
@@ -11,9 +12,24 @@ import { buildApp } from "./interfaces/http/app.js";
 const prisma = createPrismaClient();
 const companyRepository = new PrismaCompanyRepository({ prisma });
 
+// `env.auth0` values are optional outside production (see `config/env.ts`),
+// but the protected routes cannot work without them, so fail fast with the
+// variable names and never the values.
+const auth0Domain = env.auth0.domain;
+const auth0Audience = env.auth0.audience;
+if (!auth0Domain || !auth0Audience) {
+	throw new Error(
+		"Missing required environment variables: AUTH0_DOMAIN and AUTH0_AUDIENCE",
+	);
+}
+
 const app = buildApp({
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
+	requireAuth: createRequireAuth({
+		issuerBaseURL: `https://${auth0Domain}/`,
+		audience: auth0Audience,
+	}),
 });
 
 app.listen(env.port, () => {

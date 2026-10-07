@@ -1,6 +1,6 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import express, { type Express } from "express";
+import express, { type Express, type RequestHandler } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
@@ -14,6 +14,7 @@ import { buildRoutes } from "./routes/index.js";
 export interface AppDependencies {
 	createCompany: CreateCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
+	requireAuth: RequestHandler;
 }
 
 /**
@@ -32,7 +33,12 @@ export function buildApp(dependencies: AppDependencies): Express {
 	app.use(cookieParser());
 	app.use(apiRateLimiter);
 
-	app.use(buildRoutes({ company: createCompanyController(dependencies) }));
+	app.use(
+		buildRoutes({
+			company: createCompanyController(dependencies),
+			requireAuth: dependencies.requireAuth,
+		}),
+	);
 
 	app.use(notFoundHandler);
 	app.use(errorHandler);

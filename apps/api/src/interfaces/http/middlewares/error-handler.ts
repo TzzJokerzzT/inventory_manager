@@ -24,6 +24,27 @@ function getErrorMessage(error: unknown): string {
 }
 
 /**
+ * RFC 6750 expects a `WWW-Authenticate` challenge on 401 responses, and
+ * `express-oauth2-jwt-bearer` stores it on the error it throws. Forward only
+ * this one header by name: errors are reachable from untrusted input in other
+ * code paths, so a generic `response.set(error.headers)` would turn any future
+ * error that carries a `headers` property into a header-injection vector.
+ */
+function getWwwAuthenticateHeader(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null) {
+		return undefined;
+	}
+
+	const headers = (error as { headers?: unknown }).headers;
+	if (typeof headers !== "object" || headers === null) {
+		return undefined;
+	}
+
+	const value = (headers as Record<string, unknown>)["WWW-Authenticate"];
+	return typeof value === "string" ? value : undefined;
+}
+
+/**
  * Last middleware in the chain. It maps known error kinds to HTTP statuses and
  * hides unexpected errors behind a generic 500.
  */
@@ -52,6 +73,11 @@ export const errorHandler: ErrorRequestHandler = (
 
 	const status = getHttpStatus(error);
 	if (status !== undefined) {
+		const wwwAuthenticate = getWwwAuthenticateHeader(error);
+		if (wwwAuthenticate !== undefined) {
+			response.setHeader("WWW-Authenticate", wwwAuthenticate);
+		}
+
 		response
 			.status(status)
 			.json({ error: { message: getErrorMessage(error) } });

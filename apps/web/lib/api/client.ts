@@ -1,0 +1,114 @@
+import axios, { type AxiosInstance } from "axios";
+
+/**
+ * Single error type the UI has to know about.
+ *
+ * Callers never inspect an Axios error to find a message: the interceptor in
+ * {@link createApiClient} turns every failure into one of these, carrying the
+ * status when there was a response at all.
+ */
+export class ApiError extends Error {
+	readonly status?: number;
+
+	constructor(message: string, status?: number) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+	}
+}
+
+/** Shown when the API answered, but without a message we can surface. */
+const FALLBACK_MESSAGE = "No pudimos completar la operación.";
+
+/** Shown when the request never reached the API. */
+const NETWORK_MESSAGE = "No pudimos contactar al servidor.";
+
+/**
+ * Reads the API's error shape: `{ error: { message } }`.
+ *
+ * Anything else is treated as "no message", so a proxy answering HTML with a
+ * 502 never leaks markup into the UI.
+ */
+function readApiMessage(data: unknown): string | undefined {
+	if (typeof data !== "object" || data === null) {
+		return undefined;
+	}
+
+	const error = (data as { error?: unknown }).error;
+	if (typeof error !== "object" || error === null) {
+		return undefined;
+	}
+
+	const message = (error as { message?: unknown }).message;
+	return typeof message === "string" && message.trim() !== ""
+		? message
+		: undefined;
+}
+
+function toApiError(error: unknown): unknown {
+	const code = axios.isAxiosError(error) ? error.code : undefined;
+	if (axios.isCancel(error) || code === "ERR_CANCELED") {
+		// A canceled request is not a failure to show: the caller asked for it.
+		return error;
+	}
+
+	if (!axios.isAxiosError(error)) {
+		return error;
+	}
+
+	const status = error.response?.status;
+	if (status === undefined) {
+		return new ApiError(NETWORK_MESSAGE);
+	}
+
+	return new ApiError(
+		readApiMessage(error.response?.data) ?? FALLBACK_MESSAGE,
+		status,
+	);
+}
+
+/**
+ * Builds the HTTP client.
+ *
+ * It is a factory so tests can inject a base URL and an adapter without
+ * touching the environment; {@link getApiClient} wraps it for app code.
+ *
+ * `withCredentials` is on because the refresh token is an `httpOnly` cookie
+ * that the API sets from a different origin: without it the browser would
+ * neither store nor send it.
+ */
+export function createApiClient(baseURL?: string): AxiosInstance {
+	const resolved = baseURL ?? process.env.NEXT_PUBLIC_API_URL;
+	if (!resolved) {
+		// Fail fast: a silent localhost fallback would point at nothing once
+		// the app is deployed.
+		throw new Error(
+			"Missing NEXT_PUBLIC_API_URL: copy apps/web/.env.example to .env.local and set the API base URL",
+		);
+	}
+
+	const client = axios.create({
+		baseURL: resolved,
+		withCredentials: true,
+	});
+
+	client.interceptors.response.use(
+		(response) => response,
+		(error: unknown) => {
+			throw toApiError(error);
+		},
+	);
+
+	return client;
+}
+
+let cached: AxiosInstance | undefined;
+
+/**
+ * The client used by the app. Built lazily so importing this module never
+ * requires the environment to be configured (tests import the factory).
+ */
+export function getApiClient(): AxiosInstance {
+	cached ??= createApiClient();
+	return cached;
+}

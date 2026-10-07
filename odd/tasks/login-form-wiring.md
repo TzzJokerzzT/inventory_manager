@@ -79,9 +79,11 @@ cualquier intento. Hoy no se nota porque nunca hubo request; con el cableado hay
 - [x] **T3 — Copy y constante.** ✅ `FALLBACK_ERROR` en
   `apps/web/src/features/login/utils/constants.ts` y aviso honesto de recuperación (reemplaza el de
   autenticación, que ya era falso).
-- [ ] **T4 — Checks, verificación y cierre.** Jest del archivo ✅ 13/13, `check-types` ✅, `biome check` ✅.
-  Suite de `apps/web`: **195/196**, con 1 rojo **preexistente y ajeno** (ver T5). Commit de work-unit ✅,
-  `gentle_review` assess del candidato en curso.
+- [x] **T4 — Checks, verificación y cierre.** ✅ Jest del archivo **13/13** (spot check del padre),
+  `check-types` ✅, `biome check` ✅. Suite de `apps/web`: **195/196**, con 1 rojo **preexistente y ajeno**
+  (ver T5). Work-unit commit `75801a6`, y `gentle_review` assess del candidato: **risk `medium`**,
+  `reviewDue: false` (`under_budget`), `nativeReviewOutcome: unknown`, plan = verificación propia del
+  writer, sin verifier independiente → **diferido al slice del PR**.
 - [ ] **T5 — BLOQUEANTE (ajeno, no mío): `register-form.test.tsx` está en rojo desde `1ee5dfb`.**
   El commit del slice de toast del usuario cambió `register.mutate({...})` por
   `mutate({...}, { onSuccess })` en `register-form.tsx` pero **no** actualizó la aserción
@@ -104,6 +106,11 @@ cualquier intento. Hoy no se nota porque nunca hubo request; con el cableado hay
 - 2026-10-07 — **T1–T3 hechas**, delegadas a `gentle-ai-worker` (trigger multi-file write). RED observado
   antes de implementar (6/13 fallando) y GREEN después (13/13). `check-types` y `biome check` verdes.
   El worker reportó `status: partial` porque la suite completa tiene el rojo ajeno de T5.
+- 2026-10-07 — **Cierre del work-unit**: commit `75801a6` (`feat(web): wire the login form to the API`,
+  padre `8619d3f`). Assess nativo del candidato (base `8619d3f`, `committedOnly`): **`medium`**,
+  `reviewDue: false` por `under_budget`, `outcome_source: unknown`, `writerProfile: large` (runtime) → el
+  plan es sólo **verificación propia del writer**; sin verifier independiente ni review nativo en este
+  work-unit. La review nativa corresponde al slice del PR.
 - 2026-10-07 — **Hallazgo no tocado**: `loginSchema` exige mínimo 8 caracteres y el API acepta 1..256
   (decisión explícita de MI-52). Puede bloquear el login de un usuario creado directo en Auth0 con
   contraseña corta; tiene su propio test en `lib/auth/validation.test.ts`. Es una decisión de producto,

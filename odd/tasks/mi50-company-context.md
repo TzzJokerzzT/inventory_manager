@@ -61,11 +61,43 @@ abierto sino en dejar el mecanismo listo y probado antes de que MI-6/MI-7/MI-9 a
 
 ## Unidades de trabajo
 
-- **U1 — Membership (delegada, test-first)**: entidad + puerto + adaptadores Prisma e in-memory +
-  migración si hace falta + tests (incluido el caso "membership REVOKED no da acceso").
-- **U2 — Primitivo + contexto (delegada, test-first)**: `requireCompanyContext`, la matriz `can(role,
+- [x] **U1 — Membership.** ✅ Commit `500028e` (`feat(api): model memberships and resolve an active one`).
+  Entidad que espeja la tabla (`userId` nullable a propósito, `invitedEmail` en minúsculas, `role`/`status`
+  como uniones del dominio), puerto con **una sola** consulta y dos adaptadores que filtran duro
+  `status: "ACTIVE"`. **Sin migración**: la tabla ya existía con su CHECK y su `@@unique([userId,
+  companyId])`. **Spot check del padre**: 21 suites / 148 tests.
+- [ ] **U2 — Primitivo + contexto (delegada, test-first)**: `requireCompanyContext`, la matriz `can(role,
   action)` con sus dos reglas finas, `GET /companies/:companyId/context` con 403 uniforme, y tests de
-  integración con el JWKS local y el repositorio falso.
+  integración con el JWKS local y el repositorio falso. **Incluye dos correcciones que deja la verificación
+  de U1**: (a) el test "an INVITED membership does not grant access" del adaptador in-memory **pasa por la
+  razón equivocada** — crea la fila con `userId: null` pero consulta `("user-1", "company-1")`, así que el
+  desajuste de `userId` ya devuelve null y el test pasaría igual **sin** el filtro de status
+  (`in-memory-membership-repository.test.ts:49-65`); hay que darle un `userId` que coincida para que sea una
+  prueba real del filtro, porque hoy la única guardia del rechazo de `INVITED` es la aserción de argumentos
+  del test de Prisma; (b) comentario obsoleto en `in-memory-company-repository.ts:10` ("MI-45 introduces the
+  real entity when it needs one"), que quedó viejo con este commit.
+
+## Verificación de U1 (independiente, `gentle-ai-verify`)
+
+**Claims 1-7 PASS; el octavo trae un hallazgo real (test débil, no bug de código).** Gates re-ejecutados y
+recontados a mano por el verificador: 21 suites / 148 tests (17 nuevos: 9+5+3), `check-types` exit 0, lint
+exit 0 sobre 172 archivos. Pureza del dominio confirmada (imports de `domain/` sólo al error propio; los
+enums del dominio son value-identical a los de Prisma, probado porque `tsc` acepta el paso directo).
+
+**El filtro está bien guardado donde importa**: el test del adaptador Prisma usa
+`toHaveBeenCalledWith({ where: { userId, companyId, status: "ACTIVE" } })`, que es **forma exacta**, no
+match laxo: quitar `status` cambia el conteo de claves y el matcher falla. El verificador rastreó el
+matcher en `expect` para probarlo, en vez de asumirlo.
+
+**Divergencia entre adaptadores: equivalente** en multi-empresa (el índice único hace determinista el
+`findFirst` sin orden), en `userId` nulo (inalcanzable por el puerto, que toma `string`) y en el case del
+email (ninguno consulta por email; el CHECK de la base prohíbe el estado que el in-memory no puede
+representar).
+
+**Residuales declarados, sin consumidor hoy**: (1) el adaptador in-memory devuelve **la misma instancia**
+y `save` guarda el objeto del caller, mientras la entidad entrega `Date`s mutables → un test podría mutar
+estado almacenado, cosa que el adaptador Prisma nunca permite; severidad baja, se anota. (2) Nada en `src/`
+consume todavía `findActiveByUserAndCompany` (esperado en U1): el puerto no está probado de punta a punta.
 
 ## Fuera de alcance
 
@@ -84,3 +116,8 @@ proyecto decidió no usar (`docs/stack.md:158`).
 - 2026-10-07 — Documento creado. Exploración confirmada: `companyId` nunca llega del cliente, no existe
   ningún recurso por empresa, y no hay entidad `Membership`. Decisión del usuario: entregar el primitivo
   **más** el endpoint de contexto.
+- 2026-10-07 — **U1 hecha y verificada** (commit `500028e`): claims 1-7 PASS y **un hallazgo real en el
+  octavo** — el test de rechazo de `INVITED` del adaptador in-memory **pasa por la razón equivocada**
+  (desajuste de `userId` en vez del filtro de status). No es un bug de código: es una guardia que no
+guarda. Se corrige en U2 junto con el comentario obsoleto, para no abrir un ciclo de verificación
+  independiente por una línea de test.

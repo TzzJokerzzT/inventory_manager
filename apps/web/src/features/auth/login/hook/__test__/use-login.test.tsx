@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { ApiError, getApiClient } from "@/lib/api/client";
 import { QueryProvider } from "@/src/providers/query-provider";
-import { useSessionStore } from "../../store/session-store";
+import { useSessionStore } from "@/src/store/session-store/session-store";
 import { useLogin } from "../use-login";
 
 jest.mock("@/lib/api/client", () => ({

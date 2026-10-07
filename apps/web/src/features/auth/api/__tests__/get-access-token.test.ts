@@ -1,5 +1,5 @@
 import { createApiClient } from "@/lib/api/client";
-import { useSessionStore } from "../../store/session-store";
+import { useSessionStore } from "@/src/store/session-store/session-store";
 import { getAccessToken } from "../get-access-token";
 
 function clientWithTokenProvider() {

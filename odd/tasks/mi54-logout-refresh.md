@@ -60,6 +60,23 @@ declarado en `apps/web/src/features/company/components/require-active-company.ts
 10. **Logout desde la UI**: hook `useLogout` (llama a la API, limpia el store, redirige a `/login`) y el
     control en el shell. MI-20 lo consume; acá se entrega el hook y su wiring mínimo.
 
+## Verificación de U2 (independiente, `gentle-ai-verify`)
+
+**Claims 1-6 PASS**: single-flight real (el test cuenta llamadas en el **adaptador** que maneja el
+interceptor real, no en un mock: `refresh-session.test.ts:59-96`); sin bucle y reintento tope-uno
+(`client.ts:165-178`, marca propia en `refresh-session.ts:30`); carve-out de auth verificado **por
+comportamiento** (`refreshCalls === 0` y store vacío en `use-login.test.tsx:116-151` y
+`use-logout.test.tsx:97-128`); la guardia espera (`require-active-company.tsx:25,37-41,60`); el cliente
+sigue genérico (sólo importa `axios`); higiene del token (nada en `localStorage`/`sessionStorage`, ningún
+log). Sin tests vacíos, sin `.only`/`.skip`. Gates re-ejecutados por el verificador: 33/213, `check-types`
+exit 0, lint exit 0 sin warnings.
+
+**Hallazgo real (claim 7)**: el orden de montaje es una **suposición plausible pero no verificada**, y la
+rama que cortocircuita (`use-session-bootstrap.ts:24-27`) **nunca construye el cliente** cuando ya hay
+token, dejando `onUnauthorized` sin cablear en esa rama. El comentario de `client.ts:199-207`
+("therefore the real first caller") **sobreafirma**. Es un defecto latente, no activo — y es lo que
+justifica U3.
+
 ## Unidades de trabajo
 
 - [x] **U1 — API.** ✅ Commit `8c71efc` (`feat(api): refresh the session and log out`). `refreshTokens` en el
@@ -68,8 +85,24 @@ declarado en `apps/web/src/features/company/components/require-active-company.ts
   con mensaje constante; `POST /auth/refresh` con rate limit dedicado y `POST /auth/logout` sin él;
   `refreshSession` **requerido** en `AppDependencies` y cableado en `main.ts` + los 7 call sites de
   `buildApp`; 19 tests nuevos. **Spot check del padre**: 18 suites / 131 tests.
-- [ ] **U2 — Frontend (delegada, test-first)**: bootstrap de sesión; interceptor de 401 con cola
-  single-flight; `useLogout` + wiring; la guardia espera la resolución; tests con el cliente mockeado.
+- [x] **U2 — Frontend.** ✅ Commit `0887be6` (`feat(web): bootstrap the session and log out`). Bootstrap
+  de sesión con refresh **single-flight** + `resolved`/`markResolved` en el store; `onUnauthorized`
+  inyectado en el cliente (que sigue sin importar features) con interceptor de 401 que refresca una vez
+  y reintenta la request original una vez; `useLogout`; la guardia esperando `resolved`; y el **carve-out
+  de auth**: login y logout marcan sus propios requests con `skipAuthRefresh`, así un login fallido no
+  acuña token. **Spot check del padre**: 33 suites / 213 tests.
+- [ ] **U3 — Hacer el cableado independiente del orden (hallazgo de la verificación de U2).**
+  `getApiClient` cachea sus opciones en la **primera llamada** (`client.ts:209-211`, `cached ??=`) y los
+  cuatro callers pasan sólo `{ getAccessToken }` (`use-companies.ts:23`, `use-create-company.ts:25`,
+  `use-login.ts:27`, `use-register.ts:20`). Hoy funciona **por orden de efectos de React**, no por
+  contrato: si cualquier otro caller gana la primera llamada, `onUnauthorized` se descarta en silencio y
+  **el refresh del 401 queda muerto sin que nada falle**. El verificador lo midió: `SessionBootstrap` es
+  el primer hermano y su efecto escribe primero, pero eso es un detalle de implementación de React
+  (`useSyncExternalStore` dispara el fetch en un efecto pasivo), no una garantía. **Objetivo**: que el
+  manejador se resuelva de forma perezosa en tiempo de request, como ya se hace con el token, de modo que
+  ningún orden de llamada pueda desactivarlo; y un test que monte el provider con un hook de datos y
+  pruebe que un 401 refresca **sin importar quién construyó el cliente**. No es un defecto activo hoy;
+  es la misma trampa que ya causó el bug de orden de MI-48, y este unit la volvió load-bearing.
 
 ## Verificación de U1 (independiente, `gentle-ai-verify`)
 
@@ -119,3 +152,9 @@ unidad, dentro del presupuesto de la cadena.
   un agujero silencioso en un camino de auth; se autorizaron `app.ts` y los 7 call sites de `buildApp`.
   **Aprendizaje del worker**: `check-types` de la API cubre sólo `src/**` y los tests los transpila
   `@swc/jest` sin type-check, así que una dependencia de `buildApp` omitida no falla ahí, sólo en runtime.
+- 2026-10-07 — **U2 hecha y verificada**: commit `0887be6`, verificación independiente con claims 1-6
+  PASS. El verificador **encontró un defecto latente** en el séptimo punto: el cableado del refresh
+  depende del orden de efectos, no de un contrato. Se abre **U3** con esa evidencia en vez de dar U2 por
+  cerrada sin registrar el hueco. Además, el caso borde del login fallido (401 de `/auth/login` disparando
+  el refresh y acuñando token) se detectó por el worker y se cerró **antes** del commit, con tests de
+  comportamiento en vez de tests de bandera.

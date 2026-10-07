@@ -1,9 +1,15 @@
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
+import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { env } from "./config/env.js";
+import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
 import { buildApp } from "./interfaces/http/app.js";
+import {
+	type AuthCookieOptions,
+	REFRESH_TOKEN_MAX_AGE_MS,
+} from "./interfaces/http/controllers/auth-controller.js";
 import { createRequireAuth } from "./interfaces/http/middlewares/require-auth.js";
 
 // Composition root: the only place where concrete implementations are chosen.
@@ -13,23 +19,42 @@ const prisma = createPrismaClient();
 const companyRepository = new PrismaCompanyRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
-// but the protected routes cannot work without them, so fail fast with the
-// variable names and never the values.
-const auth0Domain = env.auth0.domain;
-const auth0Audience = env.auth0.audience;
-if (!auth0Domain || !auth0Audience) {
+// but both the login endpoint and the protected routes cannot work without
+// them, so fail fast with the variable names and never the values.
+const { domain, audience, clientId, clientSecret, connection } = env.auth0;
+if (!domain || !audience || !clientId || !clientSecret || !connection) {
 	throw new Error(
-		"Missing required environment variables: AUTH0_DOMAIN and AUTH0_AUDIENCE",
+		"Missing required environment variables: AUTH0_DOMAIN, AUTH0_AUDIENCE, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET and AUTH0_CONNECTION",
 	);
 }
+
+const identityProvider = new Auth0IdentityProvider({
+	issuerBaseURL: `https://${domain}/`,
+	clientId,
+	clientSecret,
+	audience,
+	connection,
+});
+
+// The refresh cookie is `Secure` only in production, so the same app can run
+// locally (and be tested) over plain HTTP.
+const authCookieOptions: AuthCookieOptions = {
+	httpOnly: true,
+	secure: env.nodeEnv === "production",
+	sameSite: "lax",
+	path: "/auth",
+	maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+};
 
 const app = buildApp({
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
+	loginWithCredentials: new LoginWithCredentialsUseCase({ identityProvider }),
 	requireAuth: createRequireAuth({
-		issuerBaseURL: `https://${auth0Domain}/`,
-		audience: auth0Audience,
+		issuerBaseURL: `https://${domain}/`,
+		audience,
 	}),
+	authCookieOptions,
 });
 
 app.listen(env.port, () => {

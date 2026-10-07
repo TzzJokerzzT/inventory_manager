@@ -5,6 +5,11 @@ import helmet from "helmet";
 import morgan from "morgan";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
+import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
+import {
+	type AuthCookieOptions,
+	createAuthController,
+} from "./controllers/auth-controller.js";
 import { createCompanyController } from "./controllers/company-controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { notFoundHandler } from "./middlewares/not-found.js";
@@ -14,7 +19,9 @@ import { buildRoutes } from "./routes/index.js";
 export interface AppDependencies {
 	createCompany: CreateCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
+	loginWithCredentials: LoginWithCredentialsUseCase;
 	requireAuth: RequestHandler;
+	authCookieOptions: AuthCookieOptions;
 }
 
 /**
@@ -36,6 +43,10 @@ export function buildApp(dependencies: AppDependencies): Express {
 	app.use(
 		buildRoutes({
 			company: createCompanyController(dependencies),
+			auth: createAuthController({
+				loginWithCredentials: dependencies.loginWithCredentials,
+				cookieOptions: dependencies.authCookieOptions,
+			}),
 			requireAuth: dependencies.requireAuth,
 		}),
 	);

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 import { useLogout } from "@/src/features/auth/logout/use-logout";
 import { CompanySwitcher } from "@/src/features/company/components/company-switcher";
 
@@ -102,15 +102,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 				<header className="flex h-16 items-center justify-between gap-4 border-b border-border bg-surface px-6">
 					<CompanySwitcher />
 					<div className="flex items-center gap-2">
-						<button
+						<Button
 							type="button"
 							onClick={() => logout()}
-							className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary hover:bg-surface-muted"
+							variant="outline"
+							className="rounded-md "
 						>
 							<LogOut aria-hidden="true" className="size-4" />
 							Salir
-						</button>
-						<ThemeToggle />
+						</Button>
 					</div>
 				</header>
 

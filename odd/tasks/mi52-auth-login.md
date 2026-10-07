@@ -100,25 +100,34 @@ vive en `infrastructure/auth0/`, igual que `PrismaCompanyRepository` vive en `in
 
 ## Tareas
 
-- [ ] **T1 — Puerto + errores.** `application/ports/identity-provider.ts`, `InvalidCredentialsError`,
-  `IdentityProviderUnavailableError` y su mapeo en `error-handler.ts` (401 y 503). Superficies:
-  `apps/api/src/application/ports/**`, `apps/api/src/domain/errors/**`,
-  `apps/api/src/interfaces/http/middlewares/error-handler.ts`.
-- [ ] **T2 — Adaptador de Auth0.** Request con todos los parámetros, scope mínimo, timeout, mapeo de
-  errores y logging sin contraseña. Superficies: `apps/api/src/infrastructure/auth0/**`.
-- [ ] **T3 — Caso de uso + ruta + validación + cookie + rate limit.** Superficies:
-  `apps/api/src/application/use-cases/login-with-credentials.ts`,
-  `apps/api/src/interfaces/http/{controllers,routes}/**`, `apps/api/src/main.ts`.
-- [ ] **T4 — Tests.** Supertest: éxito, credenciales inválidas, email inexistente (mismo body que el
-  anterior, comparado), payload malformado, Auth0 caído (503 ≠ 401), rate limit. Unitario del adaptador
-  con `fetch` stubbeado: los parámetros exactos que se mandan y que **la contraseña no aparece en la
-  salida**. Y un test que capture `console` durante un login exitoso y uno fallido y afirme que la
-  contraseña **nunca** se imprime. Superficies: `apps/api/tests/**`.
-- [ ] **T5 — Documentación y Jira.** `docs/stack.md` §5.4 (cookie del refresh, scope mínimo, mapeo de
-  errores), `README.md` si corresponde, y MI-52 en Jira.
-- [ ] **T6 — Verificación.** Contra el tenant real: re-probar el intercambio y confirmar que pasó de
-  `unauthorized_client` a `invalid_grant` (grant habilitado). **El login exitoso real no se puede
-  verificar hasta que exista un usuario (MI-53)**: queda declarado como límite, no como hecho.
+- [x] **T1 — Puerto + errores.** ✅ `application/ports/identity-provider.ts` (con el porqué de no ir en
+  `domain/repositories`: el dominio no tiene concepto de proveedor de identidad),
+  `InvalidCredentialsError` (401, mensaje **constante** para que la uniformidad sea por construcción) e
+  `IdentityProviderUnavailableError` (503), mapeados con ramas explícitas en `error-handler.ts` junto a
+  las de `DomainError`/`ValiError`, sin tocar las existentes.
+- [x] **T2 — Adaptador de Auth0.** ✅ Los ocho parámetros, `scope` mínimo explícito con el porqué,
+  `AbortSignal.timeout` de 5 s con el porqué (serverless), mapeo 4xx→401 / 5xx y red→503, y logueo sólo
+  del `code`/`description` del proveedor. **Hueco de robustez que encontré y mandé cerrar**: confiaba en
+  la forma del 200 de Auth0, así que un 200 sin `access_token`/`expires_in` habría devuelto 200 al
+  cliente con el token en `undefined`; ahora se trata como proveedor no disponible.
+- [x] **T3 — Caso de uso + ruta + validación + cookie + rate limit.** ✅ `trim` del email sin
+  minúsculas (el email es la credencial), Valibot con contraseña 1..256, `POST /auth/login`, cookie
+  `httpOnly`/`Secure`(prod)/`SameSite=Lax`/`Path=/auth` con las opciones **inyectadas** desde el
+  composition root (para poder testear los dos modos), respuesta de exactamente dos campos y limiter
+  dedicado con el comentario de MI-55.
+- [x] **T4 — Tests.** ✅ **65 tests de api** (eran 53). Supertest con proveedor falso (nunca Auth0 real):
+  éxito, 401 por credenciales inválidas, 401 por email inexistente **comparado por igualdad de body**,
+  400 por payload malformado, 503 distinto de 401, 429 por rate limit, sin `Set-Cookie` si no hay
+  refresh, y espía de `console` en el endpoint además del que ya había en el adaptador. RED observado
+  antes de implementar (404 en la ruta).
+- [x] **T5 — Documentación y Jira.** ✅ `docs/stack.md` §5.4 con el intercambio (scope mínimo, errores
+  uniformes, contraseña nunca logueada, timeout, rate limit y el supuesto de `SameSite`) y descripción
+  de MI-52 reescrita en Jira.
+- [~] **T6 — Verificación.** ⏳ **Parcial, y por eso la tarea queda `In Progress`**: el probe contra el
+  tenant sigue dando **403 `unauthorized_client`** (el grant `Password` sigue apagado), así que el
+  intercambio real **no se puede ejercitar**. Cerrarla ahora sería declarar verificada una integración
+  que nunca corrió. En cuanto el usuario habilite el grant, el probe tiene que pasar a `invalid_grant`
+  y eso se adjunta como evidencia. El login exitoso real necesita además un usuario (MI-53).
 
 ## Fuera de alcance
 
@@ -130,3 +139,11 @@ la tabla `users`.
 
 - 2026-10-06 — Documento creado. Criterios leídos de Jira. Probe del tenant: grant `Password` **todavía
   apagado**. Decisiones del usuario: refresh en cookie `httpOnly`; el usuario habilita los grants.
+- 2026-10-06 — **T1–T5 hechas** (commits `63ca2e1` y `d61d541`). El primer intento de delegación murió
+  sin dejar archivos escritos, así que partí el trabajo en dos unidades más chicas: puerto + errores +
+  adaptador primero, caso de uso + ruta + tests después. Gates de la raíz verdes: **176 tests**
+  (65 api + 111 web), `check-types`, `build` y `biome check`.
+- 2026-10-06 — **T6 parcial y declarada**: el probe sigue dando `unauthorized_client`, o sea que el
+  grant `Password` no está habilitado. **MI-52 queda `In Progress`**, no `Done`: su criterio incluye el
+  éxito del intercambio y eso nunca corrió contra el proveedor real. Se cierra cuando el probe pase a
+  `invalid_grant` (grant habilitado) y se adjunte esa evidencia; el login exitoso llega con MI-53.

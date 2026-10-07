@@ -310,14 +310,40 @@ Qué implica en el código:
   firmado en local.
 - **La aplicación de Auth0 es una Regular Web Application** (confidencial, con `client_secret`, y
   con el grant `Password` habilitado), **no una SPA**: el frontend no habla con Auth0.
-- **`cookie-parser` y el almacenamiento del token** son decisiones de **MI-52/MI-54** (login y
-  logout), no de esta plomería.
+- **`cookie-parser` y el almacenamiento del token**: resueltos en **MI-52**. El **access token**
+  vuelve en el body (el SPA lo usa como `Authorization: Bearer`) y el **refresh token** va en una
+  cookie **`httpOnly`** + `Secure` (en producción) + `SameSite=Lax` + `Path=/auth`, para que un XSS no
+  pueda leer la sesión larga. Supuesto declarado: `Lax` asume que el SPA y la API quedan bajo el
+  **mismo dominio registrable**; si terminan en sitios distintos hay que pasar a `None` **con
+  protección CSRF** (decisión de despliegue).
 - **AUTH-04 (recuperación de contraseña), MFA y login social salen del alcance de desarrollo**:
   los provee Auth0.
 - **Tabla `users` local:** el vínculo con Auth0 es el claim `sub`. Guardar `auth0_sub UNIQUE` y
   **no** almacenar contraseñas.
 - **Frontend: sin SDK de Auth0 y sin variables `NEXT_PUBLIC_AUTH0_*`.** Con ROPG el SPA envía las
   credenciales a nuestra API; no hay `@auth0/auth0-react`, sesión ni refresh en el cliente.
+
+#### El intercambio de credenciales (MI-52)
+
+`POST /auth/login` recibe email y contraseña, los valida con Valibot y los intercambia con Auth0
+servidor a servidor (`POST /oauth/token`, `grant_type=password`) a través del puerto
+`IdentityProvider` (`application/ports`) y el adaptador `Auth0IdentityProvider`
+(`infrastructure/auth0`). Cuatro detalles que son decisiones, no implementación:
+
+- **`scope` explícito y mínimo** (`openid profile email offline_access`). No es cosmético: si se omite
+  el `scope`, Auth0 documenta que el access token sale **con todos los scopes de la API**.
+  `offline_access` es lo que habilita el refresh token.
+- **Errores uniformes**: credenciales inválidas y email inexistente devuelven **el mismo 401 con el
+  mismo mensaje**, por construcción (el mensaje es una constante, no se deriva de lo que respondió
+  Auth0). Un proveedor caído devuelve **503**, para no mentirle al cliente con un "revisá tu
+  contraseña". El log del servidor sí distingue `unauthorized_client` (el grant está apagado, o sea
+  una mala configuración nuestra) de `invalid_grant` (credenciales incorrectas).
+- **La contraseña no se registra en ninguna capa** y no se persiste ni se hashea: se reenvía y se
+  descarta. Hay tests que espían `console` para que siga siendo cierto.
+- **Timeout de 5 s** en la llamada a Auth0 (`AbortSignal.timeout`): la API corre como función
+  serverless y una llamada colgada consume el presupuesto de ejecución (§5.2).
+- **Rate limiting propio en el endpoint** (más estricto que el global). El **store compartido es
+  MI-55**: hoy el contador es en memoria y en serverless **no limita globalmente**.
 
 **Ya cableado (2026-10-06).** `createRequireAuth({ issuerBaseURL, audience })` (en
 `middlewares/require-auth.ts`) valida el JWT contra el JWKS del tenant; `main.ts` lo construye desde

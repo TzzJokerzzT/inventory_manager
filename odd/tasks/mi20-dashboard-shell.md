@@ -53,13 +53,41 @@ hasta que su edición se asiente. U1 entrega el shell, la ruta `/dashboard` envu
 regla inversa de `/sin-empresas` apuntando a `/dashboard` — sin tocar su archivo. El circuito queda
 incompleto a propósito y se declara así: `/` sigue siendo lo que él está escribiendo.
 
-- **U1 — Shell y rutas (delegada, test-first)**: `AppShell` (sidebar + topbar + contenido), nav derivado
-  del diseño con rutas deshabilitadas, `app/dashboard/page.tsx` envuelto por la guardia y el shell, la
-  regla inversa de `/sin-empresas` y el destino del 401 de la guardia a `/dashboard`, y sus tests.
-  **Excluye `app/page.tsx`** (ver coordinación de worktree).
+- [x] **U1 — Shell y rutas.** ✅ Commit `2d119c1` (`feat(web): give the app a shell and the dashboard a
+  route`). `AppShell` con la sidebar del diseño, topbar con switch + logout + theme toggle y área de
+  contenido; `app/dashboard/page.tsx` envuelto por la guardia y el shell; la regla inversa de
+  `/sin-empresas` → `/dashboard`; **el nav no miente** (Productos/Movimientos/Clientes se renderizan
+  `aria-disabled` con su MI, no como links). **Excluye `app/page.tsx`** (ver coordinación de worktree).
+  **Spot check del padre**: 36 suites / 222 tests.
+
+## Verificación de U1 (independiente, `gentle-ai-verify`)
+
+**9/9 claims PASS, sin bloqueantes.** El verificador confirmó que el commit toca **7 archivos y ninguno de
+los cuatro del humano**, que la guardia cambió **sólo 3 líneas de JSDoc** (cero líneas de código) y que el
+401 sigue en `/login` con comportamiento idéntico al padre. Que las rutas inexistentes son `<span
+aria-disabled="true">` con su badge de MI, **sin `href` ni `tabIndex`** — no hay forma de clickearlas hacia
+un 404. Que el logout llama al `useLogout` real (no un stub) y que el switch y el theme toggle son los
+componentes reales. Y que los tests nuevos **no duplican** la regla del switch (la stubean; la regla vive
+en `company-switcher.test.tsx`).
+
+**Precisión que corrige mi encuadre**: la guardia envuelve al shell por **composición en
+`app/dashboard/page.tsx`**, no por un `layout.tsx` de route group. O sea que la afirmación "ninguna ruta
+interna puede olvidarse" es **más fuerte que lo que el código garantiza**: una ruta futura tiene que
+agregar la guardia ella misma. Hoy no hay ninguna otra ruta interna, así que no es un defecto de esta
+unidad — pero queda escrito para que MI-21..MI-28 no asuman una garantía que no existe.
+
+**Duplicación de theme toggle: defecto real, menor y visible.** `app/layout.tsx:38-40` monta uno global en
+posición fija y `app-shell.tsx:113` monta el del shell: en `/dashboard` se ven **los dos a la vez**. El
+verificador seála además que `layout.tsx` **no** está entre los archivos sucios del humano, así que el
+"fuera de alcance" era una decisión de alcance, no un bloqueo duro. Queda como decisión del usuario
+(pendiente): sacar el global alinea con el mockup y resuelve el pendiente conocido de que flota sobre el
+login, pero cambia pantallas que él está editando.
+
+**Hueco de cobertura anotado**: la rama de cero empresas de `/sin-empresas` (la que devuelve
+`NoCompaniesState`) no tiene test a nivel de página — sólo cobertura del componente.
 - **U2 — Vista del dashboard (delegada, test-first)**: KPIs, alertas de stock y tabla con
   `KpiCard`/`Alert`/`StockBadge`/`DataTable` sobre el módulo `mock.ts` marcado, estado vacío cuando no
-  hay empresa activa, y sus tests.
+  hay empresa activa, y sus tests. **No toca `app/layout.tsx` ni ningún archivo del humano.**
 - **U3 — Cierre del circuito (postergada)**: `/` deja de ser placeholder y redirige a `/dashboard`. Se
   hace cuando la edición del humano en `app/page.tsx` esté commiteada.
 
@@ -81,3 +109,7 @@ este trabajo lo implementa derivándolo, como ya hizo MI-48).
 - 2026-10-07 — Documento creado tras la exploración. Se confirmó que **no existe app shell ni sidebar**
   (sólo el token CSS) y que los datos del dashboard no existen en la API. Decisiones del usuario: el
   shell entra en MI-20, y los datos son mixtos (empresa real + mock marcado).
+- 2026-10-07 — **U1 hecha y verificada** (`2d119c1`, 9/9 PASS). Se respetó la exclusión de `app/page.tsx`
+  (trabajo sin commitear del usuario) y el redirect de `/` quedó postergado a U3. Quedan anotados: la
+  duplicación real de theme toggle (decisión del usuario) y que la guardia protege por composición, no por
+  layout de route group.

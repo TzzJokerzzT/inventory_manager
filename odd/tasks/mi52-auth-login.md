@@ -155,17 +155,21 @@ vive en `infrastructure/auth0/`, igual que `PrismaCompanyRepository` vive en `in
   uniformes, contraseña nunca logueada, timeout, rate limit y el supuesto de `SameSite`) y descripción
   de MI-52 reescrita en Jira.
 - [x] **T6 — Verificación.** ✅ **Verificado contra el proveedor real, con nuestro adaptador** (no un
-  probe suelto): con el grant habilitado y el Default Directory configurado, el tenant responde
-  **403 `invalid_grant` — "Wrong email or password."** y el adaptador produce
-  `InvalidCredentialsError` con el mensaje uniforme `"Invalid credentials"` (y **no**
-  `IdentityProviderUnavailableError`). El log del adaptador muestra sólo
-  `invalid_grant — Wrong email or password.`: código y descripción, **sin credenciales**.
-  Eso prueba, de una sola corrida: grant activo; Default Directory configurado; aplicación
-  **confidencial** (aceptó el `client_secret` — una SPA habría devuelto `invalid_client`); los ocho
-  parámetros aceptados; y el mapeo 403→401 uniforme sobre la respuesta real.
-  **Límite que queda declarado**: el **login exitoso** (tokens reales, refresh token y cookie) necesita
-  un usuario, o sea **MI-53**. Con eso tampoco se puede verificar todavía el grant `Refresh Token`.
-  MI-52 se cierra con ese límite escrito, no con un "listo" a secas.
+  probe suelto): con el grant habilitado, el Default Directory configurado **y la aplicación autorizada
+  para la API**, la cadena completa funciona: `POST /auth/login` → **200**; `GET /companies` con ese
+  token → **200** (nuestra API lo validó contra el JWKS del tenant); sin token → **401** con
+  `WWW-Authenticate`. Los claims del access token traen
+  `aud: ["https://inventory-manager-api", "https://dev-…/userinfo"]`, que es lo que hace que
+  `requireAuth` lo acepte. Comentario `10047` en Jira.
+  **Límite que queda (uno solo)**: el **refresh token**. El token endpoint devuelve
+  `scope: "openid profile email"` y `refresh_token` ausente aunque pedimos `offline_access` → falta
+  **`Allow Offline Access`** en la API de Auth0. El código hace lo correcto (solo setea la cookie si
+  el proveedor devolvió un refresh token, con test), pero la sesión larga todavía no existe.
+- **Hallazgo para MI-53**: `/userinfo` **acepta nuestro access token** (HTTP 200 con `sub`, `email` y
+  `email_verified`), porque la API lo incluye en el `aud`. Eso significa que el gate de
+  `email_verified` se puede implementar con `/userinfo` sobre el token que ya tenemos, **sin validar el
+  ID token y sin agregar dependencias**. El ID token también trae `email_verified`, pero usarlo
+  obligaría a una segunda validación con `aud = client_id`.
 
 ## Fuera de alcance
 

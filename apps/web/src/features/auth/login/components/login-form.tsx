@@ -8,9 +8,11 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Checkbox, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api/client";
 import { type LoginErrors, validateLogin } from "@/lib/auth/validation";
 import { AlertMessage } from "@/src/shared/components/AlertMessage";
+import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useLogin } from "../hook/use-login";
 import { FALLBACK_ERROR } from "../utils/constants";
 
@@ -61,7 +63,19 @@ export function LoginForm() {
 
 		// Only the email is trimmed (the API trims it too); a password may
 		// legitimately contain spaces and must reach the server unchanged.
-		mutate({ email: values.email.trim(), password: values.password });
+		mutate(
+			{ email: values.email.trim(), password: values.password },
+			{
+				onSuccess: () => {
+					AlertToast({
+						title: "¡Listo!",
+						description: "Se ha iniciado sesión correctamente.",
+						type: "success",
+						delay: 3000,
+					});
+				},
+			},
+		);
 	}
 
 	function handleChange(field: "email" | "password", value: string) {

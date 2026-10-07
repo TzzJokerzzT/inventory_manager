@@ -57,6 +57,12 @@ mentirle.
 pasar a **`invalid_grant`** — eso prueba grant activo + aplicación confidencial + nuestros ocho
 parámetros aceptados. Es la señal que voy a usar para cerrar esta tarea.
 
+**Resultado final (2026-10-06)**: el usuario habilitó el grant y configuró el Default Directory, y el
+probe devolvió **403 `invalid_grant` — "Wrong email or password."**. Después se corrió **nuestro
+adaptador** contra el tenant real y produjo `InvalidCredentialsError` (mensaje uniforme
+`"Invalid credentials"`), con el log conteniendo sólo `invalid_grant — Wrong email or password.`
+Sin usuario no se puede ir más allá: el login exitoso llega con MI-53.
+
 ## Diseño
 
 ### El puerto (hacia adentro)
@@ -148,11 +154,18 @@ vive en `infrastructure/auth0/`, igual que `PrismaCompanyRepository` vive en `in
 - [x] **T5 — Documentación y Jira.** ✅ `docs/stack.md` §5.4 con el intercambio (scope mínimo, errores
   uniformes, contraseña nunca logueada, timeout, rate limit y el supuesto de `SameSite`) y descripción
   de MI-52 reescrita en Jira.
-- [~] **T6 — Verificación.** ⏳ **Parcial, y por eso la tarea queda `In Progress`**: el probe contra el
-  tenant sigue dando **403 `unauthorized_client`** (el grant `Password` sigue apagado), así que el
-  intercambio real **no se puede ejercitar**. Cerrarla ahora sería declarar verificada una integración
-  que nunca corrió. En cuanto el usuario habilite el grant, el probe tiene que pasar a `invalid_grant`
-  y eso se adjunta como evidencia. El login exitoso real necesita además un usuario (MI-53).
+- [x] **T6 — Verificación.** ✅ **Verificado contra el proveedor real, con nuestro adaptador** (no un
+  probe suelto): con el grant habilitado y el Default Directory configurado, el tenant responde
+  **403 `invalid_grant` — "Wrong email or password."** y el adaptador produce
+  `InvalidCredentialsError` con el mensaje uniforme `"Invalid credentials"` (y **no**
+  `IdentityProviderUnavailableError`). El log del adaptador muestra sólo
+  `invalid_grant — Wrong email or password.`: código y descripción, **sin credenciales**.
+  Eso prueba, de una sola corrida: grant activo; Default Directory configurado; aplicación
+  **confidencial** (aceptó el `client_secret` — una SPA habría devuelto `invalid_client`); los ocho
+  parámetros aceptados; y el mapeo 403→401 uniforme sobre la respuesta real.
+  **Límite que queda declarado**: el **login exitoso** (tokens reales, refresh token y cookie) necesita
+  un usuario, o sea **MI-53**. Con eso tampoco se puede verificar todavía el grant `Refresh Token`.
+  MI-52 se cierra con ese límite escrito, no con un "listo" a secas.
 
 ## Fuera de alcance
 

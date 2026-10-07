@@ -19,7 +19,8 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 ⚠️ **El proyecto está en construcción.** Las dos aplicaciones ya existen y el tooling está
 funcionando. **La capa de datos (Prisma + Supabase) y la validación JWT de Auth0 ya están
 configuradas** (schema, migración aplicada, adaptador y middleware `requireAuth` sobre `/companies`);
-quedan pendientes **el grant `Password` de Auth0 (MI-52)** y **almacenamiento (Cloudinary)**.
+quedan pendientes **el almacenamiento (Cloudinary)** y los endpoints de registro y logout (MI-53 y
+MI-54).
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
@@ -32,7 +33,7 @@ El repositorio y el stack de tests ya están en pie.
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
 | Typecheck | ✅ `apps/web` y `apps/api` limpios (`tsc --noEmit`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y adaptador `PrismaCompanyRepository` cableado |
-| **Auth0** | ✅ tenant verificado (JWKS + discovery) y middleware `requireAuth` cableado; falta el grant `Password` (MI-52) |
+| **Auth0** | ✅ tenant verificado (JWKS + discovery), middleware `requireAuth` cableado y `POST /auth/login` (ROPG) funcionando contra el tenant real |
 | **Cloudinary** | ❌ no configurado |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner: 154 tests (43 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
@@ -435,7 +436,9 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
       de Cypress tiene su propio `tsconfig` y los comandos de la raíz están en verde.
 - [x] **Configurar Auth0** — **MI-39**: tenant verificado (JWKS + discovery) y validación JWKS
       cableada (`requireAuth` sobre `/companies`, `/health` público). La aplicación es **Regular
-      Web Application** (no SPA); falta habilitar el grant `Password`, que es de **MI-52**.
+      Web Application** (no SPA), con los grants `Password` y `Refresh Token` habilitados y el
+      **Default Directory** del tenant configurado. `POST /auth/login` (MI-52) ya está
+      `Done` y verificado contra el tenant real.
       Cerrada en Jira (`Done`, comentario `10044`).
 - [ ] **Configurar Cloudinary** — **MI-40** para subida directa firmada desde el cliente.
 - [x] **Configurar los tests** — **MI-41**: Jest como único runner (137 tests migrados desde

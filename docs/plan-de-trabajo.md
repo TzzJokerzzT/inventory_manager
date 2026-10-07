@@ -1,7 +1,7 @@
 # Plan de trabajo — Inventory Manager
 
 **Generado:** 2026-10-06 · **Fuente:** Jira proyecto `MI` (55 issues) + estado real del repo + `docs/stack.md`
-**Estado:** 13 `Done` · 2 `In Progress` · **40 `To Do`**
+**Estado:** 14 `Done` · 2 `In Progress` · **39 `To Do`**
 
 Este documento es el mapa de lo que falta, ordenado por **dependencia**, no por fase. El roadmap por
 fases vive en [`Project.md`](./Project.md#-roadmap--fases); acá está qué bloquea a qué y qué
@@ -77,7 +77,7 @@ MI-35 Git · MI-36 CI · MI-37 `.env.example` raíz · MI-38 Prisma + Supabase �
 MI-40 Cloudinary · MI-41 tests · MI-42 Husky · MI-43 contrato OpenAPI · MI-51 esquema Prisma del
 acceso multi-usuario.
 
-Dependencias internas: **MI-36 y MI-42 dependen de MI-35**. MI-51 pertenece a MI-38.
+Dependencias internas: **MI-42 depende de MI-35** (hecho). MI-51 pertenece a MI-38.
 
 ### Capa 1 — Autenticación, empresas y aislamiento (Fase 1)
 
@@ -143,7 +143,8 @@ MI-3 + MI-5 ──────> MI-45 (asignar con rol) ──> MI-47 (reglas de
 **Primeros dos pasos recomendados:** la **decisión #1** (cómo se testean los endpoints protegidos) y
 **MI-38** (Prisma + Supabase). Sin esos dos, el login y el aislamiento se construyen a ciegas.
 
-**MI-36 (CI) y MI-42 (Husky)** ya están desbloqueados: dependían de MI-35 y MI-35 está hecho.
+**MI-36 (CI) está hecho** (`.github/workflows/ci.yml`: jobs `verify` y `migrations`). **MI-42 (Husky)**
+sigue pendiente y ya no tiene bloqueos: dependía de MI-35.
 
 ---
 

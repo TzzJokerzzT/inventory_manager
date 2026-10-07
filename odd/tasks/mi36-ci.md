@@ -63,18 +63,32 @@ localmente con un contenedor `postgres:17` descartable; es la única forma de pr
 
 ## Tareas
 
-- [ ] **T1 — Job `verify`.** `.github/workflows/ci.yml` con disparadores, permisos, concurrencia y los
-  cinco pasos del criterio. Superficies: `.github/workflows/ci.yml`.
-- [ ] **T2 — Job `migrations`.** Service container `postgres:17` con health check, variables de
-  entorno apuntando al contenedor, `prisma migrate deploy` y `prisma migrate status`. Superficies:
-  `.github/workflows/ci.yml`.
-- [ ] **T3 — Validación local.** Correr **cada comando** que ejecuta el workflow y verificar la sintaxis
-  del YAML. Declarar explícitamente lo que no se pudo validar y por qué.
-- [ ] **T4 — Documentación y Jira.** `README.md` (sección de CI: qué corre, dónde, y el límite de
-  Cypress), `docs/stack.md` §4.2 alineada con lo que realmente quedó, y MI-36 en Jira (descripción con
-  el estado real + cierre).
-- [ ] **T5 — Verificación y cierre.** Gates verdes, verificación independiente del YAML si aporta, y
-  cierre en Jira.
+- [x] **T1 — Job `verify`.** ✅ Los cinco pasos del criterio, con `pull_request` + `push` a
+  `production`/`development`, `permissions: contents: read` y `concurrency` que cancela el run anterior
+  de la misma rama.
+- [x] **T2 — Job `migrations`.** ✅ `postgres:17` como service container con health check,
+  `DATABASE_URL`/`DIRECT_URL` apuntando al contenedor y `bun run db:deploy` + `db:status` con
+  `working-directory: apps/api`. Sin secretos del repositorio.
+- [x] **T3 — Validación local.** ✅ `bun install --frozen-lockfile` no-op (lockfile en sincronía),
+  `biome ci` read-only y verde, `check-types` verde, **154 tests** verdes, `build` verde y el YAML
+  parsea. **No validado, declarado**: el job de migraciones (no hay daemon de Docker ni Postgres
+  local) y la semántica propia de GitHub.
+- [x] **T4 — Documentación y Jira.** ✅ `docs/stack.md` §4.2 reescrita con lo que quedó (dos jobs, el
+  porqué del job de migraciones, el pendiente de Cypress), sección de CI en el `README.md`, y la
+  descripción de MI-36 reescrita en Jira con el límite declarado.
+- [x] **T5 — Verificación y cierre.** ✅ MI-36 en `Done` (comentario `10045`).
+
+## Correcciones al brief (para que quede el registro)
+
+- **Las versiones de las actions de mi brief estaban viejas.** Yo pedí `@v4`/`@v5`; el worker verificó
+  contra la API de GitHub y se desvió, y **tenía razón**: hoy `actions/checkout` va por **v7.0.1**,
+  `actions/setup-node` por **v7.0.0** y `oven-sh/setup-bun` **sólo tiene hasta v2** — o sea que el
+  `@v4` que yo había pedido para setup-bun **no habría resuelto** y el workflow fallaba al arrancar.
+  Lo verifiqué yo también contra la API antes de aceptarlo.
+- **`biome ci` sale 0 con un warning**: encontró un import sin usar en
+  `apps/web/src/features/register/components/register-form.tsx` (el WIP de registro del usuario, sin
+  commitear). Es warning, no error, así que el CI queda verde. Si se quisiera tratar los warnings como
+  errores habría que agregar `--error-on-warnings`, y eso hoy pondría el CI en rojo por ese archivo.
 
 ## Riesgo declarado
 
@@ -87,3 +101,7 @@ esconderlo detrás de un "listo".
 - 2026-10-06 — Documento creado. Criterio de MI-36 leído de Jira. Medido: no existe `.github/`, no hay
   daemon de Docker, no hay Postgres local, `actionlint` no está disponible. Decidido: base efímera como
   service container (nunca Supabase), Cypress fuera con follow-up explícito.
+- 2026-10-06 — **T1–T5 hechas.** Workflow creado (commit `7303324`), validado localmente lo validable,
+  documentado y cerrado en Jira (comentario `10045`). Dos correcciones al brief: las versiones de las
+  actions (ver arriba) y el warning de Biome sobre el WIP del usuario. **El workflow no corre hasta que
+  la rama se pushee**: hasta entonces no hay run que mirar, y eso hay que decirlo en el cierre.

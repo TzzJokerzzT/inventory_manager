@@ -36,7 +36,7 @@ El repositorio y el stack de tests ya están en pie.
 | **Cloudinary** | ❌ no configurado |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner: 154 tests (43 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
-| **CI** | ❌ no configurado |
+| **CI** | ✅ `.github/workflows/ci.yml` — `verify` (install con lockfile congelado, `biome ci`, tipos, 154 tests, build) + `migrations` (`prisma migrate deploy` sobre un Postgres efímero) |
 
 Las configuraciones pendientes están desglosadas como **subtareas de [MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del
 proyecto. Ver [Pendientes](#pendientes) para el detalle y el orden sugerido.
@@ -270,6 +270,24 @@ bun run build
 
 Turborepo cachea el resultado por hash de entradas: si nada cambió, no recompila.
 
+### Integración continua
+
+`.github/workflows/ci.yml` corre en cada `pull_request` y en cada `push` a `production` y
+`development`, con dos jobs:
+
+| Job | Qué corre |
+|-----|-----------|
+| `verify` | `bun install --frozen-lockfile` · `biome ci` · `check-types` · los 154 tests · `build` |
+| `migrations` | `prisma migrate deploy` y `migrate status` contra un **Postgres efímero** (`postgres:17` como *service container*) |
+
+El job de migraciones es el único que aplica la cadena **desde cero sobre una base vacía**: es la única
+forma de que el CI detecte una migración rota. El contenedor es descartable y **nunca** se toca el
+proyecto real de Supabase; el workflow no usa secretos del repositorio, así que funciona igual en un
+fork.
+
+**Pendiente declarado:** Cypress (E2E) no está en el workflow. El spec nunca se corrió (necesita el dev
+server) y un job que falla desde el primer push no aporta; se suma cuando esté verificado.
+
 ---
 
 ## Distribución de carpetas
@@ -314,7 +332,7 @@ inventory-manager/
 ├── apps/
 │   ├── web/                      # SPA (Next.js) — Vertical Slice
 │   └── api/                      # API REST (Express) — Clean Architecture ✅ creada
-├── .github/workflows/            # CI: lint, tipos, tests, migraciones        ← a crear
+├── .github/workflows/            # CI: lint, tipos, tests, build y migraciones
 ├── design/
 ├── docs/
 ├── odd/tasks/
@@ -403,7 +421,10 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
 - [x] **Configurar control de versiones (Git)** — **MI-35**. **Hecho**: repositorio propio en
       `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y
       `feat/login-register-backend-frontend`. Desbloquea el CI y Husky.
-- [ ] **Crear el workflow de CI** en `.github/workflows/` — **MI-36**. Depende de MI-35.
+- [x] **Crear el workflow de CI** en `.github/workflows/` — **MI-36**: `verify` (install con
+      `--frozen-lockfile`, `biome ci`, `check-types`, `test`, `build`) y `migrations`
+      (`prisma migrate deploy` sobre un Postgres efímero, sin tocar Supabase). **Pendiente declarado**:
+      Cypress, porque nunca se corrió y un job rojo desde el primer push no sirve de nada.
 - [ ] **Crear el `.env.example` de la raíz** — **MI-37**. El de `apps/api` ya existe; falta el del
       monorepo y el del frontend.
 - [x] **Configurar Prisma + Supabase** — **MI-38**: `schema.prisma`, migración

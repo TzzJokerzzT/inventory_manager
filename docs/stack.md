@@ -227,14 +227,31 @@ produce el backend (ver 6.2).
 
 ### 4.2 Pipeline de CI (GitHub Actions)
 
-Tareas mínimas por Pull Request:
+**Implementado** en `.github/workflows/ci.yml` (MI-36), en **dos jobs** para que un fallo de
+migración se lea como tal y no se confunda con un test roto:
 
-1. `biome ci` (lint + formato)
-2. `tsc --noEmit` (typecheck)
-3. `jest` (unitarios, web y api)
-4. `supertest` (integración de endpoints)
-5. `prisma migrate deploy` contra una base efímera
-6. `cypress run` (E2E) — puede correr solo en la rama principal para acotar costo
+**Job `verify`** — dispara en `pull_request` y en `push` a `production` y `development`:
+
+1. `bun install --frozen-lockfile` — si el lockfile no coincide con los `package.json`, el job falla
+   en vez de resolver versiones nuevas
+2. `biome ci` (lint + formato, **sin escribir**: `biome check` sí modificaría)
+3. `bun run check-types` (`turbo`, los dos workspaces)
+4. `bun run test` — Jest en los dos workspaces, con **supertest** adentro para la integración de
+   endpoints (no es un paso separado)
+5. `bun run build`
+
+**Job `migrations`** — `prisma migrate deploy` y `migrate status` contra un **Postgres efímero**
+(*service container* `postgres:17` con health check). Es el único paso que aplica la cadena de
+migraciones **desde cero sobre una base vacía**, que es la única forma de que el CI detecte una
+migración rota. El contenedor es descartable y sus credenciales son placeholders no secretos, así que
+el workflow **no necesita secretos del repositorio** y funciona en un fork; **nunca** toca el proyecto
+real de Supabase. La imagen oficial trae `pg_trgm`, que es lo que necesita la primera migración.
+
+Permisos: `contents: read`. Concurrencia: un push nuevo cancela el run anterior de la misma rama.
+
+**Pendiente declarado**: `cypress run` (E2E). No está en el workflow porque **nunca se corrió** — el
+spec de `apps/web` se configuró en MI-41 y quedó sin verificar por necesitar el dev server — y meter
+un job que no sabemos si pasa deja el CI rojo desde el primer push. Va como follow-up.
 
 ---
 

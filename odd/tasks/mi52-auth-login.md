@@ -24,13 +24,38 @@ Supertest de éxito, credenciales inválidas, payload malformado y respuesta uni
 2. **El usuario habilita los grants ahora** (`Password` y `Refresh Token`) y revisa que el Application
    Type sea *Regular Web Application*. Sin eso, el intercambio real no se puede verificar.
 
-## Evidencia del tenant (medida hoy)
+## Evidencia del tenant (medida)
 
-`POST /oauth/token` con `grant_type=password` → **403 `unauthorized_client`** ("Grant type 'password'
-not allowed for the client"). O sea: la aplicación existe y el `client_secret` es válido, pero el grant
-sigue apagado. **Después** de habilitarlo, el mismo probe con un usuario inexistente tiene que pasar a
-**`invalid_grant`** — eso es lo que distingue "grant apagado" de "credenciales incorrectas", y es la
-señal que voy a usar para verificar el cambio.
+Evolución del probe con los mismos ocho parámetros que manda el adaptador:
+
+| Cuándo | Respuesta | Qué significa |
+|---|---|---|
+| 2026-10-06 (antes) | **403 `unauthorized_client`** — *"Grant type 'password' not allowed for the client."* | El grant `Password` estaba apagado |
+| 2026-10-06 (después de habilitarlo) | **500 `server_error`** — *"Authorization server not configured with default connection."* | **El grant ya está habilitado** (pasamos ese chequeo) y aparece un **requisito de tenant** que faltaba |
+
+**El requisito**: ROPG necesita que el tenant tenga configurado el **Default Directory** (el nombre de
+la conexión de base de datos). Verificado en `auth0.com/docs/get-started/tenant-settings`: *"Default
+Directory: Name of the default connection to be used for both the Resource Owner Password Flow and
+Universal Login Experience"*, y en el centro de soporte de Auth0: *"The Resource Owner Password Flow
+relies on a connection that is capable of authenticating users by username and password, so you must
+set the default connection for the tenant."* La ruta es **Dashboard → Tenant Settings → Default
+Directory** y el valor tiene que ser el nombre exacto de la conexión:
+**`Username-Password-Authentication`** (el mismo que ya mandamos como `realm`).
+
+Detalle que sorprende: mandar `realm` **no alcanza**. El soporte de Auth0 lo documenta como "el tenant
+usa la conexión del Default Directory en lugar de la específica de la aplicación", o sea que el ajuste
+del tenant manda. Alternativa si no se quiere tocar el tenant: `grant_type`
+`http://auth0.com/oauth/grant-type/password-realm`, que sí honra el `realm` — pero se descarta porque el
+criterio de MI-52 pide `grant_type=password` y porque el Default Directory es el camino documentado.
+
+**Lo que esto dice de nuestro código**: Auth0 devuelve **500** ante una mala configuración del tenant, y
+el adaptador lo mapea a `IdentityProviderUnavailableError` → **503**, no a 401. Es el comportamiento
+correcto: no es un problema de credenciales del usuario, y mandarlo a "revisá tu contraseña" sería
+mentirle.
+
+**Después** de configurar el Default Directory, el mismo probe con un usuario inexistente tiene que
+pasar a **`invalid_grant`** — eso prueba grant activo + aplicación confidencial + nuestros ocho
+parámetros aceptados. Es la señal que voy a usar para cerrar esta tarea.
 
 ## Diseño
 
@@ -147,3 +172,9 @@ la tabla `users`.
   grant `Password` no está habilitado. **MI-52 queda `In Progress`**, no `Done`: su criterio incluye el
   éxito del intercambio y eso nunca corrió contra el proveedor real. Se cierra cuando el probe pase a
   `invalid_grant` (grant habilitado) y se adjunte esa evidencia; el login exitoso llega con MI-53.
+- 2026-10-06 — **El usuario habilitó el grant y el probe avanzó**: pasó de `403 unauthorized_client` a
+  **`500 server_error` — "Authorization server not configured with default connection."** O sea que el
+  grant ya está y falta el **Default Directory del tenant** (Dashboard → Tenant Settings). Requisito
+  verificado en la doc y el soporte de Auth0; el valor es `Username-Password-Authentication`, el mismo
+  que ya mandamos como `realm` — que **no alcanza** por sí solo. Se deja escrito en la sección de
+evidencia de arriba para no volver a chocar con esto.

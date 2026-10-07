@@ -62,11 +62,39 @@ declarado en `apps/web/src/features/company/components/require-active-company.ts
 
 ## Unidades de trabajo
 
-- **U1 — API (delegada, test-first)**: `refreshTokens` en el puerto + adaptador; `POST /auth/refresh`
-  (cookie → tokens, rotación, 401/503, limpieza de cookie, rate limit); `POST /auth/logout` (204, sin
-  auth); tests con proveedor falso (nunca Auth0 real) y espía de `console`.
-- **U2 — Frontend (delegada, test-first)**: bootstrap de sesión; interceptor de 401 con cola
+- [x] **U1 — API.** ✅ Commit `8c71efc` (`feat(api): refresh the session and log out`). `refreshTokens` en el
+  puerto + refresh grant en el adaptador de Auth0 (misma `MINIMAL_SCOPE` con `offline_access` para que el
+  proveedor rote, validación de la forma del 200); `RefreshSessionUseCase`; `RefreshTokenRejectedError`
+  con mensaje constante; `POST /auth/refresh` con rate limit dedicado y `POST /auth/logout` sin él;
+  `refreshSession` **requerido** en `AppDependencies` y cableado en `main.ts` + los 7 call sites de
+  `buildApp`; 19 tests nuevos. **Spot check del padre**: 18 suites / 131 tests.
+- [ ] **U2 — Frontend (delegada, test-first)**: bootstrap de sesión; interceptor de 401 con cola
   single-flight; `useLogout` + wiring; la guardia espera la resolución; tests con el cliente mockeado.
+
+## Verificación de U1 (independiente, `gentle-ai-verify`)
+
+**7/7 claims PASS, cero defectos, cero bloqueantes.** Gates ejecutados sin enmascarar el exit code:
+`bun run test` → 18 suites / 131 tests (exit 0) · `check-types` → exit 0 · `bun run lint` → exit 0 con
+**1** warning preexistente en el archivo del usuario. Aritmética del baseline verificada (19 tests nuevos
+sobre 112). El RED es creíble: el commit padre no tiene `refresh-session.ts`, ni `refreshTokens`, ni
+`AUTH_REFRESH_RATE_LIMIT` (verificado con `git grep` sobre el padre).
+
+Lo que el verificador confirmó leyendo el código, no los títulos de los tests: el 401 uniforme sale de la
+misma constante y el mismo mensaje; la cookie se limpia **sólo** en el rechazo (`auth-controller.ts:147-156`)
+porque la rama de cookie ausente **retorna antes** (`:120-127`); el 503 es real porque
+`IdentityProviderUnavailableError` **no** es `RefreshTokenRejectedError` y lo mapea el manejador compartido;
+la respuesta de éxito es literalmente `{accessToken, expiresIn}`; no se rota cookie sin refresh token nuevo;
+las dos rutas quedan montadas **antes** del guard de `/companies`; y `main.ts:67` cablea el caso de uso
+**real** (los `{} as never` viven sólo en cinco apps de test que nunca piden `/auth/refresh`).
+
+**Tres huecos de cobertura que el verificador marcó (no son defectos)**:
+1. La rama de cookie ausente **no tiene test** que afirme la **ausencia** de `Set-Cookie`: hoy sólo se prueba
+   leyendo el código.
+2. El logout **no se invoca dos veces** en ningún test: la idempotencia está probada por código, no por test.
+3. El test del 503 tiene un `expect(status).not.toBe(401)` redundante con el `toBe(503)`.
+
+Los tres se cierran con asserts chicos y quedan anotados como follow-up para el próximo work unit de API
+(no se abrió un ciclo de verificación aparte por tres líneas de test).
 
 ## Fuera de alcance
 
@@ -84,3 +112,10 @@ unidad, dentro del presupuesto de la cadena.
 - 2026-10-07 — Documento creado tras la exploración. Se confirmó que **no existe** ni logout ni refresh,
   que la cookie ya se emite en login, y que el cliente no tiene manejo de 401. Decisiones del usuario:
   orden `MI-54 → MI-50 → MI-20`.
+- 2026-10-07 — **U1 hecha y verificada**: commit `8c71efc`, verificación independiente 7/7 PASS sin
+  defectos. El worker frenó una vez con `interaction_required` porque el puente de DI (`app.ts`) faltaba en
+  las superficies — defecto de planificación del orquestador. Decisión: `refreshSession` **requerido** (no
+  opcional) por consistencia con los cuatro casos de uso existentes y para que un olvido de wiring no sea
+  un agujero silencioso en un camino de auth; se autorizaron `app.ts` y los 7 call sites de `buildApp`.
+  **Aprendizaje del worker**: `check-types` de la API cubre sólo `src/**` y los tests los transpila
+  `@swc/jest` sin type-check, así que una dependencia de `buildApp` omitida no falla ahí, sólo en runtime.

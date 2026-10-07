@@ -1,4 +1,9 @@
-import { type AxiosAdapter, AxiosError } from "axios";
+import {
+	type AxiosAdapter,
+	AxiosError,
+	type AxiosInstance,
+	type InternalAxiosRequestConfig,
+} from "axios";
 import { ApiError, createApiClient } from "./client";
 
 const BASE_URL = "http://api.test";
@@ -21,6 +26,22 @@ function axiosErrorWith(status: number, data: unknown): AxiosError {
 			data,
 			headers: {},
 			config: { headers: {} } as never,
+		},
+	);
+}
+
+function unauthorizedError(config: InternalAxiosRequestConfig): AxiosError {
+	return new AxiosError(
+		"Request failed",
+		"ERR_BAD_RESPONSE",
+		config,
+		undefined,
+		{
+			status: 401,
+			statusText: "Error",
+			data: { error: { message: "No autorizado" } },
+			headers: {},
+			config,
 		},
 	);
 }
@@ -166,5 +187,102 @@ describe("access-token interceptor", () => {
 		const response = await client.get("/companies");
 
 		expect(response.data.authorization).toBeUndefined();
+	});
+});
+
+describe("401 refresh interceptor", () => {
+	function clientWithRefresh(
+		adapter: AxiosAdapter,
+		onUnauthorized: () => Promise<void>,
+	) {
+		const client = createApiClient(BASE_URL, {
+			getAccessToken: () => "token-value",
+			onUnauthorized,
+		});
+		client.defaults.adapter = adapter;
+		return client;
+	}
+
+	it("retries a 401 once after a successful refresh", async () => {
+		let calls = 0;
+		const onUnauthorized = jest.fn(async () => {});
+		const client = clientWithRefresh(async (config) => {
+			calls += 1;
+			if (calls === 1) {
+				throw unauthorizedError(config);
+			}
+			return {
+				data: { id: "c1" },
+				status: 200,
+				statusText: "OK",
+				headers: {},
+				config,
+			};
+		}, onUnauthorized);
+
+		const response = await client.get("/companies");
+
+		expect(response.data).toEqual({ id: "c1" });
+		expect(calls).toBe(2);
+		expect(onUnauthorized).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not retry when the refresh fails", async () => {
+		let calls = 0;
+		const onUnauthorized = jest.fn(async () => {
+			throw new ApiError("No autorizado", 401);
+		});
+		const client = clientWithRefresh(async (config) => {
+			calls += 1;
+			throw unauthorizedError(config);
+		}, onUnauthorized);
+
+		await expect(client.get("/companies")).rejects.toMatchObject({
+			status: 401,
+		});
+
+		expect(calls).toBe(1);
+		expect(onUnauthorized).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries the original request at most once", async () => {
+		let calls = 0;
+		const onUnauthorized = jest.fn(async () => {});
+		const client = clientWithRefresh(async (config) => {
+			calls += 1;
+			throw unauthorizedError(config);
+		}, onUnauthorized);
+
+		await expect(client.get("/companies")).rejects.toMatchObject({
+			status: 401,
+		});
+
+		expect(calls).toBe(2);
+		expect(onUnauthorized).toHaveBeenCalledTimes(1);
+	});
+
+	it("never retries the refresh request itself", async () => {
+		let refreshAttempts = 0;
+		let client: AxiosInstance;
+		client = createApiClient(BASE_URL, {
+			getAccessToken: () => "token-value",
+			onUnauthorized: async () => {
+				await client.post("/auth/refresh", undefined, {
+					skipAuthRefresh: true,
+				});
+			},
+		});
+		client.defaults.adapter = async (config) => {
+			if (config.url === "/auth/refresh") {
+				refreshAttempts += 1;
+			}
+			throw unauthorizedError(config);
+		};
+
+		await expect(client.get("/companies")).rejects.toMatchObject({
+			status: 401,
+		});
+
+		expect(refreshAttempts).toBe(1);
 	});
 });

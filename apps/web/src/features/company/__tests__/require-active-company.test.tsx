@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
+import { useSessionStore } from "@/src/store/session-store/session-store";
 import { useCompanies } from "../api/use-companies";
 import { RequireActiveCompany } from "../components/require-active-company";
 
@@ -47,6 +48,7 @@ function mockCompanies(state: Partial<ReturnType<typeof useCompanies>> = {}) {
 describe("RequireActiveCompany", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
+		useSessionStore.setState({ accessToken: undefined, resolved: true });
 		mockRouter();
 		mockCompanies();
 	});
@@ -91,6 +93,24 @@ describe("RequireActiveCompany", () => {
 
 		expect(replace).toHaveBeenCalledWith("/login");
 		expect(screen.queryByText("Dashboard")).toBeNull();
+	});
+
+	it("waits for the session bootstrap before deciding on a 401", () => {
+		useSessionStore.setState({ resolved: false });
+		mockCompanies({
+			isError: true,
+			error: new ApiError("No autorizado", 401),
+		});
+
+		render(
+			<RequireActiveCompany>
+				<p>Dashboard</p>
+			</RequireActiveCompany>,
+		);
+
+		expect(screen.getByLabelText("Cargando")).toBeTruthy();
+		expect(screen.queryByText("Dashboard")).toBeNull();
+		expect(replace).not.toHaveBeenCalled();
 	});
 
 	it("shows the loading state while the query is pending", () => {

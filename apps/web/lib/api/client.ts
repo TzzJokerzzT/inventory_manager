@@ -1,5 +1,14 @@
 import axios, { type AxiosInstance } from "axios";
 
+declare module "axios" {
+	interface AxiosRequestConfig {
+		/** Set by the 401 interceptor after a retry, so a request retries at most once. */
+		_retried?: boolean;
+		/** Set on the refresh request itself, so its 401 is never retried. */
+		skipAuthRefresh?: boolean;
+	}
+}
+
 /**
  * Single error type the UI has to know about.
  *
@@ -104,9 +113,15 @@ function toApiError(error: unknown): unknown {
  * feature, so the auth feature hands over a provider that reads the token from
  * its session store. When the provider returns a token it is attached as
  * `Authorization: Bearer`; when it returns none the header is simply omitted.
+ *
+ * `onUnauthorized` is the same injection pattern for the 401 flow: the auth
+ * feature hands over a single-flight refresh that stores a fresh token, and the
+ * client retries the original request once when it resolves. The client itself
+ * never imports the feature.
  */
 export interface ApiClientOptions {
 	getAccessToken?: () => string | undefined;
+	onUnauthorized?: () => Promise<void>;
 }
 
 export function createApiClient(
@@ -137,8 +152,33 @@ export function createApiClient(
 
 	client.interceptors.response.use(
 		(response) => response,
-		(error: unknown) => {
-			throw toApiError(error);
+		async (error: unknown) => {
+			const apiError = toApiError(error);
+			const onUnauthorized = options.onUnauthorized;
+
+			if (
+				apiError instanceof ApiError &&
+				apiError.status === 401 &&
+				onUnauthorized &&
+				axios.isAxiosError(error) &&
+				error.config &&
+				!error.config._retried &&
+				!error.config.skipAuthRefresh
+			) {
+				try {
+					await onUnauthorized();
+				} catch (refreshError) {
+					// A failed refresh leaves the session cleared (the feature owns
+					// that); surface it as the caller-facing failure.
+					throw toApiError(refreshError);
+				}
+
+				const config = error.config;
+				config._retried = true;
+				return client.request(config);
+			}
+
+			throw apiError;
 		},
 	);
 
@@ -161,6 +201,10 @@ let cached: AxiosInstance | undefined;
  * to whichever hook happens to run first would make `Authorization` depend on
  * import order — the kind of bug that shows up as a 401 nobody can reproduce
  * locally.
+ *
+ * The session bootstrap mounts before any route and is therefore the real
+ * first caller: it passes both `getAccessToken` and `onUnauthorized`, so the
+ * shared client is always built with the full auth wiring in place.
  */
 export function getApiClient(options?: ApiClientOptions): AxiosInstance {
 	cached ??= createApiClient(undefined, options);

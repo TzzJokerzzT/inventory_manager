@@ -6,13 +6,15 @@ import { Alert } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
+import { useSessionStore } from "@/src/store/session-store/session-store";
 import { useCompanies } from "../api/use-companies";
 
 /**
  * Wraps routes that need an active company.
  *
  * Ready to wrap the dashboard (MI-20/MI-28): those views do not exist yet, so
- * nothing mounts it today. Its four states:
+ * nothing mounts it today. It waits for the session bootstrap to resolve before
+ * deciding, then handles its four states:
  * - loading → a loading state, not a route jump, so nothing flickers;
  * - error → a message with a retry;
  * - zero companies → redirect to `/sin-empresas`;
@@ -20,6 +22,7 @@ import { useCompanies } from "../api/use-companies";
  */
 export function RequireActiveCompany({ children }: { children: ReactNode }) {
 	const router = useRouter();
+	const resolved = useSessionStore((state) => state.resolved);
 	const {
 		data: companies,
 		isPending,
@@ -32,14 +35,15 @@ export function RequireActiveCompany({ children }: { children: ReactNode }) {
 		isError && error instanceof ApiError && error.status === 401;
 
 	useEffect(() => {
+		if (!resolved) {
+			// The session bootstrap is still deciding; a 401 here is not a
+			// verdict yet (the refresh cookie may still be valid).
+			return;
+		}
 		if (isPending) {
 			return;
 		}
 		if (unauthorized) {
-			// The access token lives in memory, so a fresh page load has none and
-			// `GET /companies` answers 401. The right move is `/login`; the
-			// refresh-on-load flow arrives with MI-54, so this is the temporary
-			// (but correct) safety net until then.
 			router.replace("/login");
 			return;
 		}
@@ -51,9 +55,9 @@ export function RequireActiveCompany({ children }: { children: ReactNode }) {
 		if ((companies?.length ?? 0) === 0) {
 			router.replace("/sin-empresas");
 		}
-	}, [isPending, unauthorized, isError, companies, router]);
+	}, [resolved, isPending, unauthorized, isError, companies, router]);
 
-	if (isPending) {
+	if (!resolved || isPending) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-background">
 				<SpinnerMotion />

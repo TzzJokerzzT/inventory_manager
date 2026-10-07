@@ -2,11 +2,21 @@ import { useSessionStore } from "../session-store";
 
 describe("session store", () => {
 	beforeEach(() => {
-		useSessionStore.getState().clear();
+		useSessionStore.setState({ accessToken: undefined, resolved: false });
 	});
 
 	it("starts without a token", () => {
 		expect(useSessionStore.getState().accessToken).toBeUndefined();
+	});
+
+	it("starts with the session resolution unfinished", () => {
+		expect(useSessionStore.getState().resolved).toBe(false);
+	});
+
+	it("marks the session resolution as finished", () => {
+		useSessionStore.getState().markResolved();
+
+		expect(useSessionStore.getState().resolved).toBe(true);
 	});
 
 	it("keeps the access token in memory", () => {

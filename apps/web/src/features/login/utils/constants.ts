@@ -1,6 +1,6 @@
 export const data = {
 	maintitle: "Inventory Manager",
-	title: "controlá tu inventario en tiempo real",
+	title: "Controlá tu inventario en tiempo real",
 	subtitle:
 		"Productos, movimientos y alertas de stock bajo en un solo lugar, para una o varias empresas.",
 	capabilities: [

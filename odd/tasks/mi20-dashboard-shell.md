@@ -85,11 +85,41 @@ login, pero cambia pantallas que él está editando.
 
 **Hueco de cobertura anotado**: la rama de cero empresas de `/sin-empresas` (la que devuelve
 `NoCompaniesState`) no tiene test a nivel de página — sólo cobertura del componente.
-- **U2 — Vista del dashboard (delegada, test-first)**: KPIs, alertas de stock y tabla con
-  `KpiCard`/`Alert`/`StockBadge`/`DataTable` sobre el módulo `mock.ts` marcado, estado vacío cuando no
-  hay empresa activa, y sus tests. **No toca `app/layout.tsx` ni ningún archivo del humano.**
+- [x] **U2 — Vista del dashboard.** ✅ Commit `0a9388e` (`feat(web): render the dashboard with declared
+  sample data`). `DashboardView` con KPIs, alertas de stock y tabla de stock crítico sobre `KpiCard`,
+  `Alert`, `DataTable` y `StockBadge`; **la empresa activa es el único dato real** y **todos los números
+  viven en un solo `mock.ts`** detrás de un aviso visible. **No toca `app/layout.tsx` ni ningún archivo
+  del humano.** **Spot check del padre**: 37 suites / 227 tests.
+
+## Verificación de U2 (independiente, `gentle-ai-verify`)
+
+**Sin defectos: los claims sustantivos se sostienen.** El verificador confirmó que el commit toca **4
+archivos y ninguno del humano**; que **todos** los números viven en `mock.ts:27-52,62-75,86-110` y que un
+escaneo de dígitos en la vista no encuentra literales de datos (así que reemplazar el módulo **alcanza**
+para MI-6/MI-9); que la única importación de `../mock` es la vista y su test; que la empresa sale de
+`useActiveCompany` y no del mock; que la composición guardia → shell sigue igual; y que el test de la
+empresa real **fallaría** si el nombre estuviera hardcodeado (usa un nombre que sólo existe en la query
+mockeada).
+
+**Sobre la honestidad del dato (la pregunta decisiva)**: el aviso está **arriba** de los KPIs, nombra las
+tres regiones ("los indicadores, alertas y la tabla muestran números de ejemplo, no los datos reales de tu
+empresa") y se distingue de las alertas de stock por familia de color (`info` vs warning/danger), icono y
+`role="status"` vs `role="alert"`. Veredicto del verificador: **en una vista estática nadie puede leer
+razonablemente esos números como datos del API.**
+
+**Nits que quedan (no defectos), asignados a U3**: (1) el aviso es un **clon estructural** de `Alert` sin
+`data-slot`, se diferencia sólo por color e icono, y un `role="status"` estático puede no anunciarse al
+montar en algunos lectores de pantalla — sería más fuerte como variante `info` real del componente
+(territorio de MI-18) o como disclaimer de página; (2) el test **no asevera la correspondencia por fila**
+del badge: intercambiar dos estados en `mock.ts` seguiría pasando; (3) dos aserciones son vacuas
+(`getByText(...).toBeTruthy()` es no-op después de una query que lanza) y hay valores duplicados a mano en
+vez de derivados de `dashboardKpis`; (4) un test se llama "cannot be mistaken for real data" pero sólo
+asevera texto y rol, nunca distinción visual — **el nombre sobreafirma**. (5) Duplicación real pero
+inocua con el showcase del design system, que ya tenía los mismos números.
 - **U3 — Cierre del circuito (postergada)**: `/` deja de ser placeholder y redirige a `/dashboard`. Se
-  hace cuando la edición del humano en `app/page.tsx` esté commiteada.
+  hace cuando la edición del humano en `app/page.tsx` esté commiteada. **Arrastra los nits de la
+  verificación de U2**: la correspondencia por fila del badge, las dos aserciones vacuas, los valores
+  derivados de `dashboardKpis` en vez de duplicados, y el nombre del test que sobreafirma lo que asevera.
 
 ## Fuera de alcance
 
@@ -113,3 +143,7 @@ este trabajo lo implementa derivándolo, como ya hizo MI-48).
   (trabajo sin commitear del usuario) y el redirect de `/` quedó postergado a U3. Quedan anotados: la
   duplicación real de theme toggle (decisión del usuario) y que la guardia protege por composición, no por
   layout de route group.
+- 2026-10-07 — **U2 hecha y verificada** (`0a9388e`, sin defectos). El verificador confirmó que el mock es
+  reemplazable en un solo módulo y que el aviso de datos de muestra **no se puede confundir** con datos
+  reales. Los nits de fuerza de test quedan asignados a U3 para amortizar el ciclo de verificación.
+  **MI-20 queda completa salvo el redirect de `/`** (U3), postergado por el trabajo sin commitear del usuario.

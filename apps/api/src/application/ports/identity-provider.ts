@@ -20,8 +20,40 @@ export interface IdentityTokens {
 	expiresIn: number;
 }
 
+/**
+ * The identity of a person as reported by the identity provider, read back
+ * with the access token the provider just issued.
+ *
+ * `emailVerified` is always a boolean: a missing `email_verified` in the
+ * provider payload is treated as `false` (absence of proof is not proof).
+ */
+export interface Identity {
+	auth0Sub: string;
+	email: string;
+	emailVerified: boolean;
+}
+
 export interface IdentityProvider {
 	exchangePasswordCredentials(
 		credentials: IdentityProviderCredentials,
 	): Promise<IdentityTokens>;
+
+	/**
+	 * Creates an account in the provider's user database.
+	 *
+	 * The caller gets nothing meaningful back: a rejection is reported as a
+	 * dedicated error whose message is a fixed constant, and the HTTP layer
+	 * turns both success and rejection into the same uniform response.
+	 */
+	signUp(credentials: IdentityProviderCredentials): Promise<void>;
+
+	/**
+	 * Reads the verified identity behind an access token.
+	 *
+	 * Any failure — including a provider rejection — maps to
+	 * `IdentityProviderUnavailableError`: the person already authenticated
+	 * successfully, so failing to read the profile is our problem, not
+	 * "invalid credentials".
+	 */
+	getIdentity(accessToken: string): Promise<Identity>;
 }

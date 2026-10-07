@@ -1,7 +1,7 @@
 # Plan de trabajo — Inventory Manager
 
 **Generado:** 2026-10-06 · **Fuente:** Jira proyecto `MI` (55 issues) + estado real del repo + `docs/stack.md`
-**Estado:** 17 `Done` · 2 `In Progress` · **36 `To Do`**
+**Estado:** 18 `Done` · 2 `In Progress` · **35 `To Do`**
 
 Este documento es el mapa de lo que falta, ordenado por **dependencia**, no por fase. El roadmap por
 fases vive en [`Project.md`](./Project.md#-roadmap--fases); acá está qué bloquea a qué y qué
@@ -83,7 +83,7 @@ Dependencias internas: **MI-42 depende de MI-35** (hecho). MI-51 pertenece a MI-
 
 | Padre | Subtareas nuevas | Total |
 | --- | --- | --- |
-| **MI-3** Autenticación | MI-44 registro + bootstrap · MI-45 asignar con rol · MI-46 aceptar asignación · MI-47 reglas de autorización · MI-48 estado "sin empresas" · ~~MI-52 login (ROPG)~~ ✅ · ~~MI-53 register~~ ✅ · MI-54 logout · MI-55 rate limiting | 9 |
+| **MI-3** Autenticación | ~~MI-44 registro + bootstrap~~ ✅ · MI-45 asignar con rol · MI-46 aceptar asignación · MI-47 reglas de autorización · MI-48 estado "sin empresas" · ~~MI-52 login (ROPG)~~ ✅ · ~~MI-53 register~~ ✅ · MI-54 logout · MI-55 rate limiting | 9 |
 | **MI-4** CRUD de Empresas | MI-49 invariante del último `OWNER` | 1 |
 | **MI-5** Middleware de aislamiento | MI-50 validar membership en cada request | 1 |
 

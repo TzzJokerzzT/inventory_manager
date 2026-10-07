@@ -1,5 +1,9 @@
 import { ApiError } from "./client";
-import { parseCompaniesResponse, parseLoginResponse } from "./schemas";
+import {
+	parseCompaniesResponse,
+	parseCompany,
+	parseLoginResponse,
+} from "./schemas";
 
 describe("parseLoginResponse", () => {
 	it("returns the access token and its lifetime", () => {
@@ -62,5 +66,21 @@ describe("parseCompaniesResponse", () => {
 		expect(() =>
 			parseCompaniesResponse([{ id: "c1", name: "Primera", createdAt: 123 }]),
 		).toThrow(/respuesta inesperada/);
+	});
+});
+
+describe("parseCompany", () => {
+	it("returns the created company", () => {
+		const parsed = parseCompany({
+			id: "company-1",
+			name: "Acme",
+			createdAt: "2026-10-06T00:00:00.000Z",
+		});
+
+		expect(parsed.name).toBe("Acme");
+	});
+
+	it("rejects a company whose shape changed", () => {
+		expect(() => parseCompany({ id: "company-1" })).toThrow(ApiError);
 	});
 });

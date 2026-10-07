@@ -71,3 +71,18 @@ export function parseCompaniesResponse(data: unknown): CompaniesResponse {
 
 	return result.output;
 }
+
+/**
+ * Validates a single company, for the responses that return one (the creation).
+ *
+ * It exists so the created company goes through the same boundary as the listed
+ * ones: a cast here would let a shape change reach the store unnoticed.
+ */
+export function parseCompany(data: unknown): Company {
+	const result = safeParse(companySchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}

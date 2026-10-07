@@ -2,6 +2,7 @@ import type { ErrorRequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ValiError } from "valibot";
 import { DomainError } from "../../../domain/errors/domain-error.js";
+import { EmailNotVerifiedError } from "../../../domain/errors/email-not-verified-error.js";
 import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
 import { InvalidCredentialsError } from "../../../domain/errors/invalid-credentials-error.js";
 
@@ -83,6 +84,16 @@ export const errorHandler: ErrorRequestHandler = (
 	if (error instanceof IdentityProviderUnavailableError) {
 		response.status(StatusCodes.SERVICE_UNAVAILABLE).json({
 			error: { message: error.message },
+		});
+		return;
+	}
+
+	if (error instanceof EmailNotVerifiedError) {
+		// The `code` is what lets the web client distinguish this 403 from any
+		// other. The fixed message is the human-facing text; the code is the
+		// machine-readable discriminator.
+		response.status(StatusCodes.FORBIDDEN).json({
+			error: { message: error.message, code: "email_not_verified" },
 		});
 		return;
 	}

@@ -9,11 +9,13 @@ import axios, { type AxiosInstance } from "axios";
  */
 export class ApiError extends Error {
 	readonly status?: number;
+	readonly code?: string;
 
-	constructor(message: string, status?: number) {
+	constructor(message: string, status?: number, code?: string) {
 		super(message);
 		this.name = "ApiError";
 		this.status = status;
+		this.code = code;
 	}
 }
 
@@ -45,6 +47,26 @@ function readApiMessage(data: unknown): string | undefined {
 		: undefined;
 }
 
+/**
+ * Reads the API's machine-readable error code: `{ error: { code } }`.
+ *
+ * It is optional (most errors only carry a message), so anything else is
+ * treated as "no code".
+ */
+function readApiCode(data: unknown): string | undefined {
+	if (typeof data !== "object" || data === null) {
+		return undefined;
+	}
+
+	const error = (data as { error?: unknown }).error;
+	if (typeof error !== "object" || error === null) {
+		return undefined;
+	}
+
+	const code = (error as { code?: unknown }).code;
+	return typeof code === "string" && code.trim() !== "" ? code : undefined;
+}
+
 function toApiError(error: unknown): unknown {
 	const code = axios.isAxiosError(error) ? error.code : undefined;
 	if (axios.isCancel(error) || code === "ERR_CANCELED") {
@@ -64,6 +86,7 @@ function toApiError(error: unknown): unknown {
 	return new ApiError(
 		readApiMessage(error.response?.data) ?? FALLBACK_MESSAGE,
 		status,
+		readApiCode(error.response?.data),
 	);
 }
 

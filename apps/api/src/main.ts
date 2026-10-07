@@ -1,10 +1,12 @@
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
+import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
+import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { buildApp } from "./interfaces/http/app.js";
 import {
 	type AuthCookieOptions,
@@ -17,6 +19,7 @@ import { createRequireAuth } from "./interfaces/http/middlewares/require-auth.js
 // adapter stays available for the test suite, which injects it directly.
 const prisma = createPrismaClient();
 const companyRepository = new PrismaCompanyRepository({ prisma });
+const userRepository = new PrismaUserRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
 // but both the login endpoint and the protected routes cannot work without
@@ -54,7 +57,11 @@ const corsOrigin = env.webOrigin ?? "http://localhost:3000";
 const app = buildApp({
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
-	loginWithCredentials: new LoginWithCredentialsUseCase({ identityProvider }),
+	loginWithCredentials: new LoginWithCredentialsUseCase({
+		identityProvider,
+		userRepository,
+	}),
+	registerUser: new RegisterUserUseCase({ identityProvider }),
 	requireAuth: createRequireAuth({
 		issuerBaseURL: `https://${domain}/`,
 		audience,

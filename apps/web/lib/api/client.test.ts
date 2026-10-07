@@ -72,6 +72,32 @@ describe("error normalization", () => {
 		});
 	});
 
+	it("captures the machine-readable code when the API sends one", async () => {
+		const client = clientWithAdapter(async () => {
+			throw axiosErrorWith(403, {
+				error: { message: "Email not verified", code: "email_not_verified" },
+			});
+		});
+
+		await expect(client.post("/auth/login")).rejects.toMatchObject({
+			name: "ApiError",
+			message: "Email not verified",
+			status: 403,
+			code: "email_not_verified",
+		});
+	});
+
+	it("leaves the code undefined when the API sends none", async () => {
+		const client = clientWithAdapter(async () => {
+			throw axiosErrorWith(401, { error: { message: "Invalid credentials" } });
+		});
+
+		const error = await client.post("/auth/login").catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ApiError);
+		expect((error as ApiError).code).toBeUndefined();
+	});
+
 	it("falls back to a generic message when the API sends none", async () => {
 		const client = clientWithAdapter(async () => {
 			throw axiosErrorWith(502, "<html>Bad gateway</html>");

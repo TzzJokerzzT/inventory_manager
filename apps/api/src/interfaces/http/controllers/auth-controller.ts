@@ -2,7 +2,8 @@ import type { RequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { parse } from "valibot";
 import type { LoginWithCredentialsUseCase } from "../../../application/use-cases/login-with-credentials.js";
-import { loginSchema } from "../validators/auth-validator.js";
+import type { RegisterUserUseCase } from "../../../application/use-cases/register-user.js";
+import { loginSchema, registerSchema } from "../validators/auth-validator.js";
 
 /**
  * Name of the cookie that carries the refresh token. It is `httpOnly`, so an
@@ -35,11 +36,13 @@ export interface AuthCookieOptions {
 
 export interface AuthControllerDependencies {
 	loginWithCredentials: LoginWithCredentialsUseCase;
+	registerUser: RegisterUserUseCase;
 	cookieOptions: AuthCookieOptions;
 }
 
 export interface AuthController {
 	login: RequestHandler;
+	register: RequestHandler;
 }
 
 export function createAuthController(
@@ -66,6 +69,22 @@ export function createAuthController(
 				response.status(StatusCodes.OK).json({
 					accessToken: tokens.accessToken,
 					expiresIn: tokens.expiresIn,
+				});
+			} catch (error) {
+				next(error);
+			}
+		},
+		register: async (request, response, next) => {
+			try {
+				const input = parse(registerSchema, request.body);
+				await dependencies.registerUser.execute(input);
+
+				// Uniform, honest body: the use case returns the same thing for
+				// a created account and a rejected sign up, so this response is
+				// identical by construction and reveals neither whether the
+				// email already existed nor why it was rejected.
+				response.status(StatusCodes.CREATED).json({
+					message: "If the address is new, we sent a verification email.",
 				});
 			} catch (error) {
 				next(error);

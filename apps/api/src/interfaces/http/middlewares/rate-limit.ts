@@ -34,3 +34,23 @@ export function createAuthLoginRateLimiter() {
 		limit: AUTH_LOGIN_RATE_LIMIT,
 	});
 }
+
+/**
+ * Attempts allowed against `POST /auth/register` per window. Registration is
+ * open, so the endpoint needs the same dedicated, stricter family as login:
+ * a bot can otherwise burn quota creating accounts. The limit is intentionally
+ * independent from the login counter, so flooding one endpoint does not lock
+ * out the other.
+ */
+export const AUTH_REGISTER_RATE_LIMIT = 5;
+
+/**
+ * Dedicated limiter for the registration endpoint, mirroring the login
+ * limiter (same window, same strictness, separate counter).
+ */
+export function createAuthRegisterRateLimiter() {
+	return rateLimit({
+		windowMs: 15 * 60 * 1000,
+		limit: AUTH_REGISTER_RATE_LIMIT,
+	});
+}

@@ -6,6 +6,7 @@ import morgan from "morgan";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
+import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import {
 	type AuthCookieOptions,
 	createAuthController,
@@ -20,6 +21,7 @@ export interface AppDependencies {
 	createCompany: CreateCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
 	loginWithCredentials: LoginWithCredentialsUseCase;
+	registerUser: RegisterUserUseCase;
 	requireAuth: RequestHandler;
 	authCookieOptions: AuthCookieOptions;
 	/**
@@ -61,6 +63,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 			company: createCompanyController(dependencies),
 			auth: createAuthController({
 				loginWithCredentials: dependencies.loginWithCredentials,
+				registerUser: dependencies.registerUser,
 				cookieOptions: dependencies.authCookieOptions,
 			}),
 			requireAuth: dependencies.requireAuth,

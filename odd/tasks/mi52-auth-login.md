@@ -161,10 +161,14 @@ vive en `infrastructure/auth0/`, igual que `PrismaCompanyRepository` vive en `in
   `WWW-Authenticate`. Los claims del access token traen
   `aud: ["https://inventory-manager-api", "https://dev-…/userinfo"]`, que es lo que hace que
   `requireAuth` lo acepte. Comentario `10047` en Jira.
-  **Límite que queda (uno solo)**: el **refresh token**. El token endpoint devuelve
-  `scope: "openid profile email"` y `refresh_token` ausente aunque pedimos `offline_access` → falta
-  **`Allow Offline Access`** en la API de Auth0. El código hace lo correcto (solo setea la cookie si
-  el proveedor devolvió un refresh token, con test), pero la sesión larga todavía no existe.
+  **Límite que quedaba (ya cerrado)**: el **refresh token** llegó cuando el usuario habilitó
+  **`Allow Offline Access`** en la API de Auth0. La corrida final da `scope: "openid profile email
+  offline_access"`, **cookie del refresh con `HttpOnly`, `Path=/auth` y `SameSite=Lax`** (`Secure`
+  ausente porque la corrida fue en desarrollo), y `GET /companies` con el token → 200. **No queda ningún
+  límite declarado en esta tarea.** Comentarios `10047` y `10048` en Jira.
+  **Síntoma engañoso que vale recordar**: sin `Allow Offline Access`, Auth0 **descarta
+  `offline_access` en silencio** en vez de devolver error, así que el login funciona y lo único que
+  falta es el refresh token. Se detecta mirando el `scope` del token emitido, no el status HTTP.
 - **Hallazgo para MI-53**: `/userinfo` **acepta nuestro access token** (HTTP 200 con `sub`, `email` y
   `email_verified`), porque la API lo incluye en el `aud`. Eso significa que el gate de
   `email_verified` se puede implementar con `/userinfo` sobre el token que ya tenemos, **sin validar el

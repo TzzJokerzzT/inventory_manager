@@ -10,9 +10,8 @@ import { NoCompaniesState } from "@/src/features/company/components/no-companies
  * `/sin-empresas` — the bootstrap state for a user with no companies.
  *
  * Inverse rule: if the user already has companies, this screen is not for them
- * and they go to `/`. Note that `/` is a placeholder until MI-20 lands the
- * dashboard view — the flow is not finished, and this redirect is the
- * intentional counterpart of `RequireActiveCompany`.
+ * and they go to `/dashboard`. This redirect is the intentional counterpart of
+ * `RequireActiveCompany`.
  */
 export default function SinEmpresasPage() {
 	const router = useRouter();
@@ -20,7 +19,7 @@ export default function SinEmpresasPage() {
 
 	useEffect(() => {
 		if (!isPending && (companies?.length ?? 0) > 0) {
-			router.replace("/");
+			router.replace("/dashboard");
 		}
 	}, [isPending, companies, router]);
 

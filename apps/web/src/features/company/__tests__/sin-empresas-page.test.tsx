@@ -47,12 +47,12 @@ describe("SinEmpresasPage", () => {
 		mockCompanies();
 	});
 
-	it("redirects to the dashboard placeholder when the user has companies", () => {
+	it("redirects to /dashboard when the user has companies", () => {
 		mockCompanies({ data: [company("c1", "Primera")] });
 
 		render(<SinEmpresasPage />);
 
-		expect(replace).toHaveBeenCalledWith("/");
+		expect(replace).toHaveBeenCalledWith("/dashboard");
 	});
 
 	it("shows the loading state while the companies query is pending", () => {

@@ -12,9 +12,9 @@ import { useCompanies } from "../api/use-companies";
 /**
  * Wraps routes that need an active company.
  *
- * Ready to wrap the dashboard (MI-20/MI-28): those views do not exist yet, so
- * nothing mounts it today. It waits for the session bootstrap to resolve before
- * deciding, then handles its four states:
+ * `/dashboard` (MI-20) mounts it around the app shell so no internal route
+ * renders without an active company. It waits for the session bootstrap to
+ * resolve before deciding, then handles its four states:
  * - loading → a loading state, not a route jump, so nothing flickers;
  * - error → a message with a retry;
  * - zero companies → redirect to `/sin-empresas`;

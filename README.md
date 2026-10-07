@@ -19,8 +19,8 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 ⚠️ **El proyecto está en construcción.** Las dos aplicaciones ya existen y el tooling está
 funcionando. **La capa de datos (Prisma + Supabase) y la validación JWT de Auth0 ya están
 configuradas** (schema, migración aplicada, adaptador y middleware `requireAuth` sobre `/companies`);
-quedan pendientes **el almacenamiento (Cloudinary)** y los endpoints de registro y logout (MI-53 y
-MI-54).
+quedan pendientes **el almacenamiento (Cloudinary)**, el logout (MI-54) y el resto de la Fase 1 (MI-44
+a MI-51, MI-55).
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |

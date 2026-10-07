@@ -124,7 +124,10 @@ describe("LoginPage", () => {
 		fill({ email: "ana@empresa.com", password: " pass word 123 " });
 		submit();
 
-		expect(mutate).toHaveBeenCalledWith({
+		// Only the first argument is the payload; the call may also carry a
+		// second options argument (the form is adding one for the toast), and
+		// asserting the whole call would couple this test to that shape.
+		expect(mutate.mock.calls[0][0]).toEqual({
 			email: "ana@empresa.com",
 			password: " pass word 123 ",
 		});

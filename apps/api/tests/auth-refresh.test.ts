@@ -110,6 +110,7 @@ function createTestApp(options: {
 		}),
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
+		requireCompanyContext: passthroughAuth,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: "http://localhost:3000",
 	});

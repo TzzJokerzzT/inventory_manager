@@ -4,16 +4,25 @@ import { parse } from "valibot";
 import type { CreateCompanyUseCase } from "../../../application/use-cases/create-company.js";
 import type { ListCompaniesUseCase } from "../../../application/use-cases/list-companies.js";
 import type { User } from "../../../domain/entities/user.js";
+import {
+	COMPANY_CONTEXT_FORBIDDEN_CODE,
+	COMPANY_CONTEXT_FORBIDDEN_MESSAGE,
+} from "../../../domain/errors/company-context-forbidden-error.js";
+import type { CompanyContext } from "../middlewares/require-company-context.js";
 import { createCompanySchema } from "../validators/company-validator.js";
 
 export interface CompanyControllerDependencies {
 	createCompany: CreateCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
+	/** Mounted on `/companies/:companyId/*` ahead of the context handler. */
+	requireCompanyContext: RequestHandler;
 }
 
 export interface CompanyController {
 	create: RequestHandler;
 	list: RequestHandler;
+	context: RequestHandler;
+	requireCompanyContext: RequestHandler;
 }
 
 /**
@@ -29,6 +38,21 @@ function resolvedUser(request: Request): User {
 		);
 	}
 	return user;
+}
+
+/**
+ * The resolved company context the context handler is guaranteed to have:
+ * `requireCompanyContext` runs before it, so a missing context is a
+ * programming error, not a forbidden access to manufacture.
+ */
+function resolvedCompanyContext(request: Request): CompanyContext {
+	const context = request.companyContext;
+	if (context === undefined) {
+		throw new Error(
+			"requireCompanyContext must run before the company context handler; the route wiring guarantees a resolved context",
+		);
+	}
+	return context;
 }
 
 /**
@@ -64,5 +88,36 @@ export function createCompanyController(
 				next(error);
 			}
 		},
+		context: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+				const context = resolvedCompanyContext(request);
+
+				const companies = await dependencies.listCompanies.execute(user.id);
+				const company = companies.find(
+					(candidate) => candidate.id === context.companyId,
+				);
+
+				if (company === undefined) {
+					// Fail closed: `requireCompanyContext` already proved an ACTIVE
+					// membership, and the company list reads the same membership
+					// table, so this branch is unreachable in a consistent store.
+					// If they disagree, answer the same uniform 403 rather than a
+					// half-built payload.
+					response.status(StatusCodes.FORBIDDEN).json({
+						error: {
+							message: COMPANY_CONTEXT_FORBIDDEN_MESSAGE,
+							code: COMPANY_CONTEXT_FORBIDDEN_CODE,
+						},
+					});
+					return;
+				}
+
+				response.status(StatusCodes.OK).json({ company, role: context.role });
+			} catch (error) {
+				next(error);
+			}
+		},
+		requireCompanyContext: dependencies.requireCompanyContext,
 	};
 }

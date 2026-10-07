@@ -26,6 +26,7 @@ export interface AppDependencies {
 	refreshSession: RefreshSessionUseCase;
 	requireAuth: RequestHandler;
 	requireUser: RequestHandler;
+	requireCompanyContext: RequestHandler;
 	authCookieOptions: AuthCookieOptions;
 	/**
 	 * Browser origin allowed to call the API. It has to be an explicit origin

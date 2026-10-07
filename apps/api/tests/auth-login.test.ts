@@ -147,6 +147,7 @@ function createTestApp(options: {
 		}),
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
+		requireCompanyContext: passthroughAuth,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: TEST_WEB_ORIGIN,
 	});

@@ -6,10 +6,12 @@ import type {
 
 /**
  * The membership facts the bootstrap writes. This is an adapter-internal
- * record, not a domain entity: nothing reads or manipulates memberships yet
- * (MI-45 introduces the real entity when it needs one). It is exposed only so
- * the test suite can assert the bootstrap rule the way production's database
- * CHECK would.
+ * record, not the `Membership` domain entity: the company repository only
+ * ever writes the bootstrap OWNER membership and never reads membership
+ * state back. The entity that mirrors the table and serves the membership
+ * lookups is `Membership` (MI-50). This record is exposed only so the test
+ * suite can assert the bootstrap rule the way production's database CHECK
+ * would.
  */
 export interface InMemoryMembership {
 	userId: string;

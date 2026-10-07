@@ -50,7 +50,7 @@ describe("InMemoryMembershipRepository", () => {
 		const repository = new InMemoryMembershipRepository();
 		repository.save(
 			Membership.create({
-				userId: null,
+				userId: "user-1",
 				invitedEmail: "pending@example.com",
 				companyId: "company-1",
 				role: "MEMBER",

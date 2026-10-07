@@ -101,6 +101,7 @@ function createTestApp(provider: IdentityProvider) {
 		refreshSession: new RefreshSessionUseCase({ identityProvider: provider }),
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
+		requireCompanyContext: passthroughAuth,
 		authCookieOptions: defaultCookieOptions,
 		corsOrigin: "http://localhost:3000",
 	});

@@ -7,6 +7,7 @@ import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
+import { PrismaMembershipRepository } from "./infrastructure/database/prisma-membership-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { buildApp } from "./interfaces/http/app.js";
 import {
@@ -14,6 +15,7 @@ import {
 	REFRESH_TOKEN_MAX_AGE_MS,
 } from "./interfaces/http/controllers/auth-controller.js";
 import { createRequireAuth } from "./interfaces/http/middlewares/require-auth.js";
+import { createRequireCompanyContext } from "./interfaces/http/middlewares/require-company-context.js";
 import { createRequireUser } from "./interfaces/http/middlewares/require-user.js";
 
 // Composition root: the only place where concrete implementations are chosen.
@@ -22,6 +24,7 @@ import { createRequireUser } from "./interfaces/http/middlewares/require-user.js
 const prisma = createPrismaClient();
 const companyRepository = new PrismaCompanyRepository({ prisma });
 const userRepository = new PrismaUserRepository({ prisma });
+const membershipRepository = new PrismaMembershipRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
 // but both the login endpoint and the protected routes cannot work without
@@ -70,6 +73,7 @@ const app = buildApp({
 		audience,
 	}),
 	requireUser: createRequireUser({ userRepository }),
+	requireCompanyContext: createRequireCompanyContext({ membershipRepository }),
 	authCookieOptions,
 	corsOrigin,
 });

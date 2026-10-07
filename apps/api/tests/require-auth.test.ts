@@ -45,6 +45,7 @@ describe("requireAuth on the company routes", () => {
 				audience: TEST_AUDIENCE,
 			}),
 			requireUser: createRequireUser({ userRepository }),
+			requireCompanyContext: (_request, _response, next) => next(),
 			corsOrigin: TEST_WEB_ORIGIN,
 		});
 	}

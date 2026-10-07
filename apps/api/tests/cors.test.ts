@@ -31,6 +31,7 @@ function createTestApp() {
 		refreshSession: {} as never,
 		requireAuth: (_request, _response, next) => next(),
 		requireUser: (_request, _response, next) => next(),
+		requireCompanyContext: (_request, _response, next) => next(),
 		authCookieOptions: cookieOptions,
 		corsOrigin: ALLOWED_ORIGIN,
 	});

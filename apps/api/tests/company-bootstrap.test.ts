@@ -50,6 +50,7 @@ describe("company bootstrap", () => {
 				audience: TEST_AUDIENCE,
 			}),
 			requireUser: createRequireUser({ userRepository }),
+			requireCompanyContext: (_request, _response, next) => next(),
 			corsOrigin: TEST_WEB_ORIGIN,
 		});
 
@@ -128,6 +129,7 @@ describe("company bootstrap", () => {
 		const controller = createCompanyController({
 			createCompany: new CreateCompanyUseCase({ companyRepository }),
 			listCompanies: new ListCompaniesUseCase({ companyRepository }),
+			requireCompanyContext: (_request, _response, next) => next(),
 		});
 
 		// Deliberately no requireAuth/requireUser: the controller must fail on

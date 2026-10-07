@@ -592,6 +592,28 @@ usuario y tienen que seguir siendo legibles (MOV-05).
 | Crear empresa | cualquier usuario autenticado (bootstrap) |
 | Ver usuarios | sólo los de **sus** empresas |
 
+#### El bootstrap, implementado (MI-44)
+
+El flujo 1 está construido y verificado contra la base real. Tres decisiones que no son detalles:
+
+- **Una empresa nace con dueño, en una sola transacción.** El puerto de empresas ya no expone “crear”
+  sino **“crear con dueño”**, y el adaptador escribe la empresa **y** su membership en un
+  `$transaction`: como el dueño *es* la membership `OWNER` (§5.8), una empresa sin dueño es un estado
+  inválido, no una tarea a medias.
+- **La auto-referencia del bootstrap**: la membership del creador se guarda con `invited_by = su propio
+  user_id`, porque nadie lo invitó. Parece un bug cuando se lee después, así que está comentado en el
+  código. Se crea `ACTIVE` con `accepted_at`, porque a tu propia empresa no hace falta aceptarte una
+  invitación, y con el `invited_email` en minúsculas, que es lo que exige el `CHECK`.
+- **`GET /companies` devuelve sólo las empresas de las que el usuario es miembro.** No es un extra: con
+  las membresías existiendo, la lista global anterior le habría dado a cualquier usuario autenticado
+  **las empresas de todos**, que es exactamente el riesgo que §3.1 marca como el mayor del proyecto.
+  **MI-50** extiende el mismo filtro a productos, clientes y movimientos.
+
+Para poder crear la membership hace falta saber **quién** es el usuario, así que MI-44 incluye la mitad
+“quién” de MI-50: un middleware que traduce el claim `sub` del token a la fila de `users` y responde
+**403 `user_not_provisioned`** si un token válido no tiene fila, en vez de inventar un usuario. La otra
+mitad —a qué empresa puede acceder y con qué rol en cada request— sigue siendo de MI-50.
+
 #### Los cuatro flujos
 
 1. **Primer usuario (bootstrap).** Se registra → crea su empresa → membership `OWNER` `ACTIVE`. Sin

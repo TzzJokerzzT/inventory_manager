@@ -67,22 +67,29 @@ memberships en memoria.
 
 ## Tareas
 
-- [ ] **T1 — Membership + `createOwnedBy`.** Entidad/puerto/adaptador de membership en memoria y en
-  Prisma (transacción, OWNER + ACTIVE + auto-referencia), y el cambio del puerto de empresas.
-  Superficies: `apps/api/src/domain/repositories/**`, `apps/api/src/infrastructure/database/**`.
-- [ ] **T2 — `requireUser`.** Middleware + el error de usuario no provisionado, cableado en el
-  composition root. Superficies: `apps/api/src/interfaces/http/middlewares/**`,
-  `apps/api/src/interfaces/http/routes/**`, `apps/api/src/interfaces/http/app.ts`,
-  `apps/api/src/main.ts`.
-- [ ] **T3 — Endpoints.** `POST /companies` crea con dueño; `GET /companies` lista sólo las del
-  usuario. Superficies: `apps/api/src/application/use-cases/**`,
-  `apps/api/src/interfaces/http/controllers/company-controller.ts`.
-- [ ] **T4 — Tests.** Bootstrap (crea empresa + membership OWNER ACTIVE), empresa de otro usuario no
-  aparece en el listado, token sin fila en `users` → 403, y el puerto in-memory respetando la regla.
-- [ ] **T5 — Documentación y Jira.** `docs/stack.md` §5.8, `README.md` si corresponde, y MI-44 en Jira.
-- [ ] **T6 — Verificación contra el tenant y la base.** Con el usuario verificado: crear empresa por el
-  endpoint, comprobar en `psql` la empresa **y** la membership OWNER ACTIVE, y que la lista devuelve
-  sólo la propia. Limpiar las filas de prueba.
+- [x] **T1 — Membership + `createOwnedBy`.** ✅ El puerto de empresas pasó de `create` a
+  **`createOwnedBy(company, owner)`** + `findAllForUser(userId)`. El adaptador de Prisma escribe empresa y
+  membership en **un `$transaction`** (`role = OWNER`, `status = ACTIVE`, `accepted_at`, `invited_email`
+  en minúsculas, `invited_by = user_id` con el comentario de la auto-referencia). El in-memory refleja
+  la regla. **No se creó una entidad `Membership`**: nada la manipula todavía y MI-45 la va a necesitar
+  cuando sí. Commit `d8649eb`.
+- [x] **T2 — `requireUser`.** ✅ Lee el claim `sub`, carga la fila con `UserRepository.findByAuth0Sub` y la
+  adjunta con una **aumentación del `Request`** (`req.user?`), igual que la librería aumenta `req.auth`:
+  es identidad del request, no estado de la respuesta. Si el token es válido y no hay fila → **403
+  `user_not_provisioned`**. Cableado **después** de `requireAuth` en las rutas de empresas. Commit `d8649eb`.
+- [x] **T3 — Endpoints.** ✅ `POST /companies` crea la empresa **con su dueño** y `GET /companies` lista
+  **sólo las del usuario**. El controlador lee el usuario resuelto y **falla fuerte** si el middleware no
+  corrió, con un mensaje que explica que el cableado de la ruta es lo que lo hace seguro. Commit `d8649eb`.
+- [x] **T4 — Tests.** ✅ **112 tests de api** (eran 103). El bootstrap se asserta con **la fila completa**
+  (`role`, `status`, `invited_email` en minúsculas, `invited_by`), no sólo con que la empresa exista; y el
+  aislamiento del listado se asserta **con dos usuarios** (cada uno crea su empresa y cada uno ve
+  únicamente la suya), no con un filtro. Commit `d8649eb`.
+- [x] **T5 — Documentación y Jira.** ✅ `docs/stack.md` §5.8 con el bootstrap implementado y la
+  descripción de MI-44 reescrita.
+- [x] **T6 — Verificación contra el tenant y la base.** ✅ Con el usuario verificado: `POST /companies` →
+  **201**; `GET /companies` → **200 con una sola empresa** (la propia); sin token → **401**; y en la base
+  **`role=OWNER`, `status=ACTIVE`, `invited_email` en minúsculas, `invited_by === user_id` y `accepted_at`
+  presente**. Después se borraron las filas de prueba y todo quedó en 0.
 
 ## Fuera de alcance
 
@@ -95,3 +102,10 @@ los recursos), MI-4 (CRUD de empresas con datos fiscales y de contacto).
 - 2026-10-06 — Documento creado. Dos de los cuatro criterios ya estaban cumplidos por MI-53. Medido:
   `POST /companies` no crea dueño, `GET /companies` no filtra, y no hay forma de resolver el usuario
   desde el token.
+- 2026-10-06 — **T1–T6 hechas** (commit `d8649eb`). El worker **frenó y preguntó** cuando vio que el
+  cambio de puerto de T1 rompía los dos casos de uso que estaban fuera de sus superficies: era correcto,
+  porque el cambio de puerto y el cableado de los endpoints son **una sola unidad atómica**. Se le
+  ampliaron las superficies y se hizo todo junto.
+- 2026-10-06 — **Un hallazgo que este trabajo cerró**: `GET /companies` devolvía **todas** las empresas
+  de la base. Con la autenticación ya cableada, cualquier usuario autenticado veía las empresas de
+  todos. Ahora filtra por membresía, y MI-50 extiende ese filtro al resto de los recursos.

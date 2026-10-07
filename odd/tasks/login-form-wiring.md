@@ -103,6 +103,8 @@ cualquier intento. Hoy no se nota porque nunca hubo request; con el cableado hay
   commits revisables encadenados** y abrir una transacción nueva por candidato chico, o `D` (desactivar
   el switch de review para el clon). Menú de estrategia de entrega presentado al usuario; **decisión
   pendiente**.
+  **Cortes fijados** en `odd/tasks/branch-delivery-chain.md`: 33 slices con rango contiguo de commits y su `baseRef`
+  exacto (9 exceden el presupuesto por commits atómicos; reescribir historia es decisión del usuario).
 
 ## Ruta y presupuesto
 

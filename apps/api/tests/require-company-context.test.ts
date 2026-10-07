@@ -55,6 +55,11 @@ function membership(
 }
 
 describe("requireCompanyContext", () => {
+	// Coverage note: the integration happy path in `company-context.test.ts`
+	// only exercises the OWNER role, because the in-memory company and
+	// membership stores only agree on bootstrap OWNER memberships. MEMBER and
+	// ADMIN role resolution is therefore proven here, at the middleware level
+	// only.
 	it("resolves an ACTIVE membership into { companyId, role }", async () => {
 		const memberApp = createTestApp([membership()]);
 		const adminApp = createTestApp([membership({ role: "ADMIN" })]);

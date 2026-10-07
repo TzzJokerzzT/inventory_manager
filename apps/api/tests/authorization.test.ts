@@ -31,8 +31,15 @@ describe("can(role, action)", () => {
 		it("leaving is allowed for everyone except the last active OWNER", () => {
 			expect(can("MEMBER", "leave")).toBe(true);
 			expect(can("ADMIN", "leave")).toBe(true);
-			expect(can("OWNER", "leave")).toBe(true);
+			expect(can("OWNER", "leave", false)).toBe(true);
 			expect(can("OWNER", "leave", true)).toBe(false);
+		});
+
+		it("denies an OWNER leaving when the last-owner fact is omitted (fail-closed)", () => {
+			// The last-OWNER fact must never default to "not last": a company
+			// with no active OWNER is an unrecoverable state (§5.8, invariant 4),
+			// so forgetting the argument may only deny, never grant.
+			expect(can("OWNER", "leave")).toBe(false);
 		});
 	});
 

@@ -25,13 +25,20 @@ export type AuthorizationAction =
  * - nobody changes their own role, not even the OWNER (`change_own_role`);
  * - leaving is allowed for anyone except the last active OWNER (`leave`). The
  *   "last active OWNER" fact is a membership count, not a role, so it is the
- *   one optional argument the predicate accepts; every other call is the plain
+ *   one extra argument the predicate accepts; every other call is the plain
  *   `can(role, action)`.
+ *
+ * The `isLastActiveOwner` argument is fail-closed on purpose: it defaults to
+ * `true` ("assume this is the last OWNER") so that omitting it can only deny,
+ * never grant. A company with no active OWNER is an unrecoverable state
+ * (§5.8, invariant 4), so the burden of proof is on the caller to pass `false`
+ * when there really is another active OWNER. Do not "simplify" this back to a
+ * permissive default.
  */
 export function can(
 	role: MembershipRole,
 	action: AuthorizationAction,
-	isLastActiveOwner = false,
+	isLastActiveOwner = true,
 ): boolean {
 	switch (action) {
 		case "assign_member":
@@ -45,7 +52,9 @@ export function can(
 			return false;
 		case "leave":
 			// Anyone may leave, except the last active OWNER: a company can
-			// never be left ownerless (§5.8, invariant 4).
+			// never be left ownerless (§5.8, invariant 4). An OWNER is only
+			// allowed to leave when the caller proves this is not the last
+			// OWNER (`isLastActiveOwner === false`).
 			return role !== "OWNER" || !isLastActiveOwner;
 		case "create_company":
 		case "view_users":

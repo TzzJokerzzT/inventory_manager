@@ -1,11 +1,69 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useRouter } from "next/navigation";
 import LoginPage from "@/app/login/page";
+import { ApiError } from "@/lib/api/client";
+import { useLogin } from "@/src/features/auth/api/use-login";
+import { FALLBACK_ERROR } from "@/src/features/login/utils/constants";
+
+jest.mock("next/navigation", () => ({
+	useRouter: jest.fn(),
+}));
+
+jest.mock("@/src/features/auth/api/use-login", () => ({
+	useLogin: jest.fn(),
+}));
+
+const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
+const useLoginMock = useLogin as jest.MockedFunction<typeof useLogin>;
+const replace = jest.fn();
+const mutate = jest.fn();
+
+function mockRouter() {
+	useRouterMock.mockReturnValue({
+		replace,
+		push: jest.fn(),
+		refresh: jest.fn(),
+		back: jest.fn(),
+		forward: jest.fn(),
+		prefetch: jest.fn(),
+	} as unknown as ReturnType<typeof useRouter>);
+}
+
+function mockLogin(state: Partial<ReturnType<typeof useLogin>> = {}) {
+	useLoginMock.mockReturnValue({
+		mutate,
+		isPending: false,
+		isSuccess: false,
+		isError: false,
+		error: undefined,
+		...state,
+	} as unknown as ReturnType<typeof useLogin>);
+}
+
+function fill(values: { email?: string; password?: string }) {
+	fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+		target: { value: values.email ?? "" },
+	});
+	fireEvent.change(screen.getByLabelText("Contraseña"), {
+		target: { value: values.password ?? "" },
+	});
+}
 
 function submit() {
-	fireEvent.click(screen.getByRole("button", { name: "Ingresar al panel" }));
+	fireEvent.click(
+		screen.getByRole("button", {
+			name: /Ingresar al panel|Ingresando al panel/,
+		}),
+	);
 }
 
 describe("LoginPage", () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+		mockRouter();
+		mockLogin();
+	});
+
 	it("resolves both labels to their controls", () => {
 		render(<LoginPage />);
 
@@ -57,25 +115,71 @@ describe("LoginPage", () => {
 		expect(screen.getByText("Ingresá tu contraseña.")).toBeTruthy();
 	});
 
-	it("renders the provisional notice on a valid submit without navigating", () => {
+	it("sends the trimmed email and the raw password to the login hook", () => {
 		render(<LoginPage />);
 
-		fireEvent.change(screen.getByLabelText("Correo electrónico"), {
-			target: { value: "ana@empresa.com" },
-		});
-		fireEvent.change(screen.getByLabelText("Contraseña"), {
-			target: { value: "password123" },
-		});
+		// The password keeps its surrounding spaces on purpose: it must reach
+		// the hook byte-for-byte. The email is already trimmed because the
+		// schema rejects surrounding whitespace before `mutate` is reached.
+		fill({ email: "ana@empresa.com", password: " pass word 123 " });
 		submit();
 
-		expect(screen.getByRole("alert")).toBeTruthy();
-		expect(
-			screen.getByText(/autenticación aún no está disponible/i),
-		).toBeTruthy();
-		expect(screen.getByLabelText("Correo electrónico")).toBeTruthy();
+		expect(mutate).toHaveBeenCalledWith({
+			email: "ana@empresa.com",
+			password: " pass word 123 ",
+		});
 	});
 
-	it("reveals the provisional notice when the forgot-password control is clicked", () => {
+	it("navigates to /sin-empresas on success without disabling the form", () => {
+		mockLogin({ isSuccess: true });
+
+		render(<LoginPage />);
+
+		expect(replace).toHaveBeenCalledWith("/sin-empresas");
+		expect(screen.getByLabelText("Correo electrónico")).not.toHaveProperty(
+			"disabled",
+			true,
+		);
+	});
+
+	it("shows the API message on an ApiError failure and does not navigate", () => {
+		mockLogin({
+			isError: true,
+			error: new ApiError("Invalid credentials", 401),
+		});
+
+		render(<LoginPage />);
+
+		expect(screen.getByText("No pudimos iniciar sesión")).toBeTruthy();
+		expect(screen.getByText("Invalid credentials")).toBeTruthy();
+		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it("shows the generic fallback on a non-ApiError failure", () => {
+		mockLogin({ isError: true, error: new Error("network down") });
+
+		render(<LoginPage />);
+
+		expect(screen.getByText(FALLBACK_ERROR)).toBeTruthy();
+		expect(replace).not.toHaveBeenCalled();
+	});
+
+	it("does not leave the fields disabled after a failed submit", () => {
+		render(<LoginPage />);
+
+		submit();
+
+		expect(screen.getByLabelText("Correo electrónico")).not.toHaveProperty(
+			"disabled",
+			true,
+		);
+		expect(screen.getByLabelText("Contraseña")).not.toHaveProperty(
+			"disabled",
+			true,
+		);
+	});
+
+	it("renders the recovery notice for the forgot-password control without leaking internal ticket references", () => {
 		render(<LoginPage />);
 
 		fireEvent.click(
@@ -84,20 +188,8 @@ describe("LoginPage", () => {
 
 		expect(screen.getByRole("alert")).toBeTruthy();
 		expect(
-			screen.getByText(/autenticación aún no está disponible/i),
+			screen.getByText(/recuperación de contraseña aún no está disponible/i),
 		).toBeTruthy();
-	});
-
-	it("keeps internal ticket references out of the provisional notice", () => {
-		render(<LoginPage />);
-
-		fireEvent.change(screen.getByLabelText("Correo electrónico"), {
-			target: { value: "ana@empresa.com" },
-		});
-		fireEvent.change(screen.getByLabelText("Contraseña"), {
-			target: { value: "password123" },
-		});
-		submit();
 
 		const alert = screen.getByRole("alert");
 		expect(/\bMI-\d+\b/.test(alert.textContent ?? "")).toBe(false);

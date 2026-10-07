@@ -70,21 +70,30 @@ MI-20). Queda documentado para que no se lea como un agujero.
 
 ## Tareas
 
-- [ ] **T1 — Capa de estado.** `useCompanies` + esquema de frontera + store de empresa activa + los dos
-  predicados, con tests de las tres reglas (cero, una, dos o más).
-  Superficies: `apps/web/lib/api/schemas.ts`, `apps/web/src/features/company/api/**`,
-  `apps/web/src/features/company/store/**`.
-- [ ] **T2 — Switch de empresa.** Componente que **no se renderiza** con 0 o 1 empresa y con 2+ muestra
-  el trigger del mockup y permite cambiar la activa.
-  Superficies: `apps/web/src/features/company/components/company-switcher.tsx`.
-- [ ] **T3 — Pantalla y ruta.** `/sin-empresas` con el formulario de creación y la alternativa de
-  esperar asignación. Superficies: `apps/web/app/sin-empresas/**`,
-  `apps/web/src/features/company/components/no-companies-state.tsx`.
-- [ ] **T4 — Guardia.** `RequireActiveCompany` con sus cuatro estados.
-  Superficies: `apps/web/src/features/company/components/require-active-company.tsx`.
-- [ ] **T5 — Tests.** Reglas de selección, visibilidad del switch, creación de empresa (éxito y error),
-  y la guardia redirigiendo con cero empresas y renderizando con una.
-- [ ] **T6 — Documentación y Jira.** `docs/stack.md` (§1.3 o §5.8) y MI-48 en Jira.
+- [x] **T1 — Capa de estado.** ✅ `parseCompaniesResponse` en la frontera, `useCompanies`, store de empresa
+  activa y **reglas derivadas** (`selectActiveCompany`, `shouldShowCompanySwitcher`) sin ningún `useEffect`
+  que sincronice: cero empresas → ninguna activa; el id guardado si sigue en la lista; si desapareció, la
+  primera. El access token llega al cliente por un **getter que entrega el feature de auth** (el cliente no
+  puede importar un feature) y lo pasan **los tres hooks** que pueden ser el primer llamador, porque el
+  cliente captura sus opciones una sola vez: dejarlo al primero que corra haría que el header dependa del
+  orden de import y produjera un 401 irreproducible. Commit `b266e1b`.
+- [x] **T2 — Switch de empresa.** ✅ No se renderiza con 0 ni con 1 empresa (criterio 3), y con 2+ muestra
+  el trigger del mockup y permite cambiar la activa. Commit `b266e1b`.
+- [x] **T3 — Pantalla y ruta.** ✅ `/sin-empresas` con la tarjeta derivada del dashboard, el formulario de
+  creación (invalida la lista y deja la empresa activa) y la alternativa de esperar una asignación.
+  Commit `a18e233`.
+- [x] **T4 — Guardia.** ✅ `RequireActiveCompany` con sus cuatro estados, lista para envolver el dashboard
+  cuando exista. **Bug que el worker encontró y corrigió en el camino**: redirigía a `/sin-empresas` ante
+  **cualquier** error, porque `data` es `undefined` cuando hay error; ahora la redirección está condicionada
+  a que no haya error. Commit `a18e233`.
+- [x] **T5 — Tests.** ✅ **187 tests de web** (eran 144 al empezar la tarea): reglas de selección
+  (cero/una/varias/id desaparecido), visibilidad del switch (0/1/2+), creación de empresa (éxito, error,
+  estado ocupado), guardia (hijos, cero empresas, 401, carga, error con reintento) y la regla inversa de
+  la página. Commits `b266e1b` y `a18e233`.
+- [x] **T6 — Documentación y Jira.** ✅ `docs/stack.md` §1.3 y MI-48 en Jira.
+- **Hueco declarado que cerré yo**: el worker devolvió la empresa creada con un `as Company` porque
+  `lib/api/schemas.ts` estaba fuera de sus superficies. Agregué `parseCompany` para que la empresa creada
+  pase por la misma frontera que las listadas: un cast ahí dejaría pasar un cambio de forma hasta el store.
 
 ## Fuera de alcance
 
@@ -96,3 +105,11 @@ aceptación de asignaciones pendientes (MI-46), y el diseño del estado en el `.
 - 2026-10-06 — Documento creado. Medido: el backend ya soporta el flujo, el dashboard y el shell no
   existen, y el estado no está diseñado. Decisiones del usuario: alcance completo con pantalla derivada,
   y ruta propia con guardia.
+- 2026-10-06 — **T1–T6 hechas** (commits `b266e1b`, `a18e233`). El worker **frenó dos veces por
+  superficies** y las dos veces tenía razón: primero porque el test del switch no tenía hogar (se le
+  aprobó la convención `src/features/<x>/__tests__/`), y antes porque el cambio de puerto de MI-44 rompía
+  consumidores fuera de sus superficies. **Regla**: el test de un componente vive en el `__tests__` de su
+  feature; hay que incluirlo en las superficies desde el vamos.
+- 2026-10-06 — **Lo que `/` renderiza hoy es un placeholder** (`<h1>Home</h1>`), así que la regla inversa
+  de `/sin-empresas` y el destino del 401 apuntan ahí y a `/login`. Queda comentado en el código para que
+  no se lea como un flujo terminado.

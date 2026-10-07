@@ -74,6 +74,9 @@
 | Estado local | `apps/web/src/features/auth/store/session-store.ts` | Sólo el **access token, en memoria**. El refresh vive en la cookie `httpOnly`; `localStorage` queda descartado porque un XSS se llevaría la sesión |
 | Formularios | `apps/web/lib/auth/validation.ts` | Valibot con los mensajes del UI; el contrato es el mismo que consumían las vistas |
 | Peticiones de auth | `apps/web/src/features/auth/api/{use-login,use-register}.ts` | `useMutation` sobre el cliente, con la validación de frontera y el store |
+| Empresas del usuario | `apps/web/src/features/company/api/use-companies.ts` | `GET /companies` (ya viene **filtrado por membresía** desde MI-44) con validación de frontera |
+| Empresa activa | `apps/web/src/features/company/store/company-selectors.ts` | Las reglas de selección son una **lectura derivada**, no un efecto: cero empresas → ninguna activa; el id guardado si sigue en la lista; si desapareció, la primera. **El switch no se muestra con menos de dos** (con una no hay nada que elegir) |
+| Estado "sin empresas" | `apps/web/app/sin-empresas/**` + `src/features/company/components/require-active-company.tsx` | La pantalla ofrece **crear mi empresa** (bootstrap) o esperar una asignación; la **guardia** envuelve las rutas que necesitan empresa activa y es lo que hace verdadero el "no se entra al dashboard sin empresa": carga sin saltar de ruta, reintento ante error, **cero empresas → `/sin-empresas`** y **401 → `/login`** (el access token vive en memoria, así que una carga limpia no lo tiene; el refresh al cargar llega con MI-54) |
 
 **El CORS dejó de ser un supuesto**: el API envía `Access-Control-Allow-Credentials` y responde
 **sólo** el origen configurado en `WEB_ORIGIN`, que es lo que hace que la cookie `httpOnly` del refresh

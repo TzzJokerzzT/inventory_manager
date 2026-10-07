@@ -3,6 +3,7 @@ import { loadEnv } from "../src/config/env.js";
 const validSource = {
 	DATABASE_URL: "postgresql://user:pw@pooler.example.com:6543/postgres",
 	DIRECT_URL: "postgresql://user:pw@db.example.com:5432/postgres",
+	WEB_ORIGIN: "http://localhost:3000",
 	AUTH0_DOMAIN: "tenant.us.auth0.com",
 	AUTH0_AUDIENCE: "https://inventory-manager-api",
 	AUTH0_CLIENT_ID: "client-id-value",
@@ -23,6 +24,7 @@ describe("loadEnv defaults", () => {
 
 		expect(env.databaseUrl).toBeUndefined();
 		expect(env.directUrl).toBeUndefined();
+		expect(env.webOrigin).toBeUndefined();
 		expect(env.auth0.domain).toBeUndefined();
 		expect(env.auth0.audience).toBeUndefined();
 		expect(env.auth0.clientId).toBeUndefined();
@@ -41,6 +43,7 @@ describe("loadEnv defaults", () => {
 
 		expect(env.databaseUrl).toBe(validSource.DATABASE_URL);
 		expect(env.directUrl).toBe(validSource.DIRECT_URL);
+		expect(env.webOrigin).toBe(validSource.WEB_ORIGIN);
 		expect(env.auth0).toEqual({
 			domain: validSource.AUTH0_DOMAIN,
 			audience: validSource.AUTH0_AUDIENCE,
@@ -79,9 +82,27 @@ describe("production requires the credentials", () => {
 				NODE_ENV: "production",
 				DATABASE_URL: validSource.DATABASE_URL,
 				DIRECT_URL: validSource.DIRECT_URL,
+				WEB_ORIGIN: validSource.WEB_ORIGIN,
 			}),
 		).toThrow(
 			/Missing required environment variable in production: AUTH0_DOMAIN/,
+		);
+	});
+
+	it("throws for a missing WEB_ORIGIN once everything else is present", () => {
+		expect(() =>
+			loadEnv({
+				NODE_ENV: "production",
+				DATABASE_URL: validSource.DATABASE_URL,
+				DIRECT_URL: validSource.DIRECT_URL,
+				AUTH0_DOMAIN: validSource.AUTH0_DOMAIN,
+				AUTH0_AUDIENCE: validSource.AUTH0_AUDIENCE,
+				AUTH0_CLIENT_ID: validSource.AUTH0_CLIENT_ID,
+				AUTH0_CLIENT_SECRET: validSource.AUTH0_CLIENT_SECRET,
+				AUTH0_CONNECTION: validSource.AUTH0_CONNECTION,
+			}),
+		).toThrow(
+			/Missing required environment variable in production: WEB_ORIGIN/,
 		);
 	});
 
@@ -98,6 +119,26 @@ describe("production requires the credentials", () => {
 
 		expect(env.nodeEnv).toBe("production");
 		expect(env.auth0.domain).toBe(validSource.AUTH0_DOMAIN);
+	});
+});
+
+describe("WEB_ORIGIN must be an http(s) origin", () => {
+	it("rejects a value without a scheme", () => {
+		expect(() => loadEnv({ WEB_ORIGIN: "localhost:3000" })).toThrow(
+			/Invalid WEB_ORIGIN/,
+		);
+	});
+
+	it("rejects an origin with a path", () => {
+		expect(() => loadEnv({ WEB_ORIGIN: "http://localhost:3000/app" })).toThrow(
+			/Invalid WEB_ORIGIN/,
+		);
+	});
+
+	it("accepts an absolute origin", () => {
+		const env = loadEnv({ WEB_ORIGIN: "https://app.example.com" });
+
+		expect(env.webOrigin).toBe("https://app.example.com");
 	});
 });
 
@@ -176,6 +217,7 @@ describe("secrets never reach an error message", () => {
 				NODE_ENV: "production",
 				DATABASE_URL: validSource.DATABASE_URL,
 				DIRECT_URL: validSource.DIRECT_URL,
+				WEB_ORIGIN: validSource.WEB_ORIGIN,
 				AUTH0_DOMAIN: validSource.AUTH0_DOMAIN,
 				AUTH0_AUDIENCE: validSource.AUTH0_AUDIENCE,
 				AUTH0_CLIENT_ID: validSource.AUTH0_CLIENT_ID,

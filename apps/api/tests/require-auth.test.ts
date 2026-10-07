@@ -11,6 +11,8 @@ import {
 	TEST_AUDIENCE,
 } from "./support/local-jwks-issuer.js";
 
+const TEST_WEB_ORIGIN = "http://localhost:3000";
+
 describe("requireAuth on the company routes", () => {
 	let issuer: LocalIssuer;
 
@@ -32,6 +34,7 @@ describe("requireAuth on the company routes", () => {
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,
 			}),
+			corsOrigin: TEST_WEB_ORIGIN,
 		});
 	}
 

@@ -109,6 +109,33 @@ function assertAbsoluteUrl(value: string): void {
 }
 
 /**
+ * `WEB_ORIGIN` is an origin, not just any absolute URL: `new URL` happily
+ * accepts `localhost:3000` (protocol `localhost:`, path `3000`), and an origin
+ * with a path or a query would never match what a browser sends in the `Origin`
+ * header, so CORS would silently stop working.
+ */
+function assertHttpOrigin(value: string): void {
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		throw new Error(
+			'expected an http(s) origin such as "http://localhost:3000"',
+		);
+	}
+
+	if (url.protocol !== "http:" && url.protocol !== "https:") {
+		throw new Error(
+			'expected an http(s) origin such as "http://localhost:3000"',
+		);
+	}
+
+	if (url.pathname !== "/" || url.search !== "" || url.hash !== "") {
+		throw new Error("expected an origin without a path, query or fragment");
+	}
+}
+
+/**
  * Builds the typed config from a source, so tests can drive it without
  * touching `process.env`. The seven credentials are required only in
  * production: development, the test suite and CI run without them.
@@ -126,6 +153,10 @@ export function loadEnv(source: EnvSource = process.env) {
 			assertPostgresUrl,
 		),
 		directUrl: readValidated("DIRECT_URL", nodeEnv, source, assertPostgresUrl),
+		// Origin of the browser app. The API sends credentials (the refresh-token
+		// cookie), and a wildcard origin is not allowed with credentials, so the
+		// allowed origin has to be named explicitly.
+		webOrigin: readValidated("WEB_ORIGIN", nodeEnv, source, assertHttpOrigin),
 		auth0: {
 			domain: readValidated(
 				"AUTH0_DOMAIN",

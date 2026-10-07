@@ -10,6 +10,8 @@ import {
 	TEST_AUDIENCE,
 } from "./support/local-jwks-issuer.js";
 
+const TEST_WEB_ORIGIN = "http://localhost:3000";
+
 describe("smoke", () => {
 	let issuer: LocalIssuer;
 
@@ -31,6 +33,7 @@ describe("smoke", () => {
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,
 			}),
+			corsOrigin: TEST_WEB_ORIGIN,
 		});
 	}
 

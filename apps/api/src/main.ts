@@ -46,6 +46,11 @@ const authCookieOptions: AuthCookieOptions = {
 	maxAge: REFRESH_TOKEN_MAX_AGE_MS,
 };
 
+// The browser origin that may call the API with credentials. `env.ts` makes it
+// required in production; the development fallback keeps the local app working
+// against the Next.js dev server without extra setup.
+const corsOrigin = env.webOrigin ?? "http://localhost:3000";
+
 const app = buildApp({
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
@@ -55,6 +60,7 @@ const app = buildApp({
 		audience,
 	}),
 	authCookieOptions,
+	corsOrigin,
 });
 
 app.listen(env.port, () => {

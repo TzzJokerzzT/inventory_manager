@@ -85,8 +85,11 @@ function createTestApp(options: {
 		}),
 		requireAuth: passthroughAuth,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
+		corsOrigin: TEST_WEB_ORIGIN,
 	});
 }
+
+const TEST_WEB_ORIGIN = "http://localhost:3000";
 
 const CONSOLE_METHODS = [
 	"log",

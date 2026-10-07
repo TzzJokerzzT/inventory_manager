@@ -22,6 +22,12 @@ export interface AppDependencies {
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	requireAuth: RequestHandler;
 	authCookieOptions: AuthCookieOptions;
+	/**
+	 * Browser origin allowed to call the API. It has to be an explicit origin
+	 * and not a wildcard: the API sets the refresh-token cookie, and browsers
+	 * reject `Access-Control-Allow-Origin: *` on credentialed requests.
+	 */
+	corsOrigin: string;
 }
 
 /**
@@ -34,7 +40,17 @@ export function buildApp(dependencies: AppDependencies): Express {
 	const app = express();
 
 	app.use(helmet());
-	app.use(cors());
+	app.use(
+		cors({
+			// Echo the origin only when it is the configured one. Passing the
+			// string directly would advertise the allowed origin to every caller;
+			// the browser blocks a foreign origin either way, but answering only
+			// the intended one keeps the intent explicit and the logs honest.
+			origin: (origin, callback) =>
+				callback(null, origin === dependencies.corsOrigin),
+			credentials: true,
+		}),
+	);
 	app.use(morgan("dev"));
 	app.use(express.json());
 	app.use(cookieParser());

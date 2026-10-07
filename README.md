@@ -415,10 +415,11 @@ Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/bro
 - [x] **Configurar Auth0** — **MI-39**: tenant verificado (JWKS + discovery) y validación JWKS
       cableada (`requireAuth` sobre `/companies`, `/health` público). La aplicación es **Regular
       Web Application** (no SPA); falta habilitar el grant `Password`, que es de **MI-52**.
+      Cerrada en Jira (`Done`, comentario `10044`).
 - [ ] **Configurar Cloudinary** — **MI-40** para subida directa firmada desde el cliente.
-- [ ] **Configurar los tests** — **MI-41** (Jest, React Testing Library, Supertest, Cypress) y
-      agregar la tarea `test` a `turbo.json`. La API ya tiene un smoke test con el runner de Bun que
-      sirve de base.
+- [x] **Configurar los tests** — **MI-41**: Jest como único runner (137 tests migrados desde
+      `bun test`), React Testing Library en `apps/web`, Supertest en `apps/api` y Cypress para E2E,
+      con la tarea `test` en `turbo.json` y el alias `bun run test` en la raíz. Cerrada en Jira.
 - [ ] **Instalar Husky (git hooks)** — **MI-42**. Depende de MI-35.
 - [ ] **Definir el contrato entre frontend y backend** — **MI-43**. Al no haber código compartido,
       hay que decidir cómo se evita duplicar las reglas de validación: lo recomendado es **generar

@@ -1,7 +1,7 @@
 # Plan de trabajo — Inventory Manager
 
 **Generado:** 2026-10-06 · **Fuente:** Jira proyecto `MI` (55 issues) + estado real del repo + `docs/stack.md`
-**Estado:** 12 `Done` · 2 `In Progress` · **41 `To Do`**
+**Estado:** 13 `Done` · 2 `In Progress` · **40 `To Do`**
 
 Este documento es el mapa de lo que falta, ordenado por **dependencia**, no por fase. El roadmap por
 fases vive en [`Project.md`](./Project.md#-roadmap--fases); acá está qué bloquea a qué y qué
@@ -17,7 +17,7 @@ Sin estos, ninguna otra cosa avanza. Los cinco son de **MI-2** (setup).
 | --- | --- | --- | --- |
 | ~~**MI-35**~~ ✅ | Control de versiones (Git) | **HECHO (2026-10-06)**: repositorio propio en `TzzJokerzzT/inventory_manager`, ramas `production`, `development` y `feat/login-register-backend-frontend`, 110 archivos versionados. **Desbloqueó MI-36 y MI-42** | ✅ repo propio |
 | ~~**MI-38**~~ ✅ | Prisma + Supabase | **HECHO (2026-10-06)**: `schema.prisma` + migración `20261006223356_init` aplicada + adaptador `PrismaCompanyRepository` cableado (`35eccee`, `58fef79`). Verificado por un verificador independiente y cerrado en Jira (comentario `10042`). **Desbloquea MI-3, MI-4, MI-5, MI-44 a MI-51 y la Fase 2** | ✅ schema + migración aplicada + adaptador |
-| **MI-39** | Auth0 | Sin tenant no hay credenciales contra las que probar el login. Bloquea MI-44, MI-46, MI-50, MI-52 a MI-55 | ✅ tenant verificado (JWKS + discovery 200); middleware `requireAuth` cableado sobre `/companies` y probado (43 tests); el grant `Password` está pendiente y lo habilita **MI-52** |
+| ~~**MI-39**~~ ✅ | Auth0 | **HECHO (2026-10-06)**: tenant verificado (JWKS + discovery 200), middleware `requireAuth` cableado sobre `/companies` y probado con JWKS local (43 tests), `WWW-Authenticate` en el 401. Cerrada en Jira (comentario `10044`). El grant `Password` y el Application Type quedan a cargo de **MI-52**. **Desbloquea MI-44, MI-46, MI-50, MI-52 a MI-55** | ✅ tenant + validación JWKS cableada |
 | **MI-37** | `.env.example` de la raíz | Sin esto no hay onboarding reproducible ni CI que arranque | ❌ no existe |
 | **MI-43** | Contrato frontend ↔ backend | Sin tipos compartidos, cada validación se duplica y se desincroniza | ❌ sin definir |
 

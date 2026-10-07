@@ -124,6 +124,30 @@ export interface ApiClientOptions {
 	onUnauthorized?: () => Promise<void>;
 }
 
+/**
+ * The shared 401 handler, registered once by the auth feature.
+ *
+ * It is read lazily on every 401 — the same way the access token is read on
+ * every request — so the handler a request sees is the one registered now, not
+ * whichever handler (or none) happened to sit in the options of the first
+ * `getApiClient` call. No caller order, mount order or short-circuited
+ * bootstrap can leave the shared client without a refresh handler.
+ */
+let sharedOnUnauthorized: (() => Promise<void>) | undefined;
+
+/**
+ * Registers the single-flight refresh the 401 interceptor runs.
+ *
+ * The auth feature owns the function and calls this once at module load. The
+ * client stays generic: it only ever stores a `() => Promise<void>`, never a
+ * feature import.
+ */
+export function setOnUnauthorized(
+	handler: (() => Promise<void>) | undefined,
+): void {
+	sharedOnUnauthorized = handler;
+}
+
 export function createApiClient(
 	baseURL?: string,
 	options: ApiClientOptions = {},
@@ -154,7 +178,10 @@ export function createApiClient(
 		(response) => response,
 		async (error: unknown) => {
 			const apiError = toApiError(error);
-			const onUnauthorized = options.onUnauthorized;
+			// Resolved at request time, like the token above: a client built
+			// before the auth feature registered the handler (or by a caller
+			// that only passed `getAccessToken`) still refreshes on a 401.
+			const onUnauthorized = options.onUnauthorized ?? sharedOnUnauthorized;
 
 			if (
 				apiError instanceof ApiError &&
@@ -191,20 +218,17 @@ let cached: AxiosInstance | undefined;
  * The client used by the app. Built lazily so importing this module never
  * requires the environment to be configured (tests import the factory).
  *
- * The access-token provider is wired by the auth feature and read lazily on
- * every request, so a token set after the client was built is still attached.
+ * Both auth hooks are resolved at request time, never baked into whichever
+ * caller happened to build the client first:
+ * - the access token is read through the provider on every request, so a
+ *   token set after the client was built is still attached;
+ * - the 401 handler is read from {@link setOnUnauthorized} on every 401, so a
+ *   client built by a caller that only passes `getAccessToken` — or built
+ *   before the bootstrap ever ran — still refreshes.
  *
- * The first caller fixes the options for the lifetime of the process: the
- * `cached ??=` below captures `options` only once. That is why every feature
- * hook that can be the first to touch the client (`useLogin`, `useRegister`,
- * `useCompanies`) passes the same access-token provider. Leaving the provider
- * to whichever hook happens to run first would make `Authorization` depend on
- * import order — the kind of bug that shows up as a 401 nobody can reproduce
- * locally.
- *
- * The session bootstrap mounts before any route and is therefore the real
- * first caller: it passes both `getAccessToken` and `onUnauthorized`, so the
- * shared client is always built with the full auth wiring in place.
+ * `cached ??=` therefore fixes only the transport, not the auth wiring. No
+ * caller order, mount order or missing bootstrap call can silently disable
+ * the refresh.
  */
 export function getApiClient(options?: ApiClientOptions): AxiosInstance {
 	cached ??= createApiClient(undefined, options);

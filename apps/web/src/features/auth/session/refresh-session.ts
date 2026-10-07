@@ -1,4 +1,4 @@
-import { getApiClient } from "@/lib/api/client";
+import { getApiClient, setOnUnauthorized } from "@/lib/api/client";
 import { parseLoginResponse } from "@/lib/api/schemas";
 import { getAccessToken } from "@/src/features/auth/api/get-access-token";
 import { useSessionStore } from "@/src/store/session-store/session-store";
@@ -19,6 +19,12 @@ export function refreshSession(): Promise<void> {
 	});
 	return inflight;
 }
+
+// Registers the single-flight refresh as the shared 401 handler at module
+// load. The client resolves it lazily at request time, so a data hook that
+// built the client first with only `getAccessToken` — or a bootstrap that
+// short-circuits because a token is already present — still refreshes on a 401.
+setOnUnauthorized(refreshSession);
 
 async function performRefresh(): Promise<void> {
 	try {

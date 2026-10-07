@@ -66,7 +66,7 @@ abierto sino en dejar el mecanismo listo y probado antes de que MI-6/MI-7/MI-9 a
   como uniones del dominio), puerto con **una sola** consulta y dos adaptadores que filtran duro
   `status: "ACTIVE"`. **Sin migración**: la tabla ya existía con su CHECK y su `@@unique([userId,
   companyId])`. **Spot check del padre**: 21 suites / 148 tests.
-- [ ] **U2 — Primitivo + contexto (delegada, test-first)**: `requireCompanyContext`, la matriz `can(role,
+- [x] **U2 — Primitivo + contexto.** ✅ Commit `0d38f17` + corrección `02fd0c1`. `requireCompanyContext`, la matriz `can(role,
   action)` con sus dos reglas finas, `GET /companies/:companyId/context` con 403 uniforme, y tests de
   integración con el JWKS local y el repositorio falso. **Incluye dos correcciones que deja la verificación
   de U1**: (a) el test "an INVITED membership does not grant access" del adaptador in-memory **pasa por la
@@ -99,6 +99,31 @@ y `save` guarda el objeto del caller, mientras la entidad entrega `Date`s mutabl
 estado almacenado, cosa que el adaptador Prisma nunca permite; severidad baja, se anota. (2) Nada en `src/`
 consume todavía `findActiveByUserAndCompany` (esperado en U1): el puerto no está probado de punta a punta.
 
+## Cierre de MI-50
+
+**Las tres unidades quedaron verificadas de forma independiente.** U1 (`500028e`): claims 1-7 PASS, con el
+hallazgo del test de `INVITED` que pasaba por la razón equivocada. U2 (`0d38f17`): **10/10 PASS, cero
+defectos** — el verificador probó que el 403 uniforme **no es que los cuerpos coincidan sino que es el
+mismo camino de código** (el middleware nunca consulta la tabla de empresas), que el middleware **no se
+puede saltar** desde el sub-router, y que el 401 precede al 403 **estructuralmente**. Corrección
+`02fd0c1`: **6/6 PASS**, con la premisa del toolchain **confirmada**: `@swc/jest` (`jest.config.mjs:10`)
+quita tipos sin chequearlos y `tsconfig.json:18` incluye sólo `src/**/*.ts`, así que los tests no pasan por
+`tsc` ni en runtime ni en el gate del repo → un parámetro "requerido" habría llegado como `undefined` y
+**habría concedido**, con lo que el default que niega era la única forma fail-closed. También confirmó que
+**sólo la fila `leave`** lee el tercer parámetro, así que el flip no cambió ninguna otra fila.
+
+**Límites de cobertura registrados (no defectos)**: los casos REVOKED/INVITED de **integración** son más
+débiles de lo que parecen — aun rompiendo el filtro `status` del middleware seguirían dando 403 por la rama
+fail-closed del controller, así que la guardia real está en los tests **unitarios**; y el camino feliz de
+integración sólo ejercita **OWNER**, de modo que un bug del controller al mapear un rol no-OWNER pasaría la
+suite de integración (riesgo bajo: devuelve `context.role` tal cual).
+
+**Nota de proceso**: al planificar U2 enumeré **7** call sites de `buildApp` y son **10**; el worker detectó
+la diferencia, editó los dos que faltaban amparándose en la instrucción de intención ("every existing
+buildApp call site") y **lo declaró**. Es la segunda vez en esta sesión que mi enumeración de superficies
+queda corta en ese mismo eje. **Las superficies se derivan con `grep`, no de memoria ni copiando el reporte
+de otro worker.**
+
 ## Fuera de alcance
 
 MI-45 (asignar con rol) · MI-46 (aceptar asignación) · MI-47 (endpoints de gestión de miembros) ·
@@ -116,6 +141,9 @@ proyecto decidió no usar (`docs/stack.md:158`).
 - 2026-10-07 — Documento creado. Exploración confirmada: `companyId` nunca llega del cliente, no existe
   ningún recurso por empresa, y no hay entidad `Membership`. Decisión del usuario: entregar el primitivo
   **más** el endpoint de contexto.
+- 2026-10-07 — **U2 hecha y verificada** (`0d38f17`, 10/10 PASS) y **corrección fail-closed** (`02fd0c1`,
+  6/6 PASS). El default del hecho "último OWNER activo" **concedía** por omisión; ahora niega. **MI-50 queda
+  completa**, con sus dos límites de cobertura registrados arriba.
 - 2026-10-07 — **U1 hecha y verificada** (commit `500028e`): claims 1-7 PASS y **un hallazgo real en el
   octavo** — el test de rechazo de `INVITED` del adaptador in-memory **pasa por la razón equivocada**
   (desajuste de `userId` en vez del filtro de status). No es un bug de código: es una guardia que no

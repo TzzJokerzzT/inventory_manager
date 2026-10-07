@@ -46,12 +46,22 @@ existente.
 
 ## Unidades de trabajo
 
+**Coordinación de worktree (2026-10-07)**: el humano tiene trabajo **sin commitear** en
+`apps/web/app/page.tsx` (y en `login-form.tsx` y el rename de `AlertToast`). Por eso `app/page.tsx` queda
+**fuera de las superficies de U1** y el redirect `/` → `/dashboard` se **posterga** a una unidad de cierre,
+hasta que su edición se asiente. U1 entrega el shell, la ruta `/dashboard` envuelta por la guardia, y la
+regla inversa de `/sin-empresas` apuntando a `/dashboard` — sin tocar su archivo. El circuito queda
+incompleto a propósito y se declara así: `/` sigue siendo lo que él está escribiendo.
+
 - **U1 — Shell y rutas (delegada, test-first)**: `AppShell` (sidebar + topbar + contenido), nav derivado
-  del diseño con rutas deshabilitadas, `app/dashboard/page.tsx` envuelto por la guardia y el shell,
-  `/` → `/dashboard`, regla inversa de `/sin-empresas` y destino del 401 actualizados, y sus tests.
+  del diseño con rutas deshabilitadas, `app/dashboard/page.tsx` envuelto por la guardia y el shell, la
+  regla inversa de `/sin-empresas` y el destino del 401 de la guardia a `/dashboard`, y sus tests.
+  **Excluye `app/page.tsx`** (ver coordinación de worktree).
 - **U2 — Vista del dashboard (delegada, test-first)**: KPIs, alertas de stock y tabla con
   `KpiCard`/`Alert`/`StockBadge`/`DataTable` sobre el módulo `mock.ts` marcado, estado vacío cuando no
   hay empresa activa, y sus tests.
+- **U3 — Cierre del circuito (postergada)**: `/` deja de ser placeholder y redirige a `/dashboard`. Se
+  hace cuando la edición del humano en `app/page.tsx` esté commiteada.
 
 ## Fuera de alcance
 

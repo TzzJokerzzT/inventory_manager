@@ -2,6 +2,8 @@ import type { ErrorRequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ValiError } from "valibot";
 import { DomainError } from "../../../domain/errors/domain-error.js";
+import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
+import { InvalidCredentialsError } from "../../../domain/errors/invalid-credentials-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
 	if (typeof error !== "object" || error === null) {
@@ -67,6 +69,20 @@ export const errorHandler: ErrorRequestHandler = (
 				message: "Invalid request body",
 				issues: error.issues.map((issue) => issue.message),
 			},
+		});
+		return;
+	}
+
+	if (error instanceof InvalidCredentialsError) {
+		response.status(StatusCodes.UNAUTHORIZED).json({
+			error: { message: error.message },
+		});
+		return;
+	}
+
+	if (error instanceof IdentityProviderUnavailableError) {
+		response.status(StatusCodes.SERVICE_UNAVAILABLE).json({
+			error: { message: error.message },
 		});
 		return;
 	}

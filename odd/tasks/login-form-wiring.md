@@ -92,6 +92,18 @@ cualquier intento. Hoy no se nota porque nunca hubo request; con el cableado hay
   en un **work-unit separado**, porque vive en el slice del usuario. **Requiere su decisión**: hasta
   resolverlo, la suite completa no está verde y T4 no se puede cerrar.
 
+- [ ] **T6 — Review nativo del candidato: BLOQUEADO por presupuesto del reviewer.** El preflight
+  (`gentle_review inspect`) ofreció `review.start` con `base-ref=6d5c5d30` (`merge-base` con
+  `production`), `projection=workspace`, `committed-only=true` y lineage `review-e1e9f4babe2e0df4`.
+  El START falló en `preflight` con **`lens_context_budget_exceeded`**:
+  `mutation_outcome: not_started`, `authority_applicability: not_evaluated`, **ninguna autoridad creada**
+  → nada que abandonar ni reparar, y reintentar el mismo candidato no puede funcionar.
+  **El candidato medido**: 64 commits / 152 archivos / **10.289 inserciones + 376 borrados** (~10.6k
+  líneas autoradas, contra las ~400 del presupuesto de entrega). Continuación: **reducir el alcance en
+  commits revisables encadenados** y abrir una transacción nueva por candidato chico, o `D` (desactivar
+  el switch de review para el clon). Menú de estrategia de entrega presentado al usuario; **decisión
+  pendiente**.
+
 ## Ruta y presupuesto
 
 - **Ruta**: delegada (`gentle-ai-worker`). Trigger: multi-file write (form + constante + tests).
@@ -111,6 +123,10 @@ cualquier intento. Hoy no se nota porque nunca hubo request; con el cableado hay
   `reviewDue: false` por `under_budget`, `outcome_source: unknown`, `writerProfile: large` (runtime) → el
   plan es sólo **verificación propia del writer**; sin verifier independiente ni review nativo en este
   work-unit. La review nativa corresponde al slice del PR.
+- 2026-10-07 — **Review nativo intentado y bloqueado**: `review.start` → `lens_context_budget_exceeded`
+  antes de crear autoridad. El proveedor acotó el candidato a todo el slice de la rama (base = merge-base
+  con `production`), que son 64 commits / 152 archivos / 10.6k líneas. Se le presentó al usuario el menú
+  ordenado de estrategia de entrega (cadena sobre la rama de feature · cadena sobre main · un solo PR).
 - 2026-10-07 — **Hallazgo no tocado**: `loginSchema` exige mínimo 8 caracteres y el API acepta 1..256
   (decisión explícita de MI-52). Puede bloquear el login de un usuario creado directo en Auth0 con
   contraseña corta; tiene su propio test en `lib/auth/validation.test.ts`. Es una decisión de producto,

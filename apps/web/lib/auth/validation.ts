@@ -1,6 +1,7 @@
 import {
 	check,
 	email,
+	type GenericSchema,
 	minLength,
 	object,
 	pipe,
@@ -10,6 +11,14 @@ import {
 
 export type LoginValues = { email: string; password: string };
 export type LoginErrors = { email?: string; password?: string };
+
+export type RegisterValues = {
+	name: string;
+	email: string;
+	companyName: string;
+	password: string;
+};
+export type RegisterErrors = Partial<Record<keyof RegisterValues, string>>;
 
 /**
  * Field messages. They are part of the contract: the login and register forms
@@ -47,19 +56,72 @@ const loginSchema = object({
  * consumes today.
  */
 export function validateLogin(values: LoginValues): LoginErrors {
-	const result = safeParse(loginSchema, values);
+	return validate(loginSchema, values) as LoginErrors;
+}
+
+/**
+ * Register form messages, with the same contract as the login ones: the form
+ * renders them as-is.
+ */
+const REQUIRED_NAME = "Ingresá tu nombre y apellido.";
+const REQUIRED_COMPANY = "Ingresá el nombre de tu empresa.";
+
+/**
+ * The register form asks for more than the API accepts today: `POST /auth/register`
+ * takes only email and password. Name and company are validated anyway because the
+ * form needs them and the company is created by the bootstrap MI-44 owns; a field
+ * that looks required should behave as required. The password floor matches the
+ * API's own rule, so the client never lets through something the server rejects.
+ */
+const registerSchema = object({
+	name: pipe(
+		string(),
+		check((value) => value.trim() !== "", REQUIRED_NAME),
+	),
+	email: pipe(
+		string(),
+		check((value) => value.trim() !== "", REQUIRED_EMAIL),
+		email(INVALID_EMAIL),
+	),
+	companyName: pipe(
+		string(),
+		check((value) => value.trim() !== "", REQUIRED_COMPANY),
+	),
+	password: pipe(
+		string(),
+		check((value) => value.trim() !== "", REQUIRED_PASSWORD),
+		minLength(8, SHORT_PASSWORD),
+	),
+});
+
+/**
+ * Validates the register form and returns the messages per field, in the same
+ * shape the login form already consumes.
+ */
+export function validateRegister(values: RegisterValues): RegisterErrors {
+	return validate(registerSchema, values) as RegisterErrors;
+}
+
+/**
+ * Shared issue-to-field mapping. The first message per field wins, so the order
+ * of the checks in each schema decides which one a person sees.
+ */
+function validate(
+	schema: GenericSchema<Record<string, unknown>>,
+	values: Record<string, unknown>,
+): Record<string, string> {
+	const result = safeParse(schema, values);
 	if (result.success) {
 		return {};
 	}
 
-	const errors: LoginErrors = {};
+	const errors: Record<string, string> = {};
 	for (const issue of result.issues) {
 		const field = issue.path?.[0]?.key;
-		if (field !== "email" && field !== "password") {
+		if (typeof field !== "string") {
 			continue;
 		}
 
-		// First message per field wins, so the order of the issues decides.
 		errors[field] ??= issue.message;
 	}
 

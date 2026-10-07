@@ -3,8 +3,8 @@
 import { domAnimation, LazyMotion } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { type FormEvent, useRef, useState } from "react";
-import { Alert, Checkbox, TextField } from "@/components/design-system";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Checkbox, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
@@ -14,9 +14,8 @@ import {
 	validateRegister,
 } from "@/lib/auth/validation";
 import { useRegister } from "@/src/features/auth/api/use-register";
-
-const FALLBACK_ERROR =
-	"No pudimos completar el registro. Probá de nuevo en unos minutos.";
+import { AlertMessage } from "@/src/shared/components/AlertMessage";
+import { FALLBACK_ERROR } from "../utils/constants";
 
 export function RegisterForm() {
 	const [values, setValues] = useState<RegisterValues>({
@@ -35,13 +34,24 @@ export function RegisterForm() {
 	const passwordRef = useRef<HTMLInputElement>(null);
 
 	const register = useRegister();
-	const busy = register.isPending || register.isSuccess;
+	const { error, reset, mutate, isError, isPending, isSuccess } = register;
+
 	const apiError =
-		register.error instanceof ApiError
-			? register.error.message
-			: register.isError
+		error instanceof ApiError
+			? error.message
+			: isError
 				? FALLBACK_ERROR
 				: undefined;
+
+	useEffect(() => {
+		if (!isSuccess) return;
+
+		const id = setTimeout(() => {
+			reset();
+		}, 10000);
+
+		return () => clearTimeout(id);
+	}, [isSuccess, reset]);
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -61,7 +71,19 @@ export function RegisterForm() {
 		// form because the design asks for them, and the company is created by
 		// the bootstrap MI-44 owns: until that exists, they are not sent
 		// anywhere, and that is a known gap rather than an oversight.
-		register.mutate({ email: values.email.trim(), password: values.password });
+		mutate(
+			{ email: values.email.trim(), password: values.password },
+			{
+				onSuccess: () => {
+					setValues({
+						name: "",
+						email: "",
+						companyName: "",
+						password: "",
+					});
+				},
+			},
+		);
 	}
 
 	function focusFirstError(nextErrors: RegisterErrors) {
@@ -117,7 +139,7 @@ export function RegisterForm() {
 						value={values.name}
 						onChange={(event) => handleChange("name", event.target.value)}
 						error={errors.name}
-						disabled={busy}
+						disabled={isPending}
 					/>
 					<TextField
 						ref={emailRef}
@@ -129,7 +151,7 @@ export function RegisterForm() {
 						value={values.email}
 						onChange={(event) => handleChange("email", event.target.value)}
 						error={errors.email}
-						disabled={busy}
+						disabled={isPending}
 					/>
 					<TextField
 						ref={companyRef}
@@ -143,7 +165,7 @@ export function RegisterForm() {
 							handleChange("companyName", event.target.value)
 						}
 						error={errors.companyName}
-						disabled={busy}
+						disabled={isPending}
 					/>
 					<TextField
 						ref={passwordRef}
@@ -158,7 +180,7 @@ export function RegisterForm() {
 						value={values.password}
 						onChange={(event) => handleChange("password", event.target.value)}
 						error={errors.password}
-						disabled={busy}
+						disabled={isPending}
 					/>
 				</div>
 
@@ -174,9 +196,9 @@ export function RegisterForm() {
 					variant="primary"
 					type="submit"
 					className="w-full"
-					disabled={busy}
+					disabled={isPending}
 				>
-					{register.isPending ? (
+					{isPending ? (
 						<>
 							<SpinnerMotion size={20} className="mr-2" />
 							Registrando...
@@ -186,22 +208,19 @@ export function RegisterForm() {
 					)}
 				</Button>
 
-				{register.isSuccess ? (
-					<Alert variant="success" title="Revisá tu correo">
-						<p>
-							Te enviamos un correo para verificar tu cuenta. Abrilo desde el
-							mismo dispositivo y después iniciá sesión.
-						</p>
-						{/* The API answers the same thing whether the address was new or
-						    already registered, on purpose: saying which one it was would
-						    reveal whether an account exists. */}
-					</Alert>
+				{isSuccess ? (
+					<AlertMessage
+						title="Revisá tu correo"
+						message="Te enviamos un correo para verificar tu cuenta. Abrelo desde el mismo dispositivo y después iniciá sesión."
+					/>
 				) : null}
 
 				{apiError ? (
-					<Alert variant="danger" title="No pudimos crear tu cuenta">
-						<p>{apiError}</p>
-					</Alert>
+					<AlertMessage
+						title="No pudimos crear tu cuenta"
+						message={apiError}
+						variant="danger"
+					/>
 				) : null}
 
 				<p className="text-center text-sm text-text-secondary">

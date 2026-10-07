@@ -10,3 +10,6 @@ export const data = {
 	],
 	footer: "© 2026 Inventory Manager",
 };
+
+export const FALLBACK_ERROR =
+	"No pudimos completar el registro. Probá de nuevo en unos minutos.";

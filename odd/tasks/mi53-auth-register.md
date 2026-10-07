@@ -79,29 +79,36 @@ romper una cuenta registrada con mayúsculas), pero el que se **guarda** sí, po
 
 ## Tareas
 
-- [ ] **T1 — Puerto y adaptador.** `signUp` y `getIdentity` en el puerto y en el adaptador de Auth0,
-  con mapeo de errores y sin loguear credenciales. Superficies:
-  `apps/api/src/application/ports/identity-provider.ts`, `apps/api/src/infrastructure/auth0/**`,
-  `apps/api/src/domain/errors/**`.
-- [ ] **T2 — Entidad `User` + puerto + adaptador Prisma.** Superficies:
-  `apps/api/src/domain/entities/user.ts`, `apps/api/src/domain/repositories/user-repository.ts`,
-  `apps/api/src/infrastructure/database/prisma-user-repository.ts`.
-- [ ] **T3 — Registro.** Caso de uso + Valibot + ruta `POST /auth/register` + limiter + respuesta
-  uniforme. Superficies: `apps/api/src/application/use-cases/register-user.ts`,
-  `apps/api/src/interfaces/http/{controllers,routes,validators}/**`, `apps/api/src/main.ts`.
-- [ ] **T4 — Gate en el login.** `/userinfo` tras el intercambio; 403 `email_not_verified` si no está
-  verificado; *upsert* de la fila si lo está. Superficies:
-  `apps/api/src/application/use-cases/login-with-credentials.ts`,
-  `apps/api/src/interfaces/http/controllers/auth-controller.ts`, `apps/api/src/main.ts`.
-- [ ] **T5 — Tests.** Registro (éxito, email repetido con **mismo cuerpo** que el éxito, payload
-  malformado, proveedor caído, contraseña débil con mensaje claro, rate limit, contraseña nunca en
-  logs) y gate (no verificado → 403 sin tokens y sin fila; verificado → fila creada y tokens). Con
-  proveedor y repositorio falsos.
-- [ ] **T6 — Documentación y Jira.** `docs/stack.md` §5.4/§5.8, `README.md` si corresponde, descripción
-  de MI-53 y cierre.
-- [ ] **T7 — Verificación contra el tenant real.** Alta de un usuario nuevo por el endpoint, login del
-  usuario verificado (fila creada en `users`, verificada por `psql`) y el camino no verificado con un
-  usuario nuevo sin verificar. Limpiar los usuarios de prueba al final.
+- [x] **T1 — Puerto y adaptador.** ✅ `signUp` y `getIdentity` en el puerto y en `Auth0IdentityProvider`
+  (`/dbconnections/signup` con JSON y `/userinfo` con bearer), con timeout, mapeo de errores y sin loguear
+  el body. **Hallazgo del worker**: el endpoint de alta usa la forma `code`/`description` de Auth0, no
+  `error`/`error_description` como `/oauth/token` y `/userinfo` — hay dos lectores de error separados
+  para no confundirlos. `SignUpRejectedError` con mensaje constante; un `email_verified` ausente se
+  trata como **false**. Commit `14bbdd4`.
+- [x] **T2 — `User` + `UserRepository` + adaptador Prisma.** ✅ El invariante de minúsculas vive en la
+  **entidad** (no en el adaptador), así que un email con mayúsculas es irrepresentable y ningún adaptador
+  tiene que recordar el `CHECK`. El upsert va por `auth0_sub` y en la rama de actualización sólo refresca
+  el email: el `id` y el `created_at` originales no se tocan. Commit `14bbdd4`.
+- [x] **T3 — `POST /auth/register`.** ✅ Valibot con contraseña **8..256** (la política se enuncia acá
+  porque es una cuenta nueva, y aplicarla antes de Auth0 es lo que hace honesta la respuesta uniforme),
+  limiter propio, y **201 uniforme**: el `SignUpRejectedError` se **traga** a propósito en el caso de uso,
+  con un comentario que explica por qué no hay que "arreglarlo". Commit `e591e31`.
+- [x] **T4 — Gate en el login.** ✅ Tras el intercambio se lee la identidad con `/userinfo`; si
+  `email_verified` es false → **403 con `code: email_not_verified`, sin tokens, sin cookie y sin fila**
+  (emitir tokens ahí violaría el invariante: las rutas protegidas sólo validan firma, issuer y
+  audience); si es true → upsert desde la identidad del proveedor (no desde el body del request) y se
+  devuelven los tokens. El `ApiError` del front ahora también captura el `code`. Commit `e591e31`.
+- [x] **T5 — Tests.** ✅ api **103** (eran 93) y web **133**: registro (éxito, rechazo con **cuerpo
+  igual** al éxito, payload malformado, contraseña débil, 503, 429, contraseña nunca en logs) y gate
+  (sin verificar → 403 sin tokens/cookie y con el repositorio **nunca llamado**; verificado → fila creada
+  y tokens; `/userinfo` caído → 503).
+- [ ] **T6 — Documentación y Jira.** En curso.
+- [x] **T7 — Verificación contra el tenant real.** ✅ Corrida completa: alta nueva → **201**; alta
+  repetida → **201 con el cuerpo idéntico** (y el rechazo visible **sólo** en el log del servidor);
+  contraseña débil → **400**; login sin verificar → **403 `email_not_verified`** sin cookie; login
+  verificado → **200** con cookie y accessToken; y en la base **una sola fila** en `users`, la del
+  usuario verificado y con el email en minúsculas (el no verificado **no** creó fila). La fila de prueba
+  se borró después y la tabla quedó como estaba.
 
 ## Fuera de alcance
 
@@ -114,3 +121,9 @@ store compartido del rate limit (MI-55).
 - 2026-10-06 — Documento creado. Todo medido contra el tenant: alta OK, duplicado `invalid_signup`,
   `/userinfo` OK, `email_verified` en true para el usuario de prueba. Decisión del usuario: gate por
   `/userinfo`.
+- 2026-10-06 — **T1–T5 y T7 hechas** (commits `14bbdd4`, `e591e31`). La verificación contra el tenant
+  pasó completa, incluido el invariante: **el usuario sin verificar no creó fila en `users`**.
+- 2026-10-06 — **Usuarios de prueba que quedan en el tenant** (no los puedo borrar sin la Management
+  API): `mi53-probe-1791341927184@example.com` (verificado a mano) y `mi53-nuevo-1791347472205@example.com`
+  (sin verificar). Conviene borrarlos desde el dashboard cuando ya no hagan falta. La fila
+  correspondiente en `users` **sí** se borró, y la tabla quedó vacía como estaba.

@@ -362,6 +362,29 @@ servidor a servidor (`POST /oauth/token`, `grant_type=password`) a través del p
 - **Rate limiting propio en el endpoint** (más estricto que el global). El **store compartido es
   MI-55**: hoy el contador es en memoria y en serverless **no limita globalmente**.
 
+#### El registro y el gate del email verificado (MI-53)
+
+`POST /auth/register` da de alta la cuenta en la base de datos de Auth0. Tres decisiones que no son
+implementación:
+
+- **La respuesta es uniforme**: `201` con el mismo cuerpo tanto si la cuenta se creó como si Auth0 la
+  rechazó. Auth0 devuelve **un solo `invalid_signup`** para "el email ya existe" y para "la contraseña
+  no me gusta", y no dice cuál: separarlas revelaría si una dirección está registrada. El rechazo se
+  registra **en el log del servidor** y el caso de uso lo traga a propósito (con un comentario que pide
+  no "arreglarlo").
+- **La política de contraseña la enforzamos nosotros** (8..256, Valibot) **antes** de llamar a Auth0.
+  No es decoración: es lo que hace honesta la respuesta uniforme. Si dejáramos pasar contraseñas
+  débiles, un rechazo por política sería indistinguible de un email duplicado y el usuario recibiría un
+  "revisá tu correo" que nunca llega. **Riesgo declarado**: si la política de Auth0 fuera más estricta
+  que la nuestra, ese rechazo también se vería como la respuesta uniforme; se detecta en el log.
+- **`email_verified` se verifica en el login, con `/userinfo`** sobre el access token recién emitido.
+  Si no está verificado: **403 con `code: email_not_verified`, sin tokens, sin cookie y sin fila en
+  `users`**. Decirle "verificá tu correo" a alguien que acaba de probar su contraseña no es una
+  filtración, pero **emitir tokens sí rompería el invariante**, porque las rutas protegidas sólo validan
+  firma, issuer y audience. Si está verificado, se hace *upsert* de la fila con `auth0_sub` y el email
+  del proveedor (**no** del body del request) y el email se guarda en minúsculas, que es lo que exige el
+  `CHECK` de la migración.
+
 **Ya cableado (2026-10-06).** `createRequireAuth({ issuerBaseURL, audience })` (en
 `middlewares/require-auth.ts`) valida el JWT contra el JWKS del tenant; `main.ts` lo construye desde
 `AUTH0_DOMAIN`/`AUTH0_AUDIENCE` (y falla rápido si faltan); `router.use("/companies", requireAuth)`

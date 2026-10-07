@@ -6,6 +6,7 @@ import Link from "next/link";
 import { type FormEvent, useRef, useState } from "react";
 import { Alert, Checkbox, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
+import { SpinnerMotion } from "@/components/ui/spinner";
 import { type LoginErrors, validateLogin } from "@/lib/auth/validation";
 
 export function LoginForm() {
@@ -74,6 +75,7 @@ export function LoginForm() {
 						value={values.email}
 						onChange={(event) => handleChange("email", event.target.value)}
 						error={errors.email}
+						disabled={submitted}
 					/>
 					<TextField
 						ref={passwordRef}
@@ -84,6 +86,7 @@ export function LoginForm() {
 						value={values.password}
 						onChange={(event) => handleChange("password", event.target.value)}
 						error={errors.password}
+						disabled={submitted}
 					/>
 				</div>
 
@@ -98,8 +101,21 @@ export function LoginForm() {
 					</button>
 				</div>
 
-				<Button size="ds" variant="primary" type="submit" className="w-full">
-					Ingresar al panel
+				<Button
+					size="ds"
+					variant="primary"
+					type="submit"
+					className="w-full"
+					disabled={submitted}
+				>
+					{submitted ? (
+						<>
+							<SpinnerMotion size={20} className="mr-2" />
+							Ingresando al panel...
+						</>
+					) : (
+						"Ingresar al panel"
+					)}
 				</Button>
 
 				{notice ? (

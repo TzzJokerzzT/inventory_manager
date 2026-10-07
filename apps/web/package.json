@@ -7,7 +7,7 @@
 		"dev": "next dev --port 3000",
 		"build": "next build",
 		"start": "next start",
-		"check-types": "next typegen && tsc --noEmit && tsc --noEmit -p cypress/tsconfig.json",
+		"check-types": "next typegen && tsc --noEmit -p tsconfig.check.json && tsc --noEmit -p cypress/tsconfig.json",
 		"test": "jest",
 		"test:e2e": "cypress run"
 	},

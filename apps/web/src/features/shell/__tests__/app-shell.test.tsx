@@ -14,10 +14,6 @@ jest.mock("@/src/features/company/components/company-switcher", () => ({
 	CompanySwitcher: () => <div>switcher-stub</div>,
 }));
 
-jest.mock("@/components/theme-toggle", () => ({
-	ThemeToggle: () => <button type="button">theme-toggle-stub</button>,
-}));
-
 const useLogoutMock = useLogout as jest.MockedFunction<typeof useLogout>;
 const logout = jest.fn();
 
@@ -55,12 +51,11 @@ describe("AppShell", () => {
 		}
 	});
 
-	it("shows the company switcher, the logout user area and the theme toggle", () => {
+	it("shows the company switcher and the logout control", () => {
 		render(<AppShell>contenido</AppShell>);
 
 		expect(screen.getByText("switcher-stub")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Salir" })).toBeTruthy();
-		expect(screen.getByText("theme-toggle-stub")).toBeTruthy();
 	});
 
 	it("logs out from the user area", () => {

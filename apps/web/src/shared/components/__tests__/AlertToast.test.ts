@@ -23,7 +23,11 @@ describe("AlertToast", () => {
 	});
 
 	it("passes the message through", () => {
-		AlertToast({ title: "Listo", description: "Todo salió bien", type: "warning" });
+		AlertToast({
+			title: "Listo",
+			description: "Todo salió bien",
+			type: "warning",
+		});
 
 		expect(lastOptions()).toMatchObject({
 			title: "Listo",
@@ -47,7 +51,11 @@ describe("AlertToast", () => {
 	it("never auto-closes when autoclose is false", () => {
 		// Base UI reads `timeout: 0` as "do not dismiss automatically", which is
 		// the only way to express a toast the person has to close themselves.
-		AlertToast({ title: "Listo", description: "Todo salió bien", autoclose: false });
+		AlertToast({
+			title: "Listo",
+			description: "Todo salió bien",
+			autoclose: false,
+		});
 
 		expect(lastOptions().timeout).toBe(0);
 	});

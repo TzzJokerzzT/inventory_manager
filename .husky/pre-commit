@@ -1,0 +1,2 @@
+# Run Biome over the staged files only (lint + format). Fast: never runs the test suite.
+bunx biome check --staged --no-errors-on-unmatched

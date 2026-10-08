@@ -44,9 +44,31 @@ correr **lint, typecheck y los tests afectados** en cada commit, y depende de te
 
 ## Unidades de trabajo
 
-- **U1 — Hook de pre-commit (lint sobre staged)** + husky en la raíz + `prepare`.
-- **U2 — Hook de pre-push (types + tests)** + `HUSKY=0` en el CI, con prueba de que ambos hooks **frenan de
-  verdad** (un commit con un archivo mal formateado tiene que ser rechazado).
+- [x] **U1 — Hook de pre-commit (lint sobre staged)** + husky en la raíz + `prepare`. ✅ Commit `3cf5bd5`.
+  `husky@^9.1.7` se movió de `apps/web` a la raíz con `prepare: "husky"`, y `.husky/pre-commit` corre
+  `bunx biome check --staged --no-errors-on-unmatched`. **Spot check del padre**: el hook con set vacío sale
+  **0**, `bun run lint` sale 0, y —lo más fuerte— **el hook se ejecutó en un commit real** durante el propio
+  commit de la unidad (*"Checked 2 files in 6ms"*). **Assess de RDD**: riesgo `medium`, `reviewDue: false`
+  (`under_budget`), plan con `independentVerifier: false` → la verificación propia del writer alcanza.
+- [ ] **U2 — Hook de pre-push (types + tests)** + `HUSKY=0` en el CI, con prueba de que ambos hooks **frenan de
+  verdad**.
+
+## Hallazgo que justifica una bandera
+
+`biome check --staged` **sale con código 1 cuando procesa cero archivos**, así que sin
+`--no-errors-on-unmatched` el hook **bloquearía un commit con nada relevante staged**. Se descubrió probando
+los dos casos (con y sin la bandera) y no asumiéndolo; queda comentado en el hook para que nadie lo "limpie".
+
+## Verificación de U1
+
+- **RED**: archivo temporal con un error de formato, sólo él staged, `sh .husky/pre-commit` → **exit 1**.
+- **GREEN**: set staged vacío → **exit 0** (*"Checked 0 files"*).
+- **Triangulación**: `biome check --staged` solo, sobre set vacío → exit 1; con la bandera → exit 0. Prueba
+  que el requisito "no romper cuando no hay nada relevante" depende de esa bandera.
+- `bun install --frozen-lockfile` → exit 0, **sin cambios** (confirma que el `bun.lock` editado a mano está en
+  la forma canónica de bun).
+- El archivo temporal de la prueba **no dejó rastro** en el repo (se movió a `/tmp` y se sacó del índice).
+- El hook se disparó solo en el commit real de la unidad: prueba de que está **cableado**, no sólo escrito.
 
 ## Fuera de alcance
 

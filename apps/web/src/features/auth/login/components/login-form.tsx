@@ -8,7 +8,6 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Checkbox, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
-import { toast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api/client";
 import { type LoginErrors, validateLogin } from "@/lib/auth/validation";
 import { AlertMessage } from "@/src/shared/components/AlertMessage";

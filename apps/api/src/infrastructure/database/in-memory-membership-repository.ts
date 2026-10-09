@@ -33,6 +33,15 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 		return membership ?? null;
 	}
 
+	async findActiveByUser(userId: string): Promise<Membership[]> {
+		// Same `status: "ACTIVE"` rule as `findActiveByUserAndCompany`: an
+		// INVITED or REVOKED membership is not access. The userId filter is what
+		// keeps one user's memberships out of another user's `/me` response.
+		return Array.from(this.memberships.values()).filter(
+			(m) => m.userId === userId && m.status === "ACTIVE",
+		);
+	}
+
 	/** Adapter-specific: lets the test suite insert memberships directly. */
 	save(membership: Membership): void {
 		this.memberships.set(membership.id, membership);

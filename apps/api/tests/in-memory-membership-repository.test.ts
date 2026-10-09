@@ -91,4 +91,72 @@ describe("InMemoryMembershipRepository", () => {
 			repository.findActiveByUserAndCompany("user-2", "company-a"),
 		).resolves.toBeNull();
 	});
+
+	it("lists every ACTIVE membership of the user", async () => {
+		const repository = new InMemoryMembershipRepository();
+		repository.save(activeMembership("company-a"));
+		repository.save(activeMembership("company-b"));
+
+		const result = await repository.findActiveByUser("user-1");
+
+		expect(result).toHaveLength(2);
+		expect(result.map((membership) => membership.companyId).sort()).toEqual([
+			"company-a",
+			"company-b",
+		]);
+	});
+
+	it("excludes INVITED and REVOKED memberships from the user's list", async () => {
+		const repository = new InMemoryMembershipRepository();
+		repository.save(activeMembership("company-active"));
+		repository.save(
+			Membership.create({
+				userId: "user-1",
+				invitedEmail: "pending@example.com",
+				companyId: "company-invited",
+				role: "MEMBER",
+				status: "INVITED",
+				invitedBy: "owner-1",
+				acceptedAt: null,
+			}),
+		);
+		repository.save(
+			Membership.create({
+				userId: "user-1",
+				invitedEmail: "member@example.com",
+				companyId: "company-revoked",
+				role: "MEMBER",
+				status: "REVOKED",
+				invitedBy: "owner-1",
+				acceptedAt: new Date("2026-01-01T00:00:00.000Z"),
+			}),
+		);
+
+		const result = await repository.findActiveByUser("user-1");
+
+		expect(result.map((membership) => membership.companyId)).toEqual([
+			"company-active",
+		]);
+	});
+
+	it("returns [] for a user with no memberships", async () => {
+		const repository = new InMemoryMembershipRepository();
+		repository.save(activeMembership("company-a", "user-1"));
+
+		await expect(repository.findActiveByUser("user-2")).resolves.toEqual([]);
+	});
+
+	it("never returns another user's memberships", async () => {
+		const repository = new InMemoryMembershipRepository();
+		repository.save(activeMembership("company-own", "user-1"));
+		repository.save(activeMembership("company-other", "user-2"));
+
+		const result = await repository.findActiveByUser("user-1");
+
+		expect(result).toHaveLength(1);
+		expect(result.map((membership) => membership.companyId)).toEqual([
+			"company-own",
+		]);
+		expect(result[0]?.userId).toBe("user-1");
+	});
 });

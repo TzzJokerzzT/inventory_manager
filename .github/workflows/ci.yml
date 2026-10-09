@@ -16,6 +16,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Disable husky hooks in CI: the verify job already runs lint, type check and
+# the test suite itself, so a hook here would only duplicate that work (and
+# could fire on a `git commit` inside a job).
+env:
+  HUSKY: "0"
+
 jobs:
   verify:
     name: verify

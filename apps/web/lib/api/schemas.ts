@@ -1,12 +1,6 @@
-import {
-	array,
-	type InferOutput,
-	number,
-	object,
-	safeParse,
-	string,
-} from "valibot";
+import { array, number, object, safeParse, string } from "valibot";
 import { ApiError } from "./client";
+import type { components } from "./openapi";
 
 /**
  * Shape of `POST /auth/login` as the API promises it: the access token and its
@@ -18,7 +12,8 @@ export const loginResponseSchema = object({
 	expiresIn: number(),
 });
 
-export type LoginResponse = InferOutput<typeof loginResponseSchema>;
+/** `POST /auth/login` response, derived from the OpenAPI contract. */
+export type LoginResponse = components["schemas"]["TokenResponse"];
 
 const UNEXPECTED_RESPONSE =
 	"El servidor devolvió una respuesta inesperada. Probá de nuevo.";
@@ -49,12 +44,14 @@ export const companySchema = object({
 	createdAt: string(),
 });
 
-export type Company = InferOutput<typeof companySchema>;
+/** One company, derived from the OpenAPI contract. */
+export type Company = components["schemas"]["Company"];
 
 /** Shape of `GET /companies`: the companies the authenticated user belongs to. */
 export const companiesResponseSchema = array(companySchema);
 
-export type CompaniesResponse = InferOutput<typeof companiesResponseSchema>;
+/** `GET /companies` response, derived from the OpenAPI contract. */
+export type CompaniesResponse = components["schemas"]["Company"][];
 
 /**
  * Validates the companies response at the boundary.

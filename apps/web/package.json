@@ -8,6 +8,7 @@
 		"build": "next build",
 		"start": "next start",
 		"check-types": "next typegen && tsc --noEmit -p tsconfig.check.json && tsc --noEmit -p cypress/tsconfig.json",
+		"openapi:generate": "bash lib/api/generate-openapi.sh",
 		"test": "jest",
 		"test:e2e": "cypress run"
 	},

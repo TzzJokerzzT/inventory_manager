@@ -1,8 +1,11 @@
+import { fileURLToPath } from "node:url";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type Express, type RequestHandler } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
+import * as swaggerUi from "swagger-ui-express";
+import YAML from "yamljs";
 import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
@@ -18,6 +21,30 @@ import { errorHandler } from "./middlewares/error-handler.js";
 import { notFoundHandler } from "./middlewares/not-found.js";
 import { apiRateLimiter } from "./middlewares/rate-limit.js";
 import { buildRoutes } from "./routes/index.js";
+
+/**
+ * Absolute path to the hand-written OpenAPI document. Resolved relative to
+ * this module so it survives both the `tsc` output (`dist/interfaces/http/`)
+ * and the source tree under Jest, where the module is loaded as CommonJS and
+ * `import.meta.url` is lowered to `__filename`.
+ */
+const OPENAPI_DOCUMENT_PATH = fileURLToPath(
+	new URL("../../../openapi.yaml", import.meta.url),
+);
+
+/**
+ * Loads the OpenAPI document on demand. A missing or malformed YAML file only
+ * fails the documentation routes; it must never stop the API from booting.
+ */
+function loadOpenApiDocument(): swaggerUi.JsonObject {
+	const document: unknown = YAML.load(OPENAPI_DOCUMENT_PATH);
+	if (typeof document !== "object" || document === null) {
+		throw new Error(
+			`OpenAPI document at ${OPENAPI_DOCUMENT_PATH} did not parse to an object`,
+		);
+	}
+	return document as swaggerUi.JsonObject;
+}
 
 export interface AppDependencies {
 	createCompany: CreateCompanyUseCase;
@@ -76,6 +103,18 @@ export function buildApp(dependencies: AppDependencies): Express {
 			requireAuth: dependencies.requireAuth,
 			requireUser: dependencies.requireUser,
 		}),
+	);
+
+	// Documentation routes. The YAML file is the source of truth: the JSON
+	// endpoint serves it verbatim for programmatic consumers, and the Swagger
+	// UI reads from that endpoint rather than embedding a second copy.
+	app.get("/docs/openapi.json", (_request, response) => {
+		response.json(loadOpenApiDocument());
+	});
+	app.use(
+		"/docs",
+		swaggerUi.serve,
+		swaggerUi.setup(null, { swaggerUrl: "/docs/openapi.json" }),
 	);
 
 	app.use(notFoundHandler);

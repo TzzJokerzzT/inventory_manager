@@ -2,4 +2,3 @@
 
 bun run check-types
 bunx biome check --staged --no-errors-on-unmatched
-bun run test

@@ -9,6 +9,9 @@ const validSource = {
 	AUTH0_CLIENT_ID: "client-id-value",
 	AUTH0_CLIENT_SECRET: "client-secret-value",
 	AUTH0_CONNECTION: "Username-Password-Authentication",
+	CLOUDINARY_CLOUD_NAME: "demo-cloud",
+	CLOUDINARY_API_KEY: "123456789012345",
+	CLOUDINARY_API_SECRET: "cloudinary-secret-value",
 };
 
 describe("loadEnv defaults", () => {
@@ -30,6 +33,9 @@ describe("loadEnv defaults", () => {
 		expect(env.auth0.clientId).toBeUndefined();
 		expect(env.auth0.clientSecret).toBeUndefined();
 		expect(env.auth0.connection).toBeUndefined();
+		expect(env.cloudinary.cloudName).toBeUndefined();
+		expect(env.cloudinary.apiKey).toBeUndefined();
+		expect(env.cloudinary.apiSecret).toBeUndefined();
 	});
 
 	it("treats a blank value as absent", () => {
@@ -50,6 +56,11 @@ describe("loadEnv defaults", () => {
 			clientId: validSource.AUTH0_CLIENT_ID,
 			clientSecret: validSource.AUTH0_CLIENT_SECRET,
 			connection: validSource.AUTH0_CONNECTION,
+		});
+		expect(env.cloudinary).toEqual({
+			cloudName: validSource.CLOUDINARY_CLOUD_NAME,
+			apiKey: validSource.CLOUDINARY_API_KEY,
+			apiSecret: validSource.CLOUDINARY_API_SECRET,
 		});
 	});
 
@@ -103,6 +114,24 @@ describe("production requires the credentials", () => {
 			}),
 		).toThrow(
 			/Missing required environment variable in production: WEB_ORIGIN/,
+		);
+	});
+
+	it("throws for a missing Cloudinary variable once Auth0 and the web origin are present", () => {
+		expect(() =>
+			loadEnv({
+				NODE_ENV: "production",
+				DATABASE_URL: validSource.DATABASE_URL,
+				DIRECT_URL: validSource.DIRECT_URL,
+				WEB_ORIGIN: validSource.WEB_ORIGIN,
+				AUTH0_DOMAIN: validSource.AUTH0_DOMAIN,
+				AUTH0_AUDIENCE: validSource.AUTH0_AUDIENCE,
+				AUTH0_CLIENT_ID: validSource.AUTH0_CLIENT_ID,
+				AUTH0_CLIENT_SECRET: validSource.AUTH0_CLIENT_SECRET,
+				AUTH0_CONNECTION: validSource.AUTH0_CONNECTION,
+			}),
+		).toThrow(
+			/Missing required environment variable in production: CLOUDINARY_CLOUD_NAME/,
 		);
 	});
 
@@ -226,6 +255,27 @@ describe("secrets never reach an error message", () => {
 			throw new Error("expected loadEnv to throw");
 		} catch (error) {
 			expect(String(error)).toMatch(/AUTH0_CLIENT_SECRET/);
+		}
+	});
+
+	it("names the missing Cloudinary secret without any value", () => {
+		try {
+			loadEnv({
+				NODE_ENV: "production",
+				DATABASE_URL: validSource.DATABASE_URL,
+				DIRECT_URL: validSource.DIRECT_URL,
+				WEB_ORIGIN: validSource.WEB_ORIGIN,
+				AUTH0_DOMAIN: validSource.AUTH0_DOMAIN,
+				AUTH0_AUDIENCE: validSource.AUTH0_AUDIENCE,
+				AUTH0_CLIENT_ID: validSource.AUTH0_CLIENT_ID,
+				AUTH0_CLIENT_SECRET: validSource.AUTH0_CLIENT_SECRET,
+				AUTH0_CONNECTION: validSource.AUTH0_CONNECTION,
+				CLOUDINARY_CLOUD_NAME: validSource.CLOUDINARY_CLOUD_NAME,
+				CLOUDINARY_API_KEY: validSource.CLOUDINARY_API_KEY,
+			});
+			throw new Error("expected loadEnv to throw");
+		} catch (error) {
+			expect(String(error)).toMatch(/CLOUDINARY_API_SECRET/);
 		}
 	});
 });

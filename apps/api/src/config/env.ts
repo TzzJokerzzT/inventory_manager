@@ -49,6 +49,7 @@ const SECRET_VARIABLES = new Set([
 	"DATABASE_URL",
 	"DIRECT_URL",
 	"AUTH0_CLIENT_SECRET",
+	"CLOUDINARY_API_SECRET",
 ]);
 
 function readRequired(
@@ -137,7 +138,7 @@ function assertHttpOrigin(value: string): void {
 
 /**
  * Builds the typed config from a source, so tests can drive it without
- * touching `process.env`. The seven credentials are required only in
+ * touching `process.env`. The ten credentials are required only in
  * production: development, the test suite and CI run without them.
  */
 export function loadEnv(source: EnvSource = process.env) {
@@ -173,6 +174,11 @@ export function loadEnv(source: EnvSource = process.env) {
 			clientId: readRequired("AUTH0_CLIENT_ID", nodeEnv, source),
 			clientSecret: readRequired("AUTH0_CLIENT_SECRET", nodeEnv, source),
 			connection: readRequired("AUTH0_CONNECTION", nodeEnv, source),
+		},
+		cloudinary: {
+			cloudName: readRequired("CLOUDINARY_CLOUD_NAME", nodeEnv, source),
+			apiKey: readRequired("CLOUDINARY_API_KEY", nodeEnv, source),
+			apiSecret: readRequired("CLOUDINARY_API_SECRET", nodeEnv, source),
 		},
 	} as const;
 }

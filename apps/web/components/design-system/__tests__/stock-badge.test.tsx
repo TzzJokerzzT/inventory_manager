@@ -1,4 +1,3 @@
-import { describe, expect, it } from "bun:test";
 import { isInaccessible } from "@testing-library/dom";
 import { render, screen } from "@testing-library/react";
 import { StockBadge, type StockStatus, stockStatus } from "../stock-badge";

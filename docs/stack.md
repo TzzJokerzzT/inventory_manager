@@ -38,7 +38,7 @@
 | Propósito | Librería |
 |-----------|----------|
 | Cliente HTTP / fetching | **Axios** |
-| Autenticación (Auth0) | **@auth0/auth0-react** |
+| Autenticación (Auth0) | **validación del JWT en el backend** (`express-oauth2-jwt-bearer`); el frontend **no** usa SDK de Auth0 (ROPG mediado por el backend, ver 5.4) |
 | Estado local (UI) | **Zustand** |
 | Estado del servidor (caché, fetching) | **TanStack Query** |
 | Validación de esquemas | **Valibot** |
@@ -63,6 +63,26 @@
 - **shadcn/ui + Tailwind** consumen los tokens de diseño definidos en el design system
   (`design/inventory-manager.fig`): colores, radios y espaciados ya están especificados con
   sus dos modos (claro/oscuro).
+
+#### Estado de la capa de datos del frontend (implementada)
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| Cliente HTTP | `apps/web/lib/api/client.ts` | Axios con `withCredentials` (la cookie del refresh es cross-origin), factory + acceso perezoso, y **un solo tipo de error** (`ApiError`) con `status` y mensaje. Un pedido cancelado se re-lanza tal cual; una respuesta HTML de un proxy no se filtra a la UI |
+| Frontera | `apps/web/lib/api/schemas.ts` | Valibot valida **lo que devuelve el API** en vez de castearlo: si el backend cambia de forma, falla como error de datos legible |
+| Caché de servidor | `apps/web/src/providers/query-provider.tsx` | `QueryClient` creado **por montaje**, no como singleton de módulo (uno compartido filtraría caché entre usuarios) |
+| Estado local | `apps/web/src/features/auth/store/session-store.ts` | Sólo el **access token, en memoria**. El refresh vive en la cookie `httpOnly`; `localStorage` queda descartado porque un XSS se llevaría la sesión |
+| Formularios | `apps/web/lib/auth/validation.ts` | Valibot con los mensajes del UI; el contrato es el mismo que consumían las vistas |
+| Peticiones de auth | `apps/web/src/features/auth/api/{use-login,use-register}.ts` | `useMutation` sobre el cliente, con la validación de frontera y el store |
+| Empresas del usuario | `apps/web/src/features/company/api/use-companies.ts` | `GET /companies` (ya viene **filtrado por membresía** desde MI-44) con validación de frontera |
+| Empresa activa | `apps/web/src/features/company/store/company-selectors.ts` | Las reglas de selección son una **lectura derivada**, no un efecto: cero empresas → ninguna activa; el id guardado si sigue en la lista; si desapareció, la primera. **El switch no se muestra con menos de dos** (con una no hay nada que elegir) |
+| Estado "sin empresas" | `apps/web/app/sin-empresas/**` + `src/features/company/components/require-active-company.tsx` | La pantalla ofrece **crear mi empresa** (bootstrap) o esperar una asignación; la **guardia** envuelve las rutas que necesitan empresa activa y es lo que hace verdadero el "no se entra al dashboard sin empresa": carga sin saltar de ruta, reintento ante error, **cero empresas → `/sin-empresas`** y **401 → `/login`** (el access token vive en memoria, así que una carga limpia no lo tiene; el refresh al cargar llega con MI-54) |
+
+**El CORS dejó de ser un supuesto**: el API envía `Access-Control-Allow-Credentials` y responde
+**sólo** el origen configurado en `WEB_ORIGIN`, que es lo que hace que la cookie `httpOnly` del refresh
+funcione desde el navegador. Sin eso, el login devolvía el access token pero el refresh nunca llegaba ni
+se guardaba. `WEB_ORIGIN` se valida como **origen http(s)** (sin path, query ni fragmento): un origen con
+path nunca coincide con lo que manda el navegador y el CORS dejaría de funcionar en silencio.
 
 ---
 
@@ -138,6 +158,14 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
 > **Consecuencia importante:** al no usar RLS, **el aislamiento por empresa depende por completo del
 > código de la API**. Cada consulta del repositorio debe filtrar por `company_id` y debe existir un
 > test que lo verifique. Es el mayor riesgo de seguridad del proyecto.
+>
+> **Hecho de seguridad medido (load-bearing):** Supabase otorga CRUD completo a `anon`,
+> `authenticated` y `service_role` en el esquema `public` **por defecto, pero sólo** para las tablas
+> creadas por `postgres`/`supabase_admin`. Las tablas que crea el rol `prisma` **no reciben grants**
+> (verificado con una tabla de prueba en una transacción revertida, y tras la migración para las
+> siete tablas: `has_table_privilege` devuelve `false`). Consecuencia: mantener `public` es seguro
+> **sólo mientras** las migraciones corran como `prisma`; cualquier tabla creada a mano por el
+> editor SQL de Supabase quedaría **expuesta por la Data API por defecto**.
 
 ### 3.2 Esquema: implicancias del dominio
 
@@ -154,12 +182,31 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
 | Usuarios (Auth0) | `auth0_sub` **UNIQUE**; **nunca** se guardan contraseñas ni hashes |
 | Auditoría (MOV-05) | `created_at timestamptz DEFAULT now()` + `user_id` en movimientos |
 
+> **CHECKs y minúsculas van a mano en la migración.** Prisma no modela `CHECK` constraints ni
+> extensiones, así que `CHECK (stock_quantity >= 0)` y `CHECK (quantity > 0)` se escriben a mano en
+> la primera migración (`20261006223356_init`). Ahí también se fuerza el invariante de minúsculas
+> sobre `users.email` y `memberships.invited_email`: el email es la llave de unión del modelo de
+> acceso (§5.8) y un índice único sobre `text` distingue mayúsculas, así que `Foo@x.com` no
+> matchearía `foo@x.com` sin ese CHECK.
+
 ### 3.3 Migraciones y entornos
 
-- `schema.prisma` es la **fuente de verdad** del esquema.
-- Local: `prisma migrate dev` genera y aplica la migración.
-- CI: `prisma migrate deploy` contra una base efímera antes de correr los tests.
-- **Producción:** las migraciones corren en el pipeline, **nunca** en el runtime de la función.
+- `schema.prisma` sigue siendo la **fuente de verdad**, pero en Prisma 7 el `datasource` **ya no
+  declara `url` ni `directUrl`** (`directUrl` fue **removido** en v7): la URL vive en
+  `apps/api/prisma.config.ts` (`datasource.url`, leída de `DIRECT_URL`).
+- El generador es `prisma-client` (no `prisma-client-js`) con `output` **obligatorio**. El cliente
+  generado vive en `apps/api/src/infrastructure/database/generated/prisma`, está **gitignored** y lo
+  produce `db:generate` (que también corre `postinstall`).
+- Extensiones (`pg_trgm`) y `CHECK` constraints **no se modelan en el schema**: llegan por
+  migraciones editadas a mano (ver §3.2).
+- Comandos: `db:generate` · `db:migrate` (desarrollo local) · `db:deploy` (CI/producción) ·
+  `db:status` · `db:studio`.
+- **Producción:** las migraciones corren en el pipeline (`db:deploy`), **nunca** en el runtime de la
+  función.
+- **`prisma migrate reset` nunca es la respuesta** sobre la base compartida de Supabase: la vacía y
+  la recrea.
+- `prisma migrate diff --from-migrations` requiere además `datasource.shadowDatabaseUrl` en
+  `prisma.config.ts` (el flag `--shadow-database-url` fue **removido** en Prisma 7).
 
 ---
 
@@ -200,14 +247,31 @@ produce el backend (ver 6.2).
 
 ### 4.2 Pipeline de CI (GitHub Actions)
 
-Tareas mínimas por Pull Request:
+**Implementado** en `.github/workflows/ci.yml` (MI-36), en **dos jobs** para que un fallo de
+migración se lea como tal y no se confunda con un test roto:
 
-1. `biome ci` (lint + formato)
-2. `tsc --noEmit` (typecheck)
-3. `jest` (unitarios, web y api)
-4. `supertest` (integración de endpoints)
-5. `prisma migrate deploy` contra una base efímera
-6. `cypress run` (E2E) — puede correr solo en la rama principal para acotar costo
+**Job `verify`** — dispara en `pull_request` y en `push` a `production` y `development`:
+
+1. `bun install --frozen-lockfile` — si el lockfile no coincide con los `package.json`, el job falla
+   en vez de resolver versiones nuevas
+2. `biome ci` (lint + formato, **sin escribir**: `biome check` sí modificaría)
+3. `bun run check-types` (`turbo`, los dos workspaces)
+4. `bun run test` — Jest en los dos workspaces, con **supertest** adentro para la integración de
+   endpoints (no es un paso separado)
+5. `bun run build`
+
+**Job `migrations`** — `prisma migrate deploy` y `migrate status` contra un **Postgres efímero**
+(*service container* `postgres:17` con health check). Es el único paso que aplica la cadena de
+migraciones **desde cero sobre una base vacía**, que es la única forma de que el CI detecte una
+migración rota. El contenedor es descartable y sus credenciales son placeholders no secretos, así que
+el workflow **no necesita secretos del repositorio** y funciona en un fork; **nunca** toca el proyecto
+real de Supabase. La imagen oficial trae `pg_trgm`, que es lo que necesita la primera migración.
+
+Permisos: `contents: read`. Concurrencia: un push nuevo cancela el run anterior de la misma rama.
+
+**Pendiente declarado**: `cypress run` (E2E). No está en el workflow porque **nunca se corrió** — el
+spec de `apps/web` se configuró en MI-41 y quedó sin verificar por necesitar el dev server — y meter
+un job que no sabemos si pasa deja el CI rojo desde el primer push. Va como follow-up.
 
 ---
 
@@ -239,12 +303,16 @@ payload y de tiempo). Eso tensiona varias librerías elegidas:
 
 ### 5.3 Prisma + Supabase en serverless
 
-Cada instancia de función abre sus propias conexiones y puede **agotar el pool** de Postgres.
-Recomendado: usar el **pooler de Supabase (Supavisor, puerto 6543)** con `?pgbouncer=true`,
-o el driver serverless-friendly de Prisma. Las **migraciones no deben correr en el runtime** de
-la función: van en el pipeline de CI.
+Cada instancia de función abre sus propias conexiones y puede **agotar el pool** de Postgres. La
+solución ya está **decidida y construida**:
 
-**Confirmado:** `prisma` no requiere configuración especial en el runtime de Vercel.
+- El **cliente de runtime** va por el driver adapter **`@prisma/adapter-pg`** con la **URL pooled**
+  (pooler de Supabase, puerto 6543, `?pgbouncer=true`). El adapter es el dueño de la conexión, así
+  que **no queda ningún workaround de `pgbouncer` del lado del cliente**.
+- El **CLI y las migraciones** usan la **URL directa** (session pooler, puerto 5432), configurada en
+  `prisma.config.ts` desde `DIRECT_URL`.
+
+Las **migraciones no corren en el runtime** de la función: van en el pipeline de CI (`db:deploy`).
 
 ### 5.4 Autenticación con Auth0
 
@@ -253,19 +321,78 @@ Supabase Auth ni autenticación propia.
 
 Qué implica en el código:
 
-- El **backend no emite ni firma tokens: los valida.** La verificación se hace contra el **JWKS**
-  de Auth0 con `express-oauth2-jwt-bearer` (o `jwks-rsa` + `jsonwebtoken`).
+- El **backend no emite ni firma tokens: los valida y media el intercambio.** La **validación** va
+  contra el **JWKS** de Auth0 con `express-oauth2-jwt-bearer`; la **mediación** de credenciales es
+  el grant *Resource Owner Password*, servidor a servidor (ver más abajo). No se usa
+  `jwks-rsa` + `jsonwebtoken`.
 - **`bcrypt` deja de ser necesario**: no hay tabla de credenciales ni hashing propio.
-- **`jsonwebtoken` solo hace falta** si se elige el camino `jwks-rsa`; con
-  `express-oauth2-jwt-bearer` es redundante.
-- **`cookie-parser` pasa a opcional**: el flujo recomendado para SPA + API es *Authorization Code
-  con PKCE* y el access token viajando como `Authorization: Bearer`. Solo se necesita cookie si se
-  decide guardar el refresh token en una cookie `httpOnly`.
+- **`jsonwebtoken` no se usa**: la validación la hace `express-oauth2-jwt-bearer`, no un JWT
+  firmado en local.
+- **La aplicación de Auth0 es una Regular Web Application** (confidencial, con `client_secret`, y
+  con el grant `Password` habilitado), **no una SPA**: el frontend no habla con Auth0.
+- **`cookie-parser` y el almacenamiento del token**: resueltos en **MI-52**. El **access token**
+  vuelve en el body (el SPA lo usa como `Authorization: Bearer`) y el **refresh token** va en una
+  cookie **`httpOnly`** + `Secure` (en producción) + `SameSite=Lax` + `Path=/auth`, para que un XSS no
+  pueda leer la sesión larga. Supuesto declarado: `Lax` asume que el SPA y la API quedan bajo el
+  **mismo dominio registrable**; si terminan en sitios distintos hay que pasar a `None` **con
+  protección CSRF** (decisión de despliegue).
 - **AUTH-04 (recuperación de contraseña), MFA y login social salen del alcance de desarrollo**:
   los provee Auth0.
 - **Tabla `users` local:** el vínculo con Auth0 es el claim `sub`. Guardar `auth0_sub UNIQUE` y
   **no** almacenar contraseñas.
-- **Frontend:** `@auth0/auth0-react` maneja el flujo, la sesión y el refresh.
+- **Frontend: sin SDK de Auth0 y sin variables `NEXT_PUBLIC_AUTH0_*`.** Con ROPG el SPA envía las
+  credenciales a nuestra API; no hay `@auth0/auth0-react`, sesión ni refresh en el cliente.
+
+#### El intercambio de credenciales (MI-52)
+
+`POST /auth/login` recibe email y contraseña, los valida con Valibot y los intercambia con Auth0
+servidor a servidor (`POST /oauth/token`, `grant_type=password`) a través del puerto
+`IdentityProvider` (`application/ports`) y el adaptador `Auth0IdentityProvider`
+(`infrastructure/auth0`). Cuatro detalles que son decisiones, no implementación:
+
+- **`scope` explícito y mínimo** (`openid profile email offline_access`). No es cosmético: si se omite
+  el `scope`, Auth0 documenta que el access token sale **con todos los scopes de la API**.
+  `offline_access` es lo que habilita el refresh token.
+- **Errores uniformes**: credenciales inválidas y email inexistente devuelven **el mismo 401 con el
+  mismo mensaje**, por construcción (el mensaje es una constante, no se deriva de lo que respondió
+  Auth0). Un proveedor caído devuelve **503**, para no mentirle al cliente con un "revisá tu
+  contraseña". El log del servidor sí distingue `unauthorized_client` (el grant está apagado, o sea
+  una mala configuración nuestra) de `invalid_grant` (credenciales incorrectas).
+- **La contraseña no se registra en ninguna capa** y no se persiste ni se hashea: se reenvía y se
+  descarta. Hay tests que espían `console` para que siga siendo cierto.
+- **Timeout de 5 s** en la llamada a Auth0 (`AbortSignal.timeout`): la API corre como función
+  serverless y una llamada colgada consume el presupuesto de ejecución (§5.2).
+- **Rate limiting propio en el endpoint** (más estricto que el global). El **store compartido es
+  MI-55**: hoy el contador es en memoria y en serverless **no limita globalmente**.
+
+#### El registro y el gate del email verificado (MI-53)
+
+`POST /auth/register` da de alta la cuenta en la base de datos de Auth0. Tres decisiones que no son
+implementación:
+
+- **La respuesta es uniforme**: `201` con el mismo cuerpo tanto si la cuenta se creó como si Auth0 la
+  rechazó. Auth0 devuelve **un solo `invalid_signup`** para "el email ya existe" y para "la contraseña
+  no me gusta", y no dice cuál: separarlas revelaría si una dirección está registrada. El rechazo se
+  registra **en el log del servidor** y el caso de uso lo traga a propósito (con un comentario que pide
+  no "arreglarlo").
+- **La política de contraseña la enforzamos nosotros** (8..256, Valibot) **antes** de llamar a Auth0.
+  No es decoración: es lo que hace honesta la respuesta uniforme. Si dejáramos pasar contraseñas
+  débiles, un rechazo por política sería indistinguible de un email duplicado y el usuario recibiría un
+  "revisá tu correo" que nunca llega. **Riesgo declarado**: si la política de Auth0 fuera más estricta
+  que la nuestra, ese rechazo también se vería como la respuesta uniforme; se detecta en el log.
+- **`email_verified` se verifica en el login, con `/userinfo`** sobre el access token recién emitido.
+  Si no está verificado: **403 con `code: email_not_verified`, sin tokens, sin cookie y sin fila en
+  `users`**. Decirle "verificá tu correo" a alguien que acaba de probar su contraseña no es una
+  filtración, pero **emitir tokens sí rompería el invariante**, porque las rutas protegidas sólo validan
+  firma, issuer y audience. Si está verificado, se hace *upsert* de la fila con `auth0_sub` y el email
+  del proveedor (**no** del body del request) y el email se guarda en minúsculas, que es lo que exige el
+  `CHECK` de la migración.
+
+**Ya cableado (2026-10-06).** `createRequireAuth({ issuerBaseURL, audience })` (en
+`middlewares/require-auth.ts`) valida el JWT contra el JWKS del tenant; `main.ts` lo construye desde
+`AUTH0_DOMAIN`/`AUTH0_AUDIENCE` (y falla rápido si faltan); `router.use("/companies", requireAuth)`
+protege las rutas de empresas y deja `/health` público. El 401 lleva el challenge
+`WWW-Authenticate` (RFC 6750), reenviado por una allowlist explícita en `error-handler.ts`.
 
 Dos consecuencias a tener presentes:
 
@@ -468,6 +595,28 @@ usuario y tienen que seguir siendo legibles (MOV-05).
 | Crear empresa | cualquier usuario autenticado (bootstrap) |
 | Ver usuarios | sólo los de **sus** empresas |
 
+#### El bootstrap, implementado (MI-44)
+
+El flujo 1 está construido y verificado contra la base real. Tres decisiones que no son detalles:
+
+- **Una empresa nace con dueño, en una sola transacción.** El puerto de empresas ya no expone “crear”
+  sino **“crear con dueño”**, y el adaptador escribe la empresa **y** su membership en un
+  `$transaction`: como el dueño *es* la membership `OWNER` (§5.8), una empresa sin dueño es un estado
+  inválido, no una tarea a medias.
+- **La auto-referencia del bootstrap**: la membership del creador se guarda con `invited_by = su propio
+  user_id`, porque nadie lo invitó. Parece un bug cuando se lee después, así que está comentado en el
+  código. Se crea `ACTIVE` con `accepted_at`, porque a tu propia empresa no hace falta aceptarte una
+  invitación, y con el `invited_email` en minúsculas, que es lo que exige el `CHECK`.
+- **`GET /companies` devuelve sólo las empresas de las que el usuario es miembro.** No es un extra: con
+  las membresías existiendo, la lista global anterior le habría dado a cualquier usuario autenticado
+  **las empresas de todos**, que es exactamente el riesgo que §3.1 marca como el mayor del proyecto.
+  **MI-50** extiende el mismo filtro a productos, clientes y movimientos.
+
+Para poder crear la membership hace falta saber **quién** es el usuario, así que MI-44 incluye la mitad
+“quién” de MI-50: un middleware que traduce el claim `sub` del token a la fila de `users` y responde
+**403 `user_not_provisioned`** si un token válido no tiene fila, en vez de inventar un usuario. La otra
+mitad —a qué empresa puede acceder y con qué rol en cada request— sigue siendo de MI-50.
+
 #### Los cuatro flujos
 
 1. **Primer usuario (bootstrap).** Se registra → crea su empresa → membership `OWNER` `ACTIVE`. Sin
@@ -550,12 +699,15 @@ se indica la clave en cada punto.
 - [x] **UX de autenticación con Auth0** (**MI-39**): **resuelto** — formulario propio mediado por el backend
       (ROPG). Ver §5.4. Efecto: las pantallas de Login/Registro del diseño se implementan tal cual, y
       el rate limiting del login pasa a ser obligatorio.
-- [ ] **Cómo se testean los endpoints protegidos** con `supertest` (**MI-39**): clave de prueba o stub del
-      middleware de validación de Auth0.
-- [ ] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: sí o no (**MI-38**).
-- [ ] **Limpieza del `package.json` del backend** (sin subtarea propia): confirmar que `bcrypt`,
-      `jsonwebtoken` y `multer` salen de la lista de dependencias.
-- [ ] **Versión *major* de PostgreSQL** (**MI-38**): fijarla en 3.1 cuando se aprovisione el proyecto en Supabase.
+- [x] **Cómo se testean los endpoints protegidos** con `supertest` (**MI-39**): **resuelta** — clave
+      de prueba + JWKS local. Se descartó el stub porque un `issuer`/`audience` mal configurado
+      pasaría la suite en verde sin ejercitar nunca esa configuración.
+- [x] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: **sí** (**MI-38**).
+      Activada en la primera migración (`20261006223356_init`); disponible (1.6) e instalada.
+- [x] **Limpieza del `package.json` del backend** (sin subtarea propia): **confirmado** — `bcrypt`,
+      `jsonwebtoken` y `multer` no están en `apps/api/package.json`.
+- [x] **Versión *major* de PostgreSQL** (**MI-38**): **17**, medido en el proyecto aprovisionado
+      (el servidor reporta 17.6). «Última estable soportada por Supabase» resultó ser 17.
 - [ ] **Contrato entre frontend y backend** (**MI-43**). Al no haber código compartido, hay que decidir cómo se
       evita duplicar las reglas de validación. Recomendado: **generar los tipos del frontend desde
       la especificación OpenAPI** que el backend ya produce con `swagger + yamljs`.

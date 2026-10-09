@@ -9,6 +9,9 @@ node_modules/
 dist/
 .turbo/
 
+# Prisma generated client (produced by `db:generate`)
+apps/api/src/infrastructure/database/generated/
+
 # Environment variables
 .env*
 !.env.example

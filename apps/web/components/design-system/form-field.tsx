@@ -1,12 +1,13 @@
 import { cn } from "cn";
 import { ChevronDown } from "lucide-react";
 import { type ComponentProps, useId } from "react";
+import { FieldLabel } from "../ui/field";
 
 const controlClassName =
-	"h-12 rounded-md border border-border bg-surface px-4 text-base text-text-primary focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary focus-visible:outline-none";
+	"h-12 rounded-md border border-border bg-surface px-4 text-base text-text-primary transition-colors focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary focus-visible:outline-none";
 
 type TextFieldProps = ComponentProps<"input"> & {
-	label: string;
+	label?: string;
 	hint?: string;
 	error?: string;
 };
@@ -27,10 +28,13 @@ export function TextField({
 	const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 
 	return (
-		<div data-slot="text-field" className="flex flex-col gap-2">
-			<label htmlFor={controlId} className="text-sm text-text-secondary">
+		<div
+			data-slot="text-field"
+			className={cn("flex flex-col gap-2", className)}
+		>
+			<FieldLabel htmlFor={controlId} className="text-sm text-text-secondary">
 				{label}
-			</label>
+			</FieldLabel>
 			<input
 				id={controlId}
 				name={name}
@@ -40,7 +44,6 @@ export function TextField({
 					controlClassName,
 					error &&
 						"border-danger focus-visible:border-danger focus-visible:ring-danger",
-					className,
 				)}
 				{...props}
 			/>
@@ -77,7 +80,10 @@ export function SelectField({
 	const controlId = id ?? name ?? autoId;
 
 	return (
-		<div data-slot="select-field" className="flex flex-col gap-2">
+		<div
+			data-slot="select-field"
+			className={cn("flex flex-col gap-2", className)}
+		>
 			<label htmlFor={controlId} className="text-sm text-text-secondary">
 				{label}
 			</label>
@@ -85,11 +91,7 @@ export function SelectField({
 				<select
 					id={controlId}
 					name={name}
-					className={cn(
-						controlClassName,
-						"w-full appearance-none pr-10",
-						className,
-					)}
+					className={cn(controlClassName, "w-full appearance-none pr-10")}
 					{...props}
 				>
 					{placeholder ? <option value="">{placeholder}</option> : null}

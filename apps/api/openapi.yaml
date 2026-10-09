@@ -1,0 +1,546 @@
+openapi: 3.0.3
+info:
+  title: Inventory Manager API
+  version: 0.1.0
+  description: |
+    HTTP contract between the web client and the API.
+
+    The backend owns this document: it is the single source of truth for the
+    request and response shapes and for the error codes each route can
+    produce. A contract that only describes the happy path does not prevent
+    the duplication it exists to prevent, so the error responses below are
+    part of the contract, not decoration.
+
+servers:
+  - url: /
+
+tags:
+  - name: health
+  - name: auth
+  - name: companies
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: The API is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange email and password for an access token
+      description: |
+        On success the refresh token is set in an httpOnly cookie and only the
+        access token (plus its lifetime) is returned in the body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Credentials accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: |
+            Invalid credentials. A wrong password and a non-existent account
+            are indistinguishable on purpose.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |
+            The credentials are correct but the email is not verified. The
+            machine-readable `code` is `email_not_verified`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/IdentityProviderUnavailable"
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new account
+      description: |
+        The response is identical whether the account was created or the
+        sign-up was rejected (for example a duplicate email): the API must not
+        reveal which one it was.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: |
+            Account created, or the sign-up was rejected without revealing
+            which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/IdentityProviderUnavailable"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange the refresh cookie for a fresh token pair
+      description: |
+        The refresh token is read from the httpOnly cookie, never from the
+        body. On success the cookie is rotated when the provider issues a new
+        refresh token.
+      responses:
+        "200":
+          description: Refresh token accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: |
+            The refresh cookie is missing or the provider rejected it. The
+            message is uniform so a missing cookie and an expired token are
+            indistinguishable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/IdentityProviderUnavailable"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Clear the refresh-token cookie
+      description: |
+        Deliberately not behind authentication: an expired access token must
+        not block signing out. No provider revocation is performed.
+      responses:
+        "204":
+          description: The refresh cookie is cleared; no body is returned.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies:
+    post:
+      tags: [companies]
+      summary: Create a company
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompanyRequest"
+      responses:
+        "201":
+          description: Company created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Company"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    get:
+      tags: [companies]
+      summary: List the caller's companies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The companies the caller belongs to.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Company"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/context:
+    get:
+      tags: [companies]
+      summary: Resolve the caller's membership context in a company
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The company and the caller's role in it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyContextResponse"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`). A non-existent company and a
+            non-member are answered identically so company ids cannot be
+            enumerated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/media/signature:
+    post:
+      tags: [companies]
+      summary: Sign upload parameters for a direct-to-storage upload
+      description: |
+        The request body is ignored: every upload parameter is decided by the
+        server from the company id, so the signed contract is always the
+        server's, never the caller's.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Signed upload parameters for the storage provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaUploadSignature"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`). A non-existent company and a
+            non-member are answered identically so company ids cannot be
+            enumerated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, uptime]
+      properties:
+        status:
+          type: string
+          example: ok
+        uptime:
+          type: number
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 256
+
+    TokenResponse:
+      type: object
+      required: [accessToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: number
+          description: Access-token lifetime in seconds.
+
+    RegisterResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    Company:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    CompanyContextResponse:
+      type: object
+      required: [company, role]
+      properties:
+        company:
+          $ref: "#/components/schemas/Company"
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+
+    MediaUploadSignature:
+      type: object
+      required:
+        [cloudName, apiKey, timestamp, signature, folder, allowedFormats, maxFileSizeBytes]
+      properties:
+        cloudName:
+          type: string
+        apiKey:
+          type: string
+        timestamp:
+          type: integer
+        signature:
+          type: string
+        folder:
+          type: string
+        allowedFormats:
+          type: array
+          items:
+            type: string
+        maxFileSizeBytes:
+          type: integer
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+
+    ValidationError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, issues]
+          properties:
+            message:
+              type: string
+            issues:
+              type: array
+              items:
+                type: string
+
+    MalformedJsonError:
+      description: |
+        The JSON body could not be parsed. The body parser rejects it before it
+        reaches validation, so the response carries only `message` and never
+        `issues`. `additionalProperties: false` keeps this shape disjoint from
+        `ValidationError`, so the `BadRequest` `oneOf` stays unambiguous.
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [message]
+          additionalProperties: false
+          properties:
+            message:
+              type: string
+
+    CodedError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, code]
+          properties:
+            message:
+              type: string
+            code:
+              type: string
+
+  responses:
+    BadRequest:
+      description: |
+        The request body is malformed or fails validation. The response shape
+        depends on which failure happened:
+        - a syntactically invalid JSON body is rejected by the body parser
+          before it reaches validation and is answered as `{error: {message}}`
+          with no `issues`;
+        - a body that parses but fails the request schema is answered as
+          `{error: {message, issues}}`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ValidationError"
+              - $ref: "#/components/schemas/MalformedJsonError"
+
+    Unauthorized:
+      description: The bearer token is missing, invalid or expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    IdentityProviderUnavailable:
+      description: The identity provider could not be reached.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalServerError:
+      description: |
+        An unexpected server error. The message is fixed and generic so
+        internal details never leak to the client.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    RateLimited:
+      description: |
+        Too many requests from this client. The global limiter applies to every
+        route. `express-rate-limit` answers with a plain string, which Express
+        sends as `text/html`.
+      content:
+        text/html:
+          schema:
+            type: string
+            example: Too many requests, please try again later.
+
+    RateLimitedStrict:
+      description: |
+        Too many requests from this client. This endpoint has a stricter
+        dedicated limiter in addition to the global one. `express-rate-limit`
+        answers with a plain string, which Express sends as `text/html`.
+      content:
+        text/html:
+          schema:
+            type: string
+            example: Too many requests, please try again later.

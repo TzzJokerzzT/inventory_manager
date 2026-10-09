@@ -1,10 +1,7 @@
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const cssPath = fileURLToPath(
-	new URL("../../../app/globals.css", import.meta.url),
-);
+const cssPath = join(__dirname, "../../../app/globals.css");
 const css = readFileSync(cssPath, "utf-8");
 
 // Removes `/* ... */` comments so they cannot hide a declaration or fake a

@@ -2,6 +2,10 @@ import type { ErrorRequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ValiError } from "valibot";
 import { DomainError } from "../../../domain/errors/domain-error.js";
+import { EmailNotVerifiedError } from "../../../domain/errors/email-not-verified-error.js";
+import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
+import { InvalidCredentialsError } from "../../../domain/errors/invalid-credentials-error.js";
+import { UserNotProvisionedError } from "../../../domain/errors/user-not-provisioned-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
 	if (typeof error !== "object" || error === null) {
@@ -21,6 +25,27 @@ function getErrorMessage(error: unknown): string {
 	}
 
 	return "Request failed";
+}
+
+/**
+ * RFC 6750 expects a `WWW-Authenticate` challenge on 401 responses, and
+ * `express-oauth2-jwt-bearer` stores it on the error it throws. Forward only
+ * this one header by name: errors are reachable from untrusted input in other
+ * code paths, so a generic `response.set(error.headers)` would turn any future
+ * error that carries a `headers` property into a header-injection vector.
+ */
+function getWwwAuthenticateHeader(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null) {
+		return undefined;
+	}
+
+	const headers = (error as { headers?: unknown }).headers;
+	if (typeof headers !== "object" || headers === null) {
+		return undefined;
+	}
+
+	const value = (headers as Record<string, unknown>)["WWW-Authenticate"];
+	return typeof value === "string" ? value : undefined;
 }
 
 /**
@@ -50,8 +75,46 @@ export const errorHandler: ErrorRequestHandler = (
 		return;
 	}
 
+	if (error instanceof InvalidCredentialsError) {
+		response.status(StatusCodes.UNAUTHORIZED).json({
+			error: { message: error.message },
+		});
+		return;
+	}
+
+	if (error instanceof IdentityProviderUnavailableError) {
+		response.status(StatusCodes.SERVICE_UNAVAILABLE).json({
+			error: { message: error.message },
+		});
+		return;
+	}
+
+	if (error instanceof EmailNotVerifiedError) {
+		// The `code` is what lets the web client distinguish this 403 from any
+		// other. The fixed message is the human-facing text; the code is the
+		// machine-readable discriminator.
+		response.status(StatusCodes.FORBIDDEN).json({
+			error: { message: error.message, code: "email_not_verified" },
+		});
+		return;
+	}
+
+	if (error instanceof UserNotProvisionedError) {
+		// Same pattern as `email_not_verified`: the fixed message is for humans,
+		// the `code` is the discriminator the client keys on.
+		response.status(StatusCodes.FORBIDDEN).json({
+			error: { message: error.message, code: "user_not_provisioned" },
+		});
+		return;
+	}
+
 	const status = getHttpStatus(error);
 	if (status !== undefined) {
+		const wwwAuthenticate = getWwwAuthenticateHeader(error);
+		if (wwwAuthenticate !== undefined) {
+			response.setHeader("WWW-Authenticate", wwwAuthenticate);
+		}
+
 		response
 			.status(status)
 			.json({ error: { message: getErrorMessage(error) } });

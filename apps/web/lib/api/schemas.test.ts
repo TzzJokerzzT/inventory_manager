@@ -3,6 +3,7 @@ import {
 	parseCompaniesResponse,
 	parseCompany,
 	parseLoginResponse,
+	parseMeResponse,
 } from "./schemas";
 
 describe("parseLoginResponse", () => {
@@ -82,5 +83,80 @@ describe("parseCompany", () => {
 
 	it("rejects a company whose shape changed", () => {
 		expect(() => parseCompany({ id: "company-1" })).toThrow(ApiError);
+	});
+});
+
+function meResponse(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "user-1",
+		email: "ana@empresa.com",
+		fullName: "Ana Pérez",
+		createdAt: "2026-10-06T00:00:00.000Z",
+		memberships: [
+			{
+				companyId: "c1",
+				role: "OWNER",
+				company: {
+					id: "c1",
+					name: "Primera",
+					createdAt: "2026-10-06T00:00:00.000Z",
+				},
+			},
+		],
+		...overrides,
+	};
+}
+
+describe("parseMeResponse", () => {
+	it("returns the identity and each membership with its company", () => {
+		const parsed = parseMeResponse(meResponse());
+
+		expect(parsed).toEqual(meResponse());
+		expect(parsed.memberships[0].role).toBe("OWNER");
+		expect(parsed.memberships[0].company.name).toBe("Primera");
+	});
+
+	it("accepts a user with no full name", () => {
+		const parsed = parseMeResponse(meResponse({ fullName: null }));
+
+		expect(parsed.fullName).toBeNull();
+	});
+
+	it("accepts a user with no memberships", () => {
+		expect(
+			parseMeResponse(meResponse({ memberships: [] })).memberships,
+		).toEqual([]);
+	});
+
+	it("rejects a response missing the identity", () => {
+		const { id: _id, ...withoutId } = meResponse();
+
+		expect(() => parseMeResponse(withoutId)).toThrow(ApiError);
+	});
+
+	it("rejects a membership with a role outside the contract", () => {
+		const response = meResponse({
+			memberships: [
+				{
+					companyId: "c1",
+					role: "SUPERUSER",
+					company: {
+						id: "c1",
+						name: "Primera",
+						createdAt: "2026-10-06T00:00:00.000Z",
+					},
+				},
+			],
+		});
+
+		expect(() => parseMeResponse(response)).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a membership whose company has the wrong shape", () => {
+		const response = meResponse({
+			memberships: [{ companyId: "c1", role: "MEMBER", company: { id: "c1" } }],
+		});
+
+		expect(() => parseMeResponse(response)).toThrow(/respuesta inesperada/);
 	});
 });

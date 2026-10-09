@@ -1,4 +1,12 @@
-import { array, number, object, safeParse, string } from "valibot";
+import {
+	array,
+	nullable,
+	number,
+	object,
+	picklist,
+	safeParse,
+	string,
+} from "valibot";
 import { ApiError } from "./client";
 import type { components } from "./openapi";
 
@@ -77,6 +85,53 @@ export function parseCompaniesResponse(data: unknown): CompaniesResponse {
  */
 export function parseCompany(data: unknown): Company {
 	const result = safeParse(companySchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One membership exactly as `GET`/`PATCH /me` serialize it: the company the
+ * caller belongs to plus the role they hold in it.
+ */
+export const meMembershipSchema = object({
+	companyId: string(),
+	// A closed list, not a free string: the UI decides what to offer from the
+	// role, so an unknown role has to fail here instead of reaching a view.
+	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
+	company: companySchema,
+});
+
+/** One membership with its company, derived from the OpenAPI contract. */
+export type MeMembership = components["schemas"]["MeMembership"];
+
+/**
+ * Shape of the caller's own identity as `GET`/`PATCH /me` serialize it:
+ * `{ id, email, fullName, createdAt, memberships }`, with `fullName` nullable
+ * because a user created by Auth0 starts without a display name.
+ */
+export const meResponseSchema = object({
+	id: string(),
+	email: string(),
+	fullName: nullable(string()),
+	createdAt: string(),
+	memberships: array(meMembershipSchema),
+});
+
+/** `GET /me` and `PATCH /me` response, derived from the OpenAPI contract. */
+export type MeResponse = components["schemas"]["MeResponse"];
+
+/**
+ * Validates the `/me` response at the boundary.
+ *
+ * Same contract as {@link parseLoginResponse}: a shape change fails as an
+ * {@link ApiError} with a readable message, and the identity section feeds the
+ * `fullName` gate that decides between the profile form and the company card.
+ */
+export function parseMeResponse(data: unknown): MeResponse {
+	const result = safeParse(meResponseSchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

@@ -3,6 +3,7 @@ import cors from "cors";
 import express, { type Express, type RequestHandler } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
+import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
@@ -27,6 +28,7 @@ export interface AppDependencies {
 	requireAuth: RequestHandler;
 	requireUser: RequestHandler;
 	requireCompanyContext: RequestHandler;
+	mediaUploadSigner: MediaUploadSigner;
 	authCookieOptions: AuthCookieOptions;
 	/**
 	 * Browser origin allowed to call the API. It has to be an explicit origin

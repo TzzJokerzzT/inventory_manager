@@ -255,6 +255,7 @@ describe("secrets never reach an error message", () => {
 			throw new Error("expected loadEnv to throw");
 		} catch (error) {
 			expect(String(error)).toMatch(/AUTH0_CLIENT_SECRET/);
+			expect(String(error)).not.toContain("client-secret-value");
 		}
 	});
 

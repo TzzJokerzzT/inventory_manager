@@ -1,3 +1,4 @@
+import { v2 as cloudinary } from "cloudinary";
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
@@ -9,6 +10,7 @@ import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
 import { PrismaMembershipRepository } from "./infrastructure/database/prisma-membership-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
+import { CloudinaryUploadSigner } from "./infrastructure/storage/cloudinary-upload-signer.js";
 import { buildApp } from "./interfaces/http/app.js";
 import {
 	type AuthCookieOptions,
@@ -44,6 +46,27 @@ const identityProvider = new Auth0IdentityProvider({
 	connection,
 });
 
+// Cloudinary credentials are optional outside production (see `config/env.ts`),
+// but the signature endpoint cannot work without them, so fail fast with the
+// variable names and never the values.
+const { cloudName, apiKey, apiSecret } = env.cloudinary;
+if (!cloudName || !apiKey || !apiSecret) {
+	throw new Error(
+		"Missing required environment variables: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET",
+	);
+}
+
+// The real signing function is bound here, in the composition root: the
+// adapter stays pure and the test suite injects a fake so no test ever calls
+// the real Cloudinary account.
+const mediaUploadSigner = new CloudinaryUploadSigner({
+	cloudName,
+	apiKey,
+	apiSecret,
+	sign: (paramsToSign, secret) =>
+		cloudinary.utils.api_sign_request(paramsToSign, secret),
+});
+
 // The refresh cookie is `Secure` only in production, so the same app can run
 // locally (and be tested) over plain HTTP.
 const authCookieOptions: AuthCookieOptions = {
@@ -74,6 +97,7 @@ const app = buildApp({
 	}),
 	requireUser: createRequireUser({ userRepository }),
 	requireCompanyContext: createRequireCompanyContext({ membershipRepository }),
+	mediaUploadSigner,
 	authCookieOptions,
 	corsOrigin,
 });

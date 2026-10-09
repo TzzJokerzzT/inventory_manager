@@ -20,6 +20,11 @@ export function companyRoutes(controller: CompanyController): Router {
 	const companyScoped = Router({ mergeParams: true });
 	companyScoped.use(controller.requireCompanyContext);
 	companyScoped.get("/context", controller.context);
+	// Signing an upload is a write permission tied to the company, so it hangs
+	// off the same protected sub-router as `/context` and inherits
+	// `requireCompanyContext`: a non-member can never sign an upload in the
+	// company's name.
+	companyScoped.post("/media/signature", controller.mediaSignature);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

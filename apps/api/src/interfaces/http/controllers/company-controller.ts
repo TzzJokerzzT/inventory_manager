@@ -1,6 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { parse } from "valibot";
+import type { MediaUploadSigner } from "../../../application/ports/media-upload-signer.js";
 import type { CreateCompanyUseCase } from "../../../application/use-cases/create-company.js";
 import type { ListCompaniesUseCase } from "../../../application/use-cases/list-companies.js";
 import type { User } from "../../../domain/entities/user.js";
@@ -16,12 +17,15 @@ export interface CompanyControllerDependencies {
 	listCompanies: ListCompaniesUseCase;
 	/** Mounted on `/companies/:companyId/*` ahead of the context handler. */
 	requireCompanyContext: RequestHandler;
+	/** Signs the server-decided upload parameters for a company. */
+	mediaUploadSigner: MediaUploadSigner;
 }
 
 export interface CompanyController {
 	create: RequestHandler;
 	list: RequestHandler;
 	context: RequestHandler;
+	mediaSignature: RequestHandler;
 	requireCompanyContext: RequestHandler;
 }
 
@@ -41,7 +45,7 @@ function resolvedUser(request: Request): User {
 }
 
 /**
- * The resolved company context the context handler is guaranteed to have:
+ * The resolved company context a company-scoped handler is guaranteed to have:
  * `requireCompanyContext` runs before it, so a missing context is a
  * programming error, not a forbidden access to manufacture.
  */
@@ -49,7 +53,7 @@ function resolvedCompanyContext(request: Request): CompanyContext {
 	const context = request.companyContext;
 	if (context === undefined) {
 		throw new Error(
-			"requireCompanyContext must run before the company context handler; the route wiring guarantees a resolved context",
+			"requireCompanyContext must run before the company-scoped handlers; the route wiring guarantees a resolved context",
 		);
 	}
 	return context;
@@ -114,6 +118,25 @@ export function createCompanyController(
 				}
 
 				response.status(StatusCodes.OK).json({ company, role: context.role });
+			} catch (error) {
+				next(error);
+			}
+		},
+		mediaSignature: async (request, response, next) => {
+			try {
+				const context = resolvedCompanyContext(request);
+
+				// The upload parameters are decided by the signer from the company
+				// id alone: whatever folder/formats/timestamp the client sends in
+				// the body is ignored, so the signed contract is always the
+				// server's, never the caller's.
+				const signature = dependencies.mediaUploadSigner.createUploadSignature({
+					companyId: context.companyId,
+				});
+
+				// Never the api secret: the response is exactly the parameters the
+				// browser has to send to the provider.
+				response.status(StatusCodes.OK).json(signature);
 			} catch (error) {
 				next(error);
 			}

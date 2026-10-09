@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { useCompanies } from "@/src/features/company/api/use-companies";
 import { useCompanyStore } from "@/src/features/company/store/company-store";
-import { DashboardView } from "../components/dashboard-view";
+import { Dashboard } from "../components/dashboard";
 import { dashboardKpis, stockTableRows } from "../mock";
 
 jest.mock("@/src/features/company/api/use-companies", () => ({
@@ -35,7 +35,7 @@ describe("DashboardView", () => {
 	});
 
 	it("renders the KPI cards from the mock module", () => {
-		render(<DashboardView />);
+		render(<Dashboard />);
 
 		for (const kpi of dashboardKpis) {
 			expect(screen.getByText(kpi.label)).toBeTruthy();
@@ -45,7 +45,7 @@ describe("DashboardView", () => {
 	});
 
 	it("shows a visible sample-data notice that cannot be mistaken for real data", () => {
-		render(<DashboardView />);
+		render(<Dashboard />);
 
 		const notice = screen.getByRole("status");
 		expect(notice).toBeTruthy();
@@ -54,7 +54,7 @@ describe("DashboardView", () => {
 	});
 
 	it("renders the stock table rows through DataTable", () => {
-		const { container } = render(<DashboardView />);
+		const { container } = render(<Dashboard />);
 
 		expect(container.querySelector('[data-slot="data-table"]')).toBeTruthy();
 		for (const row of stockTableRows) {
@@ -64,7 +64,7 @@ describe("DashboardView", () => {
 	});
 
 	it("maps each stock badge status to its visible label", () => {
-		render(<DashboardView />);
+		render(<Dashboard />);
 
 		expect(screen.getByText("Agotado")).toBeTruthy();
 		expect(screen.getByText("Stock bajo")).toBeTruthy();
@@ -72,7 +72,7 @@ describe("DashboardView", () => {
 	});
 
 	it("shows the real active company from the mocked query", () => {
-		render(<DashboardView />);
+		render(<Dashboard />);
 
 		expect(screen.getByText("Primera")).toBeTruthy();
 	});

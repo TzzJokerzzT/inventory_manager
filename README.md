@@ -17,64 +17,92 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 ## Estado del proyecto
 
 ⚠️ **El proyecto está en construcción.** Las dos aplicaciones ya existen y el tooling está
-funcionando. **La capa de datos (Prisma + Supabase) y la validación JWT de Auth0 ya están
-configuradas** (schema, migración aplicada, adaptador y middleware `requireAuth` sobre `/companies`);
-quedan pendientes **el almacenamiento (Cloudinary)**, el logout (MI-54) y el resto de la Fase 1 (MI-44
-a MI-51, MI-55).
+funcionando. **El flujo de autenticación completo ya está implementado** (registro, login mediado
+por la API con el gate de email verificado, refresh, logout, bootstrap de sesión y manejo del 401),
+**las empresas ya funcionan** (alta con la membership de dueño en una sola transacción, listado
+filtrado por membership y endpoint de contexto con sus reglas de autorización) y **la firma de
+subidas de media por empresa ya está cableada**, junto con el shell de la aplicación, la vista del
+dashboard y el design system. Quedan pendientes **los módulos de negocio** (productos, movimientos,
+clientes y notificaciones de stock bajo) y **la gestión de miembros** de una empresa.
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
 |------------|--------|
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, `GET /health` funcionando |
-| **Biome** (lint + formato) | ✅ único tool del repo — `biome check .` en verde |
-| **Tokens del design system** | ✅ los 38 (19 claros + 19 oscuros) aplicados al tema |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 9 operaciones en `openapi.yaml` |
+| **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
+| **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
 | Typecheck | ✅ `apps/web` y `apps/api` limpios (`tsc --noEmit`) |
-| **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y adaptador `PrismaCompanyRepository` cableado |
-| **Auth0** | ✅ tenant verificado (JWKS + discovery), middleware `requireAuth` cableado y `POST /auth/login` (ROPG) funcionando contra el tenant real |
-| **Cloudinary** | ❌ no configurado |
+| **Autenticación** | ✅ registro, login (gate de email verificado), refresh, logout y bootstrap de sesión contra Auth0 |
+| **Empresas** | ✅ alta con membership `OWNER` en una transacción, listado por membership y `GET /companies/{id}/context` |
+| **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
+| **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
+| **Frontend** | ✅ shell de la app (`AppShell`), vista del dashboard y páginas de login/registro/sin-empresas |
+| **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
-| **Tests** | ✅ **Jest** como único runner: 154 tests (43 en `apps/api`, 111 en `apps/web`) + Cypress E2E; tarea `test` en `turbo.json` |
-| **CI** | ✅ `.github/workflows/ci.yml` — `verify` (install con lockfile congelado, `biome ci`, tipos, 154 tests, build) + `migrations` (`prisma migrate deploy` sobre un Postgres efímero) |
+| **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
+| **Husky + commitlint** | ✅ `pre-commit` (typecheck + Biome + tests), `commit-msg` (Conventional Commits) |
+| **CI** | ✅ `.github/workflows/ci.yml` — `verify` (install con lockfile congelado, `biome ci`, tipos, tests, build) + `migrations` (`prisma migrate deploy` sobre un Postgres efímero) |
 
-Las configuraciones pendientes están desglosadas como **subtareas de [MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del
-proyecto. Ver [Pendientes](#pendientes) para el detalle y el orden sugerido.
+Lo que queda está desglosado en el roadmap de [`docs/Project.md`](docs/Project.md) y detallado en
+[Pendientes](#pendientes).
 
 ---
 
 ## Funcionalidades
 
-### Autenticación
-Registro, inicio y cierre de sesión, recuperación de contraseña y gestión de sesiones con JWT.
-**Delegada a Auth0.**
+### Qué funciona hoy
 
-### Dashboard de inventario
-Número total de productos, valor del inventario, movimientos del día, gráficos de distribución de
-stock por categoría, tabla de productos con stock crítico y filtrado por empresa.
+**Autenticación (mediada por la API, proveedor Auth0).** Registro (la respuesta es idéntica si la
+cuenta se creó o si el alta fue rechazada, para no revelar si el email ya existía), login con el
+gate de **email verificado**, refresh del token de acceso desde la cookie `httpOnly`, logout (limpia
+la cookie) y restauración de sesión al arrancar. En el frontend, el cliente HTTP maneja el 401 con
+un refresh de un solo vuelo y reintenta la petición una vez. **La recuperación de contraseña todavía
+no existe.**
 
-### Gestión de productos
-Alta, edición y baja lógica de productos con nombre, descripción, precio, foto y **código SKU**.
-El SKU es **único dentro de cada empresa**, no global. Búsqueda y filtrado por nombre, SKU o
-categoría, y carga de imagen optimizada.
+**Empresas.** Alta de empresa con la membership de dueño (`OWNER`) creada en la misma transacción;
+listado de las empresas del usuario (solo memberships `ACTIVE`); endpoint de contexto que resuelve
+la empresa y el rol del usuario; y switch de empresa en la barra superior. Productos, clientes y
+movimientos están solo en el esquema de datos —no hay endpoints ni pantallas todavía—, así que el
+aislamiento por empresa aplica hoy a lo que está construido (empresas y media).
 
-### Entradas y salidas de inventario
-Registro de entradas (compra, ajuste, devolución) y salidas (venta, ajuste, daño), con
-actualización automática del stock, historial por producto y registro de usuario, fecha y motivo.
-**Una salida nunca puede superar el stock disponible.**
+**Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
+(`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
+nunca el cliente.
 
-### Gestión de clientes
-Alta, edición y baja lógica de clientes, con historial de compras alimentado por los movimientos
-de salida vinculados.
+**Shell y dashboard.** El shell de la aplicación (barra lateral con navegación, switch de empresa,
+logout y modo oscuro) y una vista de dashboard con KPIs, alertas y tabla de stock crítico **con
+datos de muestra**: el nombre de la empresa activa es real (viene de `GET /companies`), pero los
+indicadores y la tabla son mock declarado.
 
-### Multi-empresa
-Un usuario puede crear y administrar **una o varias empresas**. Productos, clientes y movimientos
-están **aislados por empresa**, y hay un switch de contexto siempre visible en la barra superior.
+**Design system.** Paleta de tokens (modo claro y oscuro), componentes base (`Button`, `Card`,
+`Spinner`, `Toast`) y componentes del design system (`Alert`, `DataTable`, `KpiCard`, `StockBadge`,
+`FormField`, `Checkbox`), con una página de referencia en `/design-system`.
 
-### Notificaciones de stock bajo
-Umbral mínimo configurable por producto, alerta visual en el dashboard, badge persistente en la
-barra superior y listado de productos a reponer.
+### Planificado
+
+**Dashboard con datos reales.** Reemplazar los datos de muestra por los indicadores reales
+(MI-6/MI-9).
+
+**Gestión de productos.** Alta, edición y baja lógica con nombre, descripción, precio, foto y
+**código SKU único dentro de cada empresa** (MI-7; vistas MI-21 y MI-25).
+
+**Entradas y salidas de inventario.** Registro de entradas y salidas con actualización automática
+del stock, historial por producto y motivo; **una salida nunca puede superar el stock disponible**
+(MI-8; vista MI-26).
+
+**Gestión de clientes.** Alta, edición y baja con historial de compras alimentado por los
+movimientos de salida (MI-11; vista MI-24).
+
+**Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
+listado de reposición (MI-12).
+
+**Gestión de miembros.** Invitar, asignar roles y dar de baja miembros de una empresa (MI-45/MI-46/
+MI-47); la matriz de autorización ya está modelada en el backend.
+
+**Recuperación de contraseña.** Flujo de reset (MI-16); hoy no existe.
 
 ---
 
@@ -113,7 +141,7 @@ es Auth0), ni Row Level Security: el **aislamiento por empresa vive en la capa d
 
 El monorepo contiene **dos aplicaciones independientes**. No comparten código: cada una tiene sus
 propias dependencias, su configuración y su despliegue. Turborepo se usa para orquestar tareas
-(dev, build, lint, typecheck) y cachear resultados, no para compartir módulos.
+(dev, build, test, typecheck) y cachear resultados, no para compartir módulos.
 
 ### Frontend — Vertical Slice (`apps/web`)
 
@@ -123,24 +151,21 @@ servicios y tests. No se organiza por tipo de archivo.
 ```
 apps/web/
 ├── app/                          # rutas de Next.js (App Router)
-│   ├── (auth)/                   # grupo: login, registro, recuperación
-│   └── (dashboard)/              # grupo: dashboard, productos, movimientos, clientes
+│   ├── login/                    # pantalla de login
+│   ├── registro/                 # pantalla de registro
+│   ├── sin-empresas/             # estado "sin empresas"
+│   ├── dashboard/                # dashboard dentro del shell
+│   └── design-system/            # página de referencia del design system
 ├── components/
-│   └── ui/                       # componentes shadcn/ui
-├── lib/                          # utilidades (cn, cliente HTTP, helpers)
+│   ├── ui/                       # componentes base (button, card, spinner, toast)
+│   └── design-system/            # componentes del design system + tokens
+├── lib/                          # cliente HTTP, schemas Valibot, utilidades
 ├── src/
 │   └── features/                 # ← una carpeta por funcionalidad
-│       ├── products/
-│       │   ├── components/       # UI propia de la feature
-│       │   ├── hooks/            # lógica de la feature
-│       │   ├── api/              # llamadas al backend (Axios + TanStack Query)
-│       │   ├── stores/           # estado de UI (Zustand)
-│       │   ├── schemas/          # validación con Valibot
-│       │   └── __tests__/        # unitarios e integración (Jest + RTL)
-│       ├── inventory-movements/
-│       ├── customers/
-│       ├── companies/            # incluye el switch de empresa
-│       └── dashboard/
+│       ├── auth/                 # login, registro, logout y sesión (refresh/bootstrap)
+│       ├── company/              # empresas, switch y contexto activo
+│       ├── dashboard/            # vista del dashboard (datos de muestra)
+│       └── shell/                # el shell de la aplicación
 └── public/
 ```
 
@@ -158,14 +183,16 @@ Las dependencias apuntan **hacia adentro**: el dominio no conoce Express, ni Pri
 apps/api/
 ├── src/
 │   ├── domain/                   # ← el centro, sin dependencias externas
-│   │   ├── entities/             # Product, Customer, StockMovement, Company
-│   │   ├── value-objects/        # Sku, Money, StockLevel
+│   │   ├── entities/             # Company, Membership, User
+│   │   ├── errors/               # errores de dominio (EmailNotVerified, …)
+│   │   ├── policies/             # matriz de autorización
 │   │   └── repositories/         # interfaces (puertos), no implementaciones
 │   ├── application/              # casos de uso
-│   │   └── use-cases/            # CreateProduct, RegisterStockEntry, …
+│   │   ├── ports/                # IdentityProvider, MediaUploadSigner
+│   │   └── use-cases/            # create-company, list-companies, login, register, refresh
 │   ├── infrastructure/           # implementaciones de los puertos
 │   │   ├── database/             # Prisma: repositorios y mapeos
-│   │   ├── auth/                 # validación del JWT de Auth0 (JWKS)
+│   │   ├── auth0/                # validación del JWT de Auth0 (JWKS)
 │   │   └── storage/              # Cloudinary (firma de subida)
 │   └── interfaces/               # adaptadores de entrada
 │       └── http/
@@ -175,8 +202,7 @@ apps/api/
 │           └── validators/       # esquemas Valibot
 ├── prisma/
 │   ├── schema.prisma             # fuente de verdad del esquema
-│   ├── migrations/
-│   └── seed.ts
+│   └── migrations/
 └── tests/                        # unitarios (Jest) e integración (supertest)
 ```
 
@@ -187,18 +213,51 @@ rompió.
 ### Contrato entre frontend y backend
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
-comparten**: cada app valida lo suyo. Para que las reglas no se dupliquen a mano, el contrato es la
-**especificación OpenAPI de la API** (el backend ya incluye `swagger` + `yamljs` en su stack):
-el frontend debería **generar sus tipos desde esa especificación**.
+comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
+(`apps/api/openapi.yaml`), la fuente de verdad de los 9 endpoints: métodos, seguridad y códigos de
+error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
+**genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
+`lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
 
-Esto reemplaza al paquete de validadores compartidos que se había planteado antes de decidir que las
-apps fueran independientes. Ver [Pendientes](#pendientes).
+El artefacto generado está **commiteado** y un test de drift (`lib/api/openapi-drift.test.ts`)
+detecta si la spec cambió sin regenerar los tipos. Regenerar requiere **red o una caché de `bunx`
+caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build ni el CI lo necesita.
+
+### Endpoints de la API
+
+Las 9 operaciones registradas en el contrato. «Token» = cabecera `Authorization: Bearer <JWT>`;
+el `429` es el rate limit (el global aplica a todas las rutas, y login/register/refresh suman uno
+propio más estricto). Las rutas de empresa exigen además una membership `ACTIVE` (ver la sección
+siguiente).
+
+| Operación | Token | Errores que importan | Qué hace |
+|-----------|-------|----------------------|----------|
+| `GET /health` | no | 429 | Sonda de vida |
+| `POST /auth/login` | no | 400, 401, 403 (`email_not_verified`), 429, 500, 503 | Intercambia email/contraseña por un access token; el refresh viaja en cookie `httpOnly` |
+| `POST /auth/register` | no | 400, 429, 500, 503 | Crea la cuenta; la respuesta no revela si el email ya existía |
+| `POST /auth/refresh` | no (cookie `httpOnly`) | 401, 429, 500, 503 | Renueva el par de tokens desde la cookie |
+| `POST /auth/logout` | no | 429, 500 | Limpia la cookie del refresh (sin revocación en el proveedor) |
+| `POST /companies` | sí | 400, 401, 403 (`user_not_provisioned`), 429, 500 | Crea una empresa con la membership `OWNER` en una transacción |
+| `GET /companies` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las empresas del usuario |
+| `GET /companies/{companyId}/context` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Resuelve la empresa y el rol del usuario |
+| `POST /companies/{companyId}/media/signature` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Firma los parámetros de subida directa |
 
 ### Aislamiento por empresa (el punto crítico)
 
 No se usa **Row Level Security** de Supabase, así que **el aislamiento entre empresas depende por
-completo del código de la aplicación**. Cada consulta del repositorio debe filtrar por `company_id`,
-y debe existir un test que lo verifique. Es el mayor riesgo de seguridad del proyecto.
+completo del código de la aplicación**. Hoy hay dos piezas que lo materializan:
+
+- **En el repositorio**, el listado filtra por memberships `ACTIVE` (`findAllForUser`) y el alta
+  crea la empresa y la membership del dueño en **una sola transacción** (`createOwnedBy`).
+- **En el HTTP**, `requireCompanyContext` valida en cada request que el usuario tiene una membership
+  `ACTIVE` en la empresa del path (`/companies/:companyId/*`) y resuelve su rol. Un no-miembro y una
+  empresa inexistente responden el mismo 403 (`company_access_forbidden`) para que los ids no se
+  puedan enumerar.
+
+El límite honesto: esto cubre lo que está construido (empresas, contexto y firma de media). Los
+recursos por empresa que todavía no existen (productos, movimientos, clientes) **deberán colgarse del
+mismo sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo el mayor
+riesgo de seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer su test.
 
 ---
 
@@ -209,21 +268,31 @@ y debe existir un test que lo verifique. Es el mayor riesgo de seguridad del pro
 | Herramienta | Versión |
 |-------------|---------|
 | **Node.js** | `>=24` (declarado en `engines`) |
-| **Bun** | `1.4.2` (gestor de paquetes del proyecto) |
+| **Bun** | `1.4.2` (declarado en `devEngines`) |
 
 ### Pasos
 
 ```sh
 # 1. Clonar
-git clone <url-del-repositorio>
+git clone git@github.com:TzzJokerzzT/inventory_manager.git
 cd inventory-manager
 
 # 2. Instalar dependencias (Bun resuelve los workspaces del monorepo)
 bun install
+
+# 3. Variables de entorno (ver Configuración)
+cp apps/api/.env.example apps/api/.env        # luego completá los valores
+cp apps/web/.env.example apps/web/.env.local  # NEXT_PUBLIC_API_URL
 ```
 
 > El proyecto usa **Bun** como gestor de paquetes (`bun.lock` y `devEngines` en el `package.json`
 > raíz). Si usás otro gestor, los workspaces no se resuelven igual.
+>
+> `bun install` además corre el hook de `prepare`, que instala **Husky** (los git hooks de
+> `.husky/`).
+>
+> La API **no arranca sin sus variables**: `main.ts` falla rápido si faltan las de Auth0 o
+> Cloudinary, y el cliente de Prisma exige `DATABASE_URL`.
 
 ---
 
@@ -235,12 +304,12 @@ bun install
 bun run dev
 ```
 
-Levanta las aplicaciones con la TUI de Turborepo:
+Levanta las aplicaciones con la TUI de Turborepo (requiere las variables de entorno ya en su lugar):
 
 | App | URL |
 |-----|-----|
 | `apps/web` | http://localhost:3000 |
-| `apps/api` | http://localhost:3001 (`GET /health`) |
+| `apps/api` | http://localhost:3001 (`GET /health`) · `/docs` (Swagger UI) |
 
 Para levantar una sola app:
 
@@ -256,12 +325,13 @@ Todos desde la raíz del monorepo:
 |---------|----------|
 | `bun run dev` | Desarrollo de las apps (Turborepo TUI) |
 | `bun run build` | Build de producción de las apps |
-| `bun run lint` | Lint en todos los workspaces |
-| `bun run check-types` | Verificación de tipos en todos los workspaces |
+| `bun run lint` | Lint de todo el repo con Biome (`biome check .`) |
+| `bun run check-types` | Verificación de tipos en todos los workspaces (Turborepo) |
 | `bun run format` | Formatea todo el repo con Biome (`biome format --write .`) |
 | `bun run format:check` | Verifica el formato sin escribir (para el CI) |
 | `bun run test` | Jest en todos los workspaces, vía Turborepo |
-| `cd apps/web && bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`). Todavía no hay alias en la raíz |
+| `cd apps/web && bun run openapi:generate` | Regenera `lib/api/openapi.d.ts` desde `apps/api/openapi.yaml` — requiere red o una caché de `bunx` caliente |
+| `cd apps/web && bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`) |
 
 ### Build de producción
 
@@ -278,7 +348,7 @@ Turborepo cachea el resultado por hash de entradas: si nada cambió, no recompil
 
 | Job | Qué corre |
 |-----|-----------|
-| `verify` | `bun install --frozen-lockfile` · `biome ci` · `check-types` · los 154 tests · `build` |
+| `verify` | `bun install --frozen-lockfile` · `biome ci` · `check-types` · `test` · `build` |
 | `migrations` | `prisma migrate deploy` y `migrate status` contra un **Postgres efímero** (`postgres:17` como *service container*) |
 
 El job de migraciones es el único que aplica la cadena **desde cero sobre una base vacía**: es la única
@@ -310,7 +380,7 @@ inventory-manager/
 │   └── api/                      # Express 5 + TypeScript — Clean Architecture
 │       ├── src/domain/           # entidades, errores y puertos (sin dependencias externas)
 │       ├── src/application/      # casos de uso
-│       ├── src/infrastructure/   # adaptadores (hoy: repositorio en memoria)
+│       ├── src/infrastructure/   # adaptadores (Prisma, Auth0 y Cloudinary)
 │       ├── src/interfaces/http/  # app.ts, controladores, rutas, middlewares, validadores
 │       ├── src/config/           # env
 │       ├── src/main.ts           # composition root
@@ -362,8 +432,8 @@ Define las tareas del monorepo y su grafo de dependencias.
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
     },
-    "lint": { "dependsOn": ["^lint"] },
     "check-types": { "dependsOn": ["^check-types"] },
+    "test": { "outputs": [] },
     "dev": { "cache": false, "persistent": true }
   }
 }
@@ -373,7 +443,9 @@ Puntos a tener en cuenta:
 
 - `build` declara `.env*` como **input**, así que cambiar una variable de entorno invalida la caché.
 - `dev` no se cachea y es persistente (queda corriendo).
-- **La tarea `test`** ya está en `turbo.json` y corre Jest en los dos workspaces.
+- `test` corre Jest en los dos workspaces.
+- `lint` ya **no** es una tarea de Turborepo: el script `lint` de la raíz es `biome check .` y corre
+  directo.
 
 ### Puertos
 
@@ -384,21 +456,22 @@ Puntos a tener en cuenta:
 
 ### Variables de entorno
 
-**Parcialmente configuradas.** `apps/api/.env.example` ya existe y documenta `PORT`,
-`DATABASE_URL` (URL pooled del pooler, puerto 6543, con `?pgbouncer=true`) y `DIRECT_URL` (URL
-directa, puerto 5432, para migraciones), además de los placeholders de `AUTH0_*`. Falta el
-`.env.example` de la raíz (**MI-37**), que conviene cerrar junto con Cloudinary.
-Debe documentar al menos:
+El `.env.example` de la raíz es la **vista del monorepo**: documenta, en un solo lugar, cada variable
+que el código lee. Las apps traen su ejemplo junto a sí (`apps/api/.env.example` y
+`apps/web/.env.example`). La API **falla rápido al arrancar** si faltan las de Auth0 o Cloudinary, y
+el cliente de Prisma exige `DATABASE_URL`; en `production`, `env.ts` además valida el formato de cada
+una.
 
 | Variable | Para qué |
 |----------|----------|
+| `PORT` | Puerto de la API (opcional; por defecto 3001) |
+| `WEB_ORIGIN` | Origen del navegador autorizado a llamar a la API **con credenciales** (la cookie del refresh). Obligatoria en producción; en desarrollo cae a `http://localhost:3000` |
 | `DATABASE_URL` | Conexión a Postgres **vía pooler de Supabase** (puerto 6543, `?pgbouncer=true`) — la usa el cliente de runtime |
-| `DIRECT_URL` | Conexión **directa** (session pooler, puerto 5432) — la usan el CLI y las migraciones de Prisma |
+| `DIRECT_URL` | Conexión **directa** (puerto 5432) — la usan el CLI y las migraciones de Prisma |
 | `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | Validación del JWT en la API |
 | `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` / `AUTH0_CONNECTION` | Intercambio de credenciales con Auth0 (ROPG). El `client_secret` es un secreto: sólo en el `.env` local y en las variables del deploy |
-| `WEB_ORIGIN` | Origen del navegador autorizado a llamar al API **con credenciales** (la cookie del refresh). Obligatoria en producción; en desarrollo cae a `http://localhost:3000` |
-| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de subida directa |
-| `NEXT_PUBLIC_API_URL` | URL base de la API desde el frontend |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de subida directa (el `api_secret` es un secreto) |
+| `NEXT_PUBLIC_API_URL` | URL base de la API desde el frontend (se inyecta en el bundle; no admite secretos) |
 
 ### Estándares de código
 
@@ -407,69 +480,65 @@ Tailwind habilitadas y `apps/web/public` excluido del lint de a11y. Scripts: `li
 `biome check .`, `format` → `biome format --write .` y `format:check` para el CI. **ESLint y
 Prettier ya no están**: se removieron en el setup (MI-30).
 
-### Husky (git hooks)
+### Husky y commitlint (git hooks)
 
-Planificado, no instalado (**MI-42**). El objetivo es correr lint, typecheck y los tests afectados en
-cada commit, para que el CI no sea la primera red de seguridad. **Depende de tener repositorio Git
-propio** (MI-35).
+Instalados por el script `prepare` de la raíz (corre en cada `bun install`). Los hooks viven en
+`.husky/`:
+
+| Hook | Qué hace |
+|------|----------|
+| `commit-msg` | `bunx commitlint --edit` — valida el mensaje contra **Conventional Commits** (`@commitlint/config-conventional`) |
+| `pre-commit` | `bun run check-types` + `bunx biome check --staged --no-errors-on-unmatched` + `bun run test` |
+
+La convención de mensajes del repo es **Conventional Commits** (`feat:`, `fix:`, `chore:`, …), y es
+la que `commit-msg` hace cumplir.
 
 ---
 
 ## Pendientes
 
-### Bloqueantes
+El setup de la Fase 1 está cerrado: Git, CI, Prisma + Supabase, Auth0, Cloudinary (firma), tests,
+Husky, el `.env.example` de la raíz y el contrato OpenAPI ya están en el repo. Lo que queda es **el
+producto en sí**, no la infraestructura.
 
-Cada uno tiene su subtarea bajo **[MI-2](https://alexbuelvas92.atlassian.net/browse/MI-2)** — [Fase 1] Setup del proyecto (backend + frontend).
+### Gestión de miembros (multi-usuario)
 
-- [x] **Configurar control de versiones (Git)** — **MI-35**. **Hecho**: repositorio propio en
-      `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y
-      `feat/login-register-backend-frontend`. Desbloquea el CI y Husky.
-- [x] **Crear el workflow de CI** en `.github/workflows/` — **MI-36**: `verify` (install con
-      `--frozen-lockfile`, `biome ci`, `check-types`, `test`, `build`) y `migrations`
-      (`prisma migrate deploy` sobre un Postgres efímero, sin tocar Supabase). **Pendiente declarado**:
-      Cypress, porque nunca se corrió y un job rojo desde el primer push no sirve de nada.
-- [ ] **Crear el `.env.example` de la raíz** — **MI-37**. El de `apps/api` ya existe; falta el del
-      monorepo y el del frontend.
-- [x] **Configurar Prisma + Supabase** — **MI-38**: `schema.prisma`, migración
-      `20261006223356_init` aplicada y conexión vía pooler con el adapter `@prisma/adapter-pg`.
-      Cerrada en Jira (`Done`, comentario `10042`) tras la verificación independiente del layer de datos.
-      **Nota**: el defecto pre-existente de `apps/web` que dejaba en rojo `bun run check-types` y
-      `bun run build` (los tipos de Cypress pisaban los matchers de Jest) **ya está corregido**: la capa
-      de Cypress tiene su propio `tsconfig` y los comandos de la raíz están en verde.
-- [x] **Configurar Auth0** — **MI-39**: tenant verificado (JWKS + discovery) y validación JWKS
-      cableada (`requireAuth` sobre `/companies`, `/health` público). La aplicación es **Regular
-      Web Application** (no SPA), con los grants `Password` y `Refresh Token` habilitados y el
-      **Default Directory** del tenant configurado. `POST /auth/login` (MI-52) ya está
-      `Done` y verificado contra el tenant real.
-      Cerrada en Jira (`Done`, comentario `10044`).
-- [ ] **Configurar Cloudinary** — **MI-40** para subida directa firmada desde el cliente.
-- [x] **Configurar los tests** — **MI-41**: Jest como único runner (137 tests migrados desde
-      `bun test`), React Testing Library en `apps/web`, Supertest en `apps/api` y Cypress para E2E,
-      con la tarea `test` en `turbo.json` y el alias `bun run test` en la raíz. Cerrada en Jira.
-- [ ] **Instalar Husky (git hooks)** — **MI-42**. Depende de MI-35.
-- [ ] **Definir el contrato entre frontend y backend** — **MI-43**. Al no haber código compartido,
-      hay que decidir cómo se evita duplicar las reglas de validación: lo recomendado es **generar
-      los tipos del frontend desde la especificación OpenAPI** que ya produce el backend con
-      `swagger + yamljs`.
+El modelo de acceso ya está en `schema.prisma` y la matriz de autorización en
+`apps/api/src/domain/policies/authorization.ts`, pero los endpoints todavía no existen:
+
+- [ ] **Asignar un miembro con rol** — **MI-45** (ADMIN/OWNER asignan; OWNER asigna ADMIN/OWNER).
+- [ ] **Aceptar una asignación** — **MI-46** (incluye decidir qué hacer con más de una invitación
+      pendiente al mismo email).
+- [ ] **Cambiar el rol de un miembro (promover/rebajar)** — **MI-47**.
+- [ ] **Invariante del último OWNER** — **MI-49**: una empresa nunca puede quedar sin OWNER (la regla
+      ya está en `can()`, falta el endpoint que la use).
+
+### Core de inventario (Fase 2 y 3)
+
+- [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView`.
+- [ ] **CRUD de productos** — MI-7 (vistas MI-21 y MI-25).
+- [ ] **Entradas y salidas de stock** — MI-8 (vista MI-26).
+- [ ] **CRUD de clientes** — MI-11 (vista MI-24).
+- [ ] **Notificaciones de stock bajo** — MI-12.
+
+### Polish (Fase 4)
+
+- [ ] **Recuperación de contraseña** — MI-16.
+- [ ] **Gráficos** — MI-14.
+- [ ] **Filtros y búsqueda** — MI-15.
+- [ ] **Notificaciones por email** — MI-13.
 
 ### Decisiones abiertas
 
-- [ ] **Store compartido del rate limit** (**MI-38**). El backend va a Vercel, así que el contador en memoria no
-      limita globalmente. Recomendado **Vercel KV** o **Upstash Redis**.
-- [x] **UX de autenticación con Auth0** (**MI-39**): **resuelta** — formulario propio mediado por el backend
-      (ROPG). Ver [`docs/stack.md` §5.4](./docs/stack.md). Efecto: las pantallas de Login/Registro del diseño
-      se implementan tal cual, y el rate limiting del login pasa a ser **obligatorio**.
-- [x] **Cómo se testean los endpoints protegidos** con Supertest (**MI-39**): **resuelta** — clave de
-      prueba + JWKS local (el stub no detectaría un `issuer`/`audience` mal configurado).
-- [x] **Extensión `pg_trgm`** para búsqueda difusa de productos y clientes: **sí** (**MI-38**),
-      activada en la primera migración.
-- [x] **Versión *major* de PostgreSQL**: **17** (el servidor aprovisionado reporta 17.6).
-- [ ] **Renombrar el modo `Mode 1` a `Light`** en la colección de variables del archivo de diseño (**MI-17**).
+- [ ] **Store compartido del rate limit**: el contador en memoria no limita globalmente en serverless
+      (el backend va a Vercel). Recomendado **Vercel KV** o **Upstash Redis**.
+- [ ] **Renombrar `Mode 1` a `Light`** en el archivo de diseño (**MI-17**).
+- [ ] **Alinear el `.fig`** con el modelo de memberships (todavía dibuja un dueño único) y guardarlo:
+      el documento vivo de OpenPencil tiene más tokens que el `.fig` en disco.
 
-**El mapa completo de lo pendiente** — con dependencias, bloqueantes y el camino crítico — está en
-[`docs/plan-de-trabajo.md`](./docs/plan-de-trabajo.md). Incluye las 12 subtareas nuevas del modelo de
-acceso multi-usuario (MI-44 a MI-51) y de los endpoints de autenticación (MI-52 a MI-55), y tres
-inconsistencias detectadas que no estaban en ninguna tarea.
+El detalle histórico del camino crítico sigue en [`docs/plan-de-trabajo.md`](./docs/plan-de-trabajo.md),
+pero se generó antes del cierre de autenticación/empresas y hoy está parcialmente desactualizado (da
+por pendientes MI-37, MI-42, MI-43 y MI-54, que ya están en el repo).
 
 ### Modelo de datos
 

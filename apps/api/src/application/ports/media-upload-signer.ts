@@ -25,7 +25,11 @@ export interface MediaUploadSignature {
 	folder: string;
 	/** Formats the server allows; the browser must not widen them. */
 	allowedFormats: readonly string[];
-	/** Size limit in bytes the server imposes on the upload. */
+	/**
+	 * Size limit in bytes, part of the contract the client must honour: the
+	 * server does not enforce it; the provider rejects an oversized upload by
+	 * account configuration.
+	 */
 	maxFileSizeBytes: number;
 }
 

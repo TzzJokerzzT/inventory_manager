@@ -8,12 +8,14 @@ import type {
  * a caller can never widen this list, because it is part of the signed
  * parameters the browser has to send back verbatim.
  */
-const ALLOWED_FORMATS = ["jpg", "png", "webp"] as const;
+const ALLOWED_FORMATS = Object.freeze(["jpg", "png", "webp"] as const);
 
 /**
- * Size ceiling for a direct upload, in bytes (5 MiB). Enforced as a signed
- * contract and reported to the browser for a friendly pre-upload check; the
- * real rejection happens at the provider.
+ * Size ceiling for a direct upload, in bytes (5 MiB). It is not part of the
+ * signed parameters, so the server neither signs nor enforces it: it travels
+ * in the returned contract for the browser's friendly pre-upload check, and
+ * the provider is what actually rejects an oversized upload, according to how
+ * the account is configured.
  */
 const MAX_FILE_SIZE_BYTES = 5_242_880;
 
@@ -88,7 +90,7 @@ export class CloudinaryUploadSigner implements MediaUploadSigner {
 			timestamp,
 			signature,
 			folder,
-			allowedFormats: ALLOWED_FORMATS,
+			allowedFormats: [...ALLOWED_FORMATS],
 			maxFileSizeBytes: MAX_FILE_SIZE_BYTES,
 		};
 	}

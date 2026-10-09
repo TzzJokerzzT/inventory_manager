@@ -90,4 +90,22 @@ describe("CloudinaryUploadSigner", () => {
 		expect(result.allowedFormats).toEqual(["jpg", "png", "webp"]);
 		expect(result.maxFileSizeBytes).toBe(5_242_880);
 	});
+
+	it("returns a copy of the allowed formats, so a caller cannot widen later signatures", () => {
+		const sign = jest.fn<Sign>().mockReturnValue("fixed-signature");
+		const signer = buildSigner(sign);
+
+		const first = signer.createUploadSignature({ companyId: COMPANY_ID });
+		// Mutating the returned array must not touch the module constant that
+		// every later signature is built from.
+		(first.allowedFormats as string[]).push("svg");
+
+		const second = signer.createUploadSignature({ companyId: COMPANY_ID });
+
+		expect(second.allowedFormats).toEqual(["jpg", "png", "webp"]);
+		expect(sign).toHaveBeenLastCalledWith(
+			expect.objectContaining({ allowed_formats: "jpg,png,webp" }),
+			CONFIG.apiSecret,
+		);
+	});
 });

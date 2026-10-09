@@ -276,6 +276,7 @@ describe("secrets never reach an error message", () => {
 			throw new Error("expected loadEnv to throw");
 		} catch (error) {
 			expect(String(error)).toMatch(/CLOUDINARY_API_SECRET/);
+			expect(String(error)).not.toContain("cloudinary-secret-value");
 		}
 	});
 });

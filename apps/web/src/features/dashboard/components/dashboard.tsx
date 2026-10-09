@@ -9,6 +9,7 @@ import {
 	StockBadge,
 } from "@/components/design-system";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
+import { LazyMotionTag } from "@/src/shared/components/Animation";
 import {
 	dashboardKpis,
 	type StockRow,
@@ -38,11 +39,17 @@ const stockColumns: Column<StockRow>[] = [
  * the columns and the layout; replacing `../mock` with real data (MI-6/MI-9)
  * must not require touching this component.
  */
-export function DashboardView() {
+export function Dashboard() {
 	const company = useActiveCompany();
 
 	return (
-		<div className="flex flex-col gap-6">
+		<LazyMotionTag
+			tag="div"
+			initial={{ opacity: 0, y: 20 }}
+			animate={{ opacity: 1, y: 0 }}
+			transition={{ duration: 0.5 }}
+			className="flex flex-col gap-6"
+		>
 			<header>
 				<h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
 				<p className="mt-1 text-sm text-text-secondary">
@@ -104,6 +111,6 @@ export function DashboardView() {
 					getRowKey={(row) => row.sku}
 				/>
 			</section>
-		</div>
+		</LazyMotionTag>
 	);
 }

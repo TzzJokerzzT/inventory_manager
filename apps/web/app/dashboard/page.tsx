@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { RequireActiveCompany } from "@/src/features/company/components/require-active-company";
-import { DashboardView } from "@/src/features/dashboard/components/dashboard-view";
-import { AppShell } from "@/src/features/shell/components/app-shell";
+import { DashboardView } from "@/src/view/Dashboard/dashboard-view";
 
 export const metadata: Metadata = {
 	title: "Dashboard — Inventory Manager",
@@ -17,11 +15,5 @@ export const metadata: Metadata = {
  * the critical-stock table) is `DashboardView` (MI-20 U2).
  */
 export default function DashboardPage() {
-	return (
-		<RequireActiveCompany>
-			<AppShell>
-				<DashboardView />
-			</AppShell>
-		</RequireActiveCompany>
-	);
+	return <DashboardView />;
 }

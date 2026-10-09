@@ -30,7 +30,7 @@ El repositorio y el stack de tests ya están en pie.
 |------------|--------|
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 9 operaciones en `openapi.yaml` |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 10 operaciones en `openapi.yaml` |
 | **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
 | **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
@@ -214,7 +214,7 @@ rompió.
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
 comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
-(`apps/api/openapi.yaml`), la fuente de verdad de los 9 endpoints: métodos, seguridad y códigos de
+(`apps/api/openapi.yaml`), la fuente de verdad de los 10 endpoints: métodos, seguridad y códigos de
 error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
 **genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
 `lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
@@ -225,7 +225,7 @@ caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build
 
 ### Endpoints de la API
 
-Las 9 operaciones registradas en el contrato. «Token» = cabecera `Authorization: Bearer <JWT>`;
+Las 10 operaciones registradas en el contrato. «Token» = cabecera `Authorization: Bearer <JWT>`;
 el `429` es el rate limit (el global aplica a todas las rutas, y login/register/refresh suman uno
 propio más estricto). Las rutas de empresa exigen además una membership `ACTIVE` (ver la sección
 siguiente).
@@ -239,6 +239,7 @@ siguiente).
 | `POST /auth/logout` | no | 429, 500 | Limpia la cookie del refresh (sin revocación en el proveedor) |
 | `POST /companies` | sí | 400, 401, 403 (`user_not_provisioned`), 429, 500 | Crea una empresa con la membership `OWNER` en una transacción |
 | `GET /companies` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las empresas del usuario |
+| `GET /me` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Devuelve la identidad del usuario y sus membresías activas con empresa y rol |
 | `GET /companies/{companyId}/context` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Resuelve la empresa y el rol del usuario |
 | `POST /companies/{companyId}/media/signature` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Firma los parámetros de subida directa |
 

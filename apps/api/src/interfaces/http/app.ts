@@ -8,6 +8,7 @@ import * as swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
+import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
@@ -17,6 +18,7 @@ import {
 	createAuthController,
 } from "./controllers/auth-controller.js";
 import { createCompanyController } from "./controllers/company-controller.js";
+import { createMeController } from "./controllers/me-controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { notFoundHandler } from "./middlewares/not-found.js";
 import { apiRateLimiter } from "./middlewares/rate-limit.js";
@@ -48,6 +50,7 @@ function loadOpenApiDocument(): swaggerUi.JsonObject {
 
 export interface AppDependencies {
 	createCompany: CreateCompanyUseCase;
+	getCurrentUser: GetCurrentUserUseCase;
 	listCompanies: ListCompaniesUseCase;
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;
@@ -94,6 +97,9 @@ export function buildApp(dependencies: AppDependencies): Express {
 	app.use(
 		buildRoutes({
 			company: createCompanyController(dependencies),
+			me: createMeController({
+				getCurrentUser: dependencies.getCurrentUser,
+			}),
 			auth: createAuthController({
 				loginWithCredentials: dependencies.loginWithCredentials,
 				registerUser: dependencies.registerUser,

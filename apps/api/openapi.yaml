@@ -18,6 +18,7 @@ tags:
   - name: health
   - name: auth
   - name: companies
+  - name: me
 
 paths:
   /health:
@@ -314,6 +315,34 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /me:
+    get:
+      tags: [me]
+      summary: Resolve the authenticated user and their memberships
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's public identity and each membership with its company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -403,6 +432,37 @@ components:
         role:
           type: string
           enum: [OWNER, ADMIN, MEMBER]
+
+    MeMembership:
+      type: object
+      required: [companyId, role, company]
+      properties:
+        companyId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+        company:
+          $ref: "#/components/schemas/Company"
+
+    MeResponse:
+      type: object
+      required: [id, email, createdAt, memberships]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+        memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeMembership"
 
     MediaUploadSignature:
       type: object

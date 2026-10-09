@@ -179,6 +179,9 @@ function buildRoutesForEnumeration(): Router {
 			mediaSignature: noop,
 			requireCompanyContext: noop,
 		},
+		me: {
+			get: noop,
+		},
 		auth: {
 			login: noop,
 			register: noop,
@@ -207,6 +210,7 @@ function loadDocumentFromRepository(): Record<string, unknown> {
 function createTestApp() {
 	return buildApp({
 		createCompany: {} as never,
+		getCurrentUser: {} as never,
 		listCompanies: {} as never,
 		loginWithCredentials: {} as never,
 		registerUser: {} as never,

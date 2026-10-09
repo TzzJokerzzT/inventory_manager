@@ -13,6 +13,7 @@ import type { ListCompaniesUseCase } from "../../application/use-cases/list-comp
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
+import type { UpdateUserFullNameUseCase } from "../../application/use-cases/update-user-full-name.js";
 import {
 	type AuthCookieOptions,
 	createAuthController,
@@ -55,6 +56,7 @@ export interface AppDependencies {
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;
 	refreshSession: RefreshSessionUseCase;
+	updateUserFullName: UpdateUserFullNameUseCase;
 	requireAuth: RequestHandler;
 	requireUser: RequestHandler;
 	requireCompanyContext: RequestHandler;
@@ -99,6 +101,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 			company: createCompanyController(dependencies),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,
+				updateUserFullName: dependencies.updateUserFullName,
 			}),
 			auth: createAuthController({
 				loginWithCredentials: dependencies.loginWithCredentials,

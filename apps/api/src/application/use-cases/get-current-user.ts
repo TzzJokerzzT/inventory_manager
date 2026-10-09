@@ -15,6 +15,7 @@ import type { MembershipRepository } from "../../domain/repositories/membership-
 export interface CurrentUserView {
 	id: string;
 	email: string;
+	fullName: string | null;
 	createdAt: string;
 }
 
@@ -66,6 +67,7 @@ export class GetCurrentUserUseCase {
 			user: {
 				id: user.id,
 				email: user.email,
+				fullName: user.fullName,
 				createdAt: user.createdAt.toISOString(),
 			},
 			memberships: memberships.flatMap((membership) => {

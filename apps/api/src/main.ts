@@ -5,6 +5,7 @@ import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js"
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
+import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
@@ -96,6 +97,7 @@ const app = buildApp({
 	}),
 	registerUser: new RegisterUserUseCase({ identityProvider }),
 	refreshSession: new RefreshSessionUseCase({ identityProvider }),
+	updateUserFullName: new UpdateUserFullNameUseCase({ userRepository }),
 	requireAuth: createRequireAuth({
 		issuerBaseURL: `https://${domain}/`,
 		audience,

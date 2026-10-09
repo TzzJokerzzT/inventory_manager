@@ -342,6 +342,43 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalServerError"
+    patch:
+      tags: [me]
+      summary: Set or clear the authenticated user's display name
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMeRequest"
+      responses:
+        "200":
+          description: |
+            The caller's public identity (with the new `fullName`) and each
+            membership with its company. The representation is identical to
+            `GET /me` so the client can replace its state from either route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
 components:
   securitySchemes:
@@ -448,7 +485,7 @@ components:
 
     MeResponse:
       type: object
-      required: [id, email, createdAt, memberships]
+      required: [id, email, fullName, createdAt, memberships]
       properties:
         id:
           type: string
@@ -456,6 +493,10 @@ components:
         email:
           type: string
           format: email
+        fullName:
+          type: string
+          nullable: true
+          maxLength: 120
         createdAt:
           type: string
           format: date-time
@@ -463,6 +504,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MeMembership"
+
+    UpdateMeRequest:
+      type: object
+      required: [fullName]
+      properties:
+        fullName:
+          type: string
+          nullable: true
+          maxLength: 120
+          description: |
+            The new display name, or `null`/`""`/whitespace-only to clear it.
+            The server trims the value before applying the 120-character cap,
+            so send an already-trimmed value of at most 120 characters: this
+            schema's `maxLength` measures the raw string and is deliberately
+            stricter than the server. The body never carries a user id: the
+            subject is always the bearer token's user.
 
     MediaUploadSignature:
       type: object

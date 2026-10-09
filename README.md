@@ -239,7 +239,8 @@ siguiente).
 | `POST /auth/logout` | no | 429, 500 | Limpia la cookie del refresh (sin revocación en el proveedor) |
 | `POST /companies` | sí | 400, 401, 403 (`user_not_provisioned`), 429, 500 | Crea una empresa con la membership `OWNER` en una transacción |
 | `GET /companies` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las empresas del usuario |
-| `GET /me` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Devuelve la identidad del usuario y sus membresías activas con empresa y rol |
+| `GET /me` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Devuelve la identidad del usuario (incluido `fullName`, `null` si todavía no lo cargó) y sus membresías activas con empresa y rol |
+| `PATCH /me` | sí | 400, 401, 403 (`user_not_provisioned`), 429, 500 | Fija o borra el `fullName` del usuario autenticado (`null`, `""` o solo espacios lo borran; el tope es 120 caracteres tras trim) y responde la misma representación que `GET /me` |
 | `GET /companies/{companyId}/context` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Resuelve la empresa y el rol del usuario |
 | `POST /companies/{companyId}/media/signature` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Firma los parámetros de subida directa |
 

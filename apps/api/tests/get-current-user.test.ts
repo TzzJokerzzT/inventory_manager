@@ -12,12 +12,13 @@ const USER_ID = "user-1";
 const USER_EMAIL = "user@example.com";
 const USER_CREATED_AT = new Date("2026-01-01T00:00:00.000Z");
 
-function buildUser(): User {
+function buildUser(fullName?: string | null): User {
 	return User.create({
 		id: USER_ID,
 		auth0Sub: "auth0|user-1",
 		email: USER_EMAIL,
 		createdAt: USER_CREATED_AT,
+		fullName,
 	});
 }
 
@@ -72,6 +73,7 @@ describe("GetCurrentUserUseCase", () => {
 		expect(result.user).toEqual({
 			id: USER_ID,
 			email: USER_EMAIL,
+			fullName: null,
 			createdAt: USER_CREATED_AT.toISOString(),
 		});
 
@@ -125,8 +127,20 @@ describe("GetCurrentUserUseCase", () => {
 		expect(Object.keys(result.user).sort()).toEqual([
 			"createdAt",
 			"email",
+			"fullName",
 			"id",
 		]);
+	});
+
+	it("returns the caller's fullName once it is set", async () => {
+		const { useCase } = buildUseCase();
+
+		const result = await useCase.execute(buildUser("Alexis Buelvas"));
+
+		// Built field by field: the public view carries the modelled name and
+		// still never the Auth0 subject.
+		expect(result.user.fullName).toBe("Alexis Buelvas");
+		expect(result.user).not.toHaveProperty("auth0Sub");
 	});
 
 	it("drops a membership whose company the user's listing did not return", async () => {

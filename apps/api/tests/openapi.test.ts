@@ -181,6 +181,7 @@ function buildRoutesForEnumeration(): Router {
 		},
 		me: {
 			get: noop,
+			update: noop,
 		},
 		auth: {
 			login: noop,
@@ -215,6 +216,7 @@ function createTestApp() {
 		loginWithCredentials: {} as never,
 		registerUser: {} as never,
 		refreshSession: {} as never,
+		updateUserFullName: {} as never,
 		mediaUploadSigner: {} as never,
 		requireAuth: noop,
 		requireUser: noop,

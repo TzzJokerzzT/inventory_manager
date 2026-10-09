@@ -240,7 +240,7 @@ describe("secrets never reach an error message", () => {
 		}
 	});
 
-	it("names the missing client secret without any value", () => {
+	it("names the missing client secret without leaking a value it received", () => {
 		try {
 			loadEnv({
 				NODE_ENV: "production",
@@ -251,15 +251,20 @@ describe("secrets never reach an error message", () => {
 				AUTH0_AUDIENCE: validSource.AUTH0_AUDIENCE,
 				AUTH0_CLIENT_ID: validSource.AUTH0_CLIENT_ID,
 				AUTH0_CONNECTION: validSource.AUTH0_CONNECTION,
+				// Supplied on purpose: the Cloudinary secret's value has to be an
+				// INPUT for the assertion below to be able to fail. A missing
+				// variable's own value is never an input, so asserting the absence
+				// of that one would pass no matter what the implementation did.
+				CLOUDINARY_API_SECRET: validSource.CLOUDINARY_API_SECRET,
 			});
 			throw new Error("expected loadEnv to throw");
 		} catch (error) {
 			expect(String(error)).toMatch(/AUTH0_CLIENT_SECRET/);
-			expect(String(error)).not.toContain("client-secret-value");
+			expect(String(error)).not.toContain(validSource.CLOUDINARY_API_SECRET);
 		}
 	});
 
-	it("names the missing Cloudinary secret without any value", () => {
+	it("names the missing Cloudinary secret without leaking a value it received", () => {
 		try {
 			loadEnv({
 				NODE_ENV: "production",
@@ -277,7 +282,9 @@ describe("secrets never reach an error message", () => {
 			throw new Error("expected loadEnv to throw");
 		} catch (error) {
 			expect(String(error)).toMatch(/CLOUDINARY_API_SECRET/);
-			expect(String(error)).not.toContain("cloudinary-secret-value");
+			// The Auth0 secret IS supplied above, so this line can fail: an error
+			// that echoed the environment it received would trip it.
+			expect(String(error)).not.toContain(validSource.AUTH0_CLIENT_SECRET);
 		}
 	});
 });

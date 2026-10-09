@@ -74,6 +74,8 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "429":
           $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
         "503":
           $ref: "#/components/responses/IdentityProviderUnavailable"
 
@@ -104,6 +106,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
         "503":
           $ref: "#/components/responses/IdentityProviderUnavailable"
 
@@ -133,6 +137,8 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
         "503":
           $ref: "#/components/responses/IdentityProviderUnavailable"
 
@@ -146,6 +152,10 @@ paths:
       responses:
         "204":
           description: The refresh cookie is cleared; no body is returned.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /companies:
     post:
@@ -180,6 +190,8 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
     get:
       tags: [companies]
@@ -207,6 +219,8 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /companies/{companyId}/context:
     get:
@@ -249,6 +263,8 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /companies/{companyId}/media/signature:
     post:
@@ -295,6 +311,8 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
 components:
   securitySchemes:
@@ -434,6 +452,24 @@ components:
               items:
                 type: string
 
+    MalformedJsonError:
+      description: |
+        The JSON body could not be parsed. The body parser rejects it before it
+        reaches validation, so the response carries only `message` and never
+        `issues`. `additionalProperties: false` keeps this shape disjoint from
+        `ValidationError`, so the `BadRequest` `oneOf` stays unambiguous.
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [message]
+          additionalProperties: false
+          properties:
+            message:
+              type: string
+
     CodedError:
       type: object
       required: [error]
@@ -449,11 +485,20 @@ components:
 
   responses:
     BadRequest:
-      description: The request body is malformed or fails validation.
+      description: |
+        The request body is malformed or fails validation. The response shape
+        depends on which failure happened:
+        - a syntactically invalid JSON body is rejected by the body parser
+          before it reaches validation and is answered as `{error: {message}}`
+          with no `issues`;
+        - a body that parses but fails the request schema is answered as
+          `{error: {message, issues}}`.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ValidationError"
+            oneOf:
+              - $ref: "#/components/schemas/ValidationError"
+              - $ref: "#/components/schemas/MalformedJsonError"
 
     Unauthorized:
       description: The bearer token is missing, invalid or expired.
@@ -469,12 +514,22 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
 
+    InternalServerError:
+      description: |
+        An unexpected server error. The message is fixed and generic so
+        internal details never leak to the client.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
     RateLimited:
       description: |
         Too many requests from this client. The global limiter applies to every
-        route.
+        route. `express-rate-limit` answers with a plain string, which Express
+        sends as `text/html`.
       content:
-        text/plain:
+        text/html:
           schema:
             type: string
             example: Too many requests, please try again later.
@@ -482,9 +537,10 @@ components:
     RateLimitedStrict:
       description: |
         Too many requests from this client. This endpoint has a stricter
-        dedicated limiter in addition to the global one.
+        dedicated limiter in addition to the global one. `express-rate-limit`
+        answers with a plain string, which Express sends as `text/html`.
       content:
-        text/plain:
+        text/html:
           schema:
             type: string
             example: Too many requests, please try again later.

@@ -23,6 +23,13 @@ interface ExpressLayer {
 interface RegisteredRoute {
 	method: string;
 	path: string;
+	/**
+	 * `"exact"` when the path is the route's complete path and must equal a
+	 * spec path; `"suffix"` when the route lives under a parameterised mount
+	 * and is only observable by its local path, so the spec path is reconciled
+	 * by suffix.
+	 */
+	matchBy: "exact" | "suffix";
 }
 
 const HTTP_METHODS = new Set([
@@ -64,13 +71,20 @@ function collectSpecOperations(
  * is NOT exposed anywhere on the layer: the router v2 layer sets `layer.path`
  * to `undefined` and keeps the path only inside the `path-to-regexp` matcher
  * closure. Routes registered under a parameterised mount are therefore
- * returned with their local path (`/context`), and the coverage check below
- * reconciles them against the specification by path suffix.
+ * returned with their local path (`/context`).
+ *
+ * `depth` tells those two cases apart. A route reached through the top-level
+ * route groups (`healthRoutes`, `authRoutes`, and the top of `companyRoutes`)
+ * carries its complete path and is marked `"exact"`; a route reached through a
+ * *nested* sub-router (`companyScoped`, mounted at `/companies/:companyId`)
+ * carries a local path relative to that parameterised mount and is marked
+ * `"suffix"`. Only `"suffix"` routes are reconciled against the spec by path
+ * suffix; every `"exact"` route must equal its spec path.
  */
 function collectRoutes(router: Router): RegisteredRoute[] {
 	const collected: RegisteredRoute[] = [];
 
-	const visit = (stack: unknown[]): void => {
+	const visit = (stack: unknown[], depth: number): void => {
 		for (const entry of stack) {
 			const layer = entry as ExpressLayer;
 
@@ -80,6 +94,7 @@ function collectRoutes(router: Router): RegisteredRoute[] {
 						collected.push({
 							method: method.toUpperCase(),
 							path: layer.route.path,
+							matchBy: depth >= 2 ? "suffix" : "exact",
 						});
 					}
 				}
@@ -94,18 +109,65 @@ function collectRoutes(router: Router): RegisteredRoute[] {
 				handle !== undefined &&
 				Array.isArray(handle.stack)
 			) {
-				visit(handle.stack);
+				visit(handle.stack, depth + 1);
 			}
 		}
 	};
 
-	visit(router.stack as unknown as unknown[]);
+	visit(router.stack as unknown as unknown[], 0);
 	return collected;
 }
 
 /** Express uses `:companyId`; OpenAPI uses `{companyId}`. */
 function toOpenApiPath(expressPath: string): string {
 	return expressPath.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
+}
+
+/**
+ * Reconciles registered routes against spec operations in both directions.
+ *
+ * `missing` lists router routes with no spec operation; `extraneous` lists
+ * spec operations with no registered route. A route whose complete path is
+ * known (`matchBy: "exact"`) must equal its spec path; a sub-router route
+ * (`matchBy: "suffix"`) is reconciled by path suffix because its mount prefix
+ * is not observable from the Express router internals.
+ */
+function findCoverageGaps(
+	registered: RegisteredRoute[],
+	specOperations: SpecOperation[],
+): { missing: string[]; extraneous: string[] } {
+	const missing: string[] = [];
+	for (const route of registered) {
+		const openApiPath = toOpenApiPath(route.path);
+		const covered = specOperations.some(
+			(operation) =>
+				operation.method === route.method.toLowerCase() &&
+				(route.matchBy === "exact"
+					? operation.path === openApiPath
+					: operation.path.endsWith(openApiPath)),
+		);
+		if (!covered) {
+			missing.push(
+				`${route.method} ${route.path} (expected ${openApiPath}, ${route.matchBy} match)`,
+			);
+		}
+	}
+
+	const extraneous: string[] = [];
+	for (const operation of specOperations) {
+		const matched = registered.some(
+			(route) =>
+				route.method.toLowerCase() === operation.method &&
+				(route.matchBy === "exact"
+					? toOpenApiPath(route.path) === operation.path
+					: operation.path.endsWith(toOpenApiPath(route.path))),
+		);
+		if (!matched) {
+			extraneous.push(`${operation.method.toUpperCase()} ${operation.path}`);
+		}
+	}
+
+	return { missing, extraneous };
 }
 
 function buildRoutesForEnumeration(): Router {
@@ -184,32 +246,61 @@ describe("OpenAPI contract", () => {
 		expect(response.headers["content-type"]).toContain("text/html");
 	});
 
-	it("covers every route registered in the router", () => {
+	it("covers exactly the routes the router registers", () => {
 		const document = loadDocumentFromRepository();
 		const paths = (document.paths ?? {}) as Record<
 			string,
 			Record<string, unknown>
 		>;
 		const registered = collectRoutes(buildRoutesForEnumeration());
+		const specOperations = collectSpecOperations(paths);
 
-		const missing: string[] = [];
-		for (const route of registered) {
-			const openApiPath = toOpenApiPath(route.path);
-			const covered = Object.entries(paths).some(
-				([specPath, operations]) =>
-					(specPath === openApiPath || specPath.endsWith(openApiPath)) &&
-					operations[route.method.toLowerCase()] !== undefined,
-			);
+		const { missing, extraneous } = findCoverageGaps(
+			registered,
+			specOperations,
+		);
 
-			if (!covered) {
-				missing.push(`${route.method} ${route.path} (expected ${openApiPath})`);
-			}
-		}
-
+		// Every route the router registers has a spec operation...
 		expect(missing).toEqual([]);
+		// ...and the spec documents no operation the router does not register.
+		expect(extraneous).toEqual([]);
+	});
 
-		// Same count in both directions: every router route has a spec operation
-		// and the spec documents no operation the router does not register.
-		expect(registered).toHaveLength(collectSpecOperations(paths).length);
+	it("rejects a wrong prefix on a route whose full path is known", () => {
+		// `/v1/health` keeps the operation count identical, so the previous
+		// suffix match (`specPath.endsWith(path)`) plus the balanced count would
+		// have accepted it. Exact matching for known paths must reject it.
+		const document = loadDocumentFromRepository();
+		const paths = (document.paths ?? {}) as Record<
+			string,
+			Record<string, unknown>
+		>;
+		const registered = collectRoutes(buildRoutesForEnumeration());
+		const specOperations = collectSpecOperations(paths).map((operation) =>
+			operation.path === "/health"
+				? { ...operation, path: "/v1/health" }
+				: operation,
+		);
+
+		const { missing } = findCoverageGaps(registered, specOperations);
+
+		expect(missing).toEqual(["GET /health (expected /health, exact match)"]);
+	});
+
+	it("rejects an operation the router does not register", () => {
+		const document = loadDocumentFromRepository();
+		const paths = (document.paths ?? {}) as Record<
+			string,
+			Record<string, unknown>
+		>;
+		const registered = collectRoutes(buildRoutesForEnumeration());
+		const specOperations = [
+			...collectSpecOperations(paths),
+			{ method: "get", path: "/admin" },
+		];
+
+		const { extraneous } = findCoverageGaps(registered, specOperations);
+
+		expect(extraneous).toEqual(["GET /admin"]);
 	});
 });

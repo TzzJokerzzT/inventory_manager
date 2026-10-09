@@ -12,18 +12,20 @@ type UserDelegate = Pick<PrismaClient, "user">;
 function buildFakeDelegate() {
 	const upsert = jest.fn();
 	const findUnique = jest.fn();
+	const update = jest.fn();
 
 	const delegate = {
-		user: { upsert, findUnique },
+		user: { upsert, findUnique, update },
 	} as unknown as UserDelegate;
 
-	return { delegate, upsert, findUnique };
+	return { delegate, upsert, findUnique, update };
 }
 
 const ROW = {
 	id: "user-1",
 	auth0Sub: "auth0|abc123",
 	email: "someone@example.com",
+	fullName: null,
 	createdAt: new Date("2026-01-01T00:00:00.000Z"),
 };
 
@@ -83,8 +85,12 @@ describe("PrismaUserRepository", () => {
 			email: "someone@example.com",
 		});
 		expect(result.createdAt).toBeInstanceOf(Date);
-		// The raw row carried extra columns; the domain entity exposes none of them.
-		expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("fullName");
+		// `fullName` is a modelled domain field, so it DOES cross the port
+		// boundary: the raw row value has to be mapped onto the entity.
+		expect(result.fullName).toBe("Jane");
+		expect(JSON.parse(JSON.stringify(result)).fullName).toBe("Jane");
+		// `updatedAt` is a raw Prisma column the domain does not model, so it
+		// must still never surface through the entity.
 		expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("updatedAt");
 	});
 
@@ -109,5 +115,92 @@ describe("PrismaUserRepository", () => {
 
 		findUnique.mockResolvedValue(null);
 		await expect(repository.findByAuth0Sub("missing-sub")).resolves.toBeNull();
+	});
+
+	it("findByAuth0Sub maps the modelled fullName off the row", async () => {
+		const { delegate, findUnique } = buildFakeDelegate();
+		findUnique.mockResolvedValue({ ...ROW, fullName: "Jane" });
+
+		const repository = new PrismaUserRepository({ prisma: delegate });
+
+		const hit = await repository.findByAuth0Sub("auth0|abc123");
+
+		expect(hit?.fullName).toBe("Jane");
+	});
+
+	describe("updateFullName", () => {
+		it("writes by primary key and returns the mapped entity", async () => {
+			const { delegate, update } = buildFakeDelegate();
+			update.mockResolvedValue({ ...ROW, fullName: "Alexis Buelvas" });
+
+			const repository = new PrismaUserRepository({ prisma: delegate });
+
+			const result = await repository.updateFullName(
+				"user-1",
+				"Alexis Buelvas",
+			);
+
+			expect(update).toHaveBeenCalledTimes(1);
+			expect(update).toHaveBeenCalledWith({
+				where: { id: "user-1" },
+				data: { fullName: "Alexis Buelvas" },
+			});
+			expect(result).toBeInstanceOf(User);
+			expect(result?.fullName).toBe("Alexis Buelvas");
+		});
+
+		it("normalises the incoming value through the domain point", async () => {
+			const { delegate, update } = buildFakeDelegate();
+			update.mockResolvedValue(ROW);
+
+			const repository = new PrismaUserRepository({ prisma: delegate });
+
+			await repository.updateFullName("user-1", "  Alexis Buelvas  ");
+			expect(update).toHaveBeenLastCalledWith({
+				where: { id: "user-1" },
+				data: { fullName: "Alexis Buelvas" },
+			});
+
+			await repository.updateFullName("user-1", "   ");
+			expect(update).toHaveBeenLastCalledWith({
+				where: { id: "user-1" },
+				data: { fullName: null },
+			});
+
+			await repository.updateFullName("user-1", null);
+			expect(update).toHaveBeenLastCalledWith({
+				where: { id: "user-1" },
+				data: { fullName: null },
+			});
+		});
+
+		it("returns null instead of letting a raw P2025 escape", async () => {
+			const { delegate, update } = buildFakeDelegate();
+			update.mockRejectedValue(
+				Object.assign(new Error("Record to update not found."), {
+					code: "P2025",
+				}),
+			);
+
+			const repository = new PrismaUserRepository({ prisma: delegate });
+
+			await expect(
+				repository.updateFullName("missing-user", "Jane"),
+			).resolves.toBeNull();
+		});
+
+		it("rethrows any error that is not a missing row", async () => {
+			const { delegate, update } = buildFakeDelegate();
+			const failure = Object.assign(new Error("connection reset"), {
+				code: "P1001",
+			});
+			update.mockRejectedValue(failure);
+
+			const repository = new PrismaUserRepository({ prisma: delegate });
+
+			await expect(repository.updateFullName("user-1", "Jane")).rejects.toBe(
+				failure,
+			);
+		});
 	});
 });

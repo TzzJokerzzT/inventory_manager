@@ -3,7 +3,9 @@
 import { type FormEvent, useRef, useState } from "react";
 import { Alert, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
+import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
+import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useUpdateFullName } from "../api/use-update-full-name";
 import { validateFullName } from "../lib/validate-full-name";
 
@@ -28,7 +30,7 @@ export function FullNameForm() {
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const update = useUpdateFullName();
-	const busy = update.isPending;
+	const { isPending, mutate } = update;
 	const apiError =
 		update.error instanceof ApiError
 			? update.error.message
@@ -49,7 +51,21 @@ export function FullNameForm() {
 
 		setError(null);
 		setSubmitted(true);
-		update.mutate({ fullName: name.trim() });
+		mutate(
+			{ fullName: name.trim() },
+			{
+				onSuccess: () => {
+					AlertToast({
+						title: "Proceso exitoso",
+						description:
+							"Se ha actualizado correctamente la información de tu usuario",
+						type: "success",
+						delay: 3000,
+					});
+					setName("");
+				},
+			},
+		);
 	}
 
 	function handleChange(value: string) {
@@ -77,16 +93,23 @@ export function FullNameForm() {
 				value={name}
 				onChange={(event) => handleChange(event.target.value)}
 				error={error ?? undefined}
-				disabled={busy}
+				disabled={isPending}
 			/>
 			<Button
 				size="ds"
 				variant="primary"
 				type="submit"
 				className="w-full"
-				disabled={busy}
+				disabled={isPending}
 			>
-				{busy ? "Guardando..." : "Guardar nombre"}
+				{isPending ? (
+					<>
+						<SpinnerMotion size={20} className="mr-2" />
+						Guardando...
+					</>
+				) : (
+					"Guardar nombre"
+				)}
 			</Button>
 
 			{apiError ? (

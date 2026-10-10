@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
+import { useMe } from "../../api/use-me";
 import { useUpdateFullName } from "../../api/use-update-full-name";
 import { FullNameForm } from "../full-name-form";
 import { User } from "../user";
@@ -8,10 +9,33 @@ jest.mock("../../api/use-update-full-name", () => ({
 	useUpdateFullName: jest.fn(),
 }));
 
+jest.mock("../../api/use-me", () => ({
+	useMe: jest.fn(),
+}));
+
+const useMeMock = useMe as jest.MockedFunction<typeof useMe>;
+
 const useUpdateFullNameMock = useUpdateFullName as jest.MockedFunction<
 	typeof useUpdateFullName
 >;
 const mutate = jest.fn();
+const refetch = jest.fn();
+
+function mockMe(overrides: Partial<ReturnType<typeof useMe>> = {}) {
+	useMeMock.mockReturnValue({
+		data: {
+			id: "user-1",
+			email: "ana@example.com",
+			fullName: "Ana Pérez",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			memberships: [],
+		},
+		isPending: false,
+		isError: false,
+		refetch,
+		...overrides,
+	} as unknown as ReturnType<typeof useMe>);
+}
 
 function mockUpdate(state: Partial<ReturnType<typeof useUpdateFullName>> = {}) {
 	useUpdateFullNameMock.mockReturnValue({
@@ -89,7 +113,12 @@ describe("FullNameForm", () => {
 
 		submit();
 
-		expect(mutate).toHaveBeenCalledWith({ fullName: "Ana Pérez" });
+		// The component attaches mutation options (the success toast and the
+		// field reset); the payload must stay exactly the trimmed name.
+		expect(mutate).toHaveBeenCalledWith(
+			{ fullName: "Ana Pérez" },
+			expect.any(Object),
+		);
 	});
 
 	it("shows the API message when the update fails", () => {
@@ -120,10 +149,12 @@ describe("FullNameForm", () => {
 			"disabled",
 			true,
 		);
-		expect(screen.getByRole("button", { name: "Guardando..." })).toHaveProperty(
-			"disabled",
-			true,
-		);
+		// The button also hosts SpinnerMotion, whose status label ("Cargando")
+		// prefixes the accessible name, so the pending label is matched by
+		// regex instead of the exact string.
+		expect(
+			screen.getByRole("button", { name: /Guardando\.\.\./ }),
+		).toHaveProperty("disabled", true);
 	});
 });
 
@@ -131,12 +162,13 @@ describe("User", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockUpdate();
+		mockMe();
 	});
 
-	it("shows the profile heading and the full-name form", () => {
+	it("shows the current user's name and the full-name form", () => {
 		render(<User />);
 
-		expect(screen.getByRole("heading", { name: "Tu perfil" })).toBeTruthy();
+		expect(screen.getByRole("heading", { name: "Ana Pérez" })).toBeTruthy();
 		expect(screen.getByLabelText("Nombre completo")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Guardar nombre" })).toBeTruthy();
 	});

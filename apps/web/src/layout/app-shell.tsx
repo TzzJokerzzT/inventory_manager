@@ -29,6 +29,7 @@ const navigation: NavEntry[] = [
 	{ href: "/dashboard/products", label: "Productos", icon: Package },
 	{ href: "/dashboard/movements", label: "Movimientos", icon: ArrowRightLeft },
 	{ href: "/dashboard/clients", label: "Clientes", icon: Users },
+	{ href: "/dashboard/user", label: "Usuario", icon: Users },
 ];
 
 function isLink(entry: NavEntry): entry is NavLinkEntry {

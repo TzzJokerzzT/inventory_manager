@@ -38,7 +38,7 @@ export function CreateProduct() {
 
 			<section
 				aria-label="Formulario de creación"
-				className="flex items-center justify-center gap-3"
+				className="h-[calc(100vh-15rem)] flex items-center justify-center gap-3"
 			>
 				<form className="grid w-full p-4 max-w-3xl min-w-0 grid-cols-1 gap-4 bg-surface border rounded-xl sm:grid-cols-2">
 					<TextField

@@ -47,36 +47,32 @@ describe("validateLogin", () => {
 
 describe("validateRegister", () => {
 	const valid = {
-		name: "Ana Pérez",
 		email: "ana@empresa.com",
-		companyName: "Empresa S.A.S",
 		password: "password123",
+		confirmPassword: "password123",
 	};
 
 	it("requires every field", () => {
 		expect(
-			validateRegister({ name: "", email: "", companyName: "", password: "" }),
+			validateRegister({ email: "", password: "", confirmPassword: "" }),
 		).toEqual({
-			name: "Ingresá tu nombre y apellido.",
 			email: "Ingresá tu correo electrónico.",
-			companyName: "Ingresá el nombre de tu empresa.",
 			password: "Ingresá tu contraseña.",
+			confirmPassword: "Las contraseñas no coinciden.",
 		});
 	});
 
 	it("treats whitespace-only values as required", () => {
 		expect(
 			validateRegister({
-				name: "   ",
 				email: "\t ",
-				companyName: "  ",
 				password: "\t ",
+				confirmPassword: "\t ",
 			}),
 		).toEqual({
-			name: "Ingresá tu nombre y apellido.",
 			email: "Ingresá tu correo electrónico.",
-			companyName: "Ingresá el nombre de tu empresa.",
 			password: "Ingresá tu contraseña.",
+			confirmPassword: "Las contraseñas no coinciden.",
 		});
 	});
 

@@ -1,5 +1,8 @@
 import { Membership } from "../../domain/entities/membership.js";
-import type { MembershipRepository } from "../../domain/repositories/membership-repository.js";
+import type {
+	InviteMemberInput,
+	MembershipRepository,
+} from "../../domain/repositories/membership-repository.js";
 import type {
 	Membership as MembershipModel,
 	PrismaClient,
@@ -63,6 +66,40 @@ export class PrismaMembershipRepository implements MembershipRepository {
 		});
 
 		return rows.map((row) => this.toDomain(row));
+	}
+
+	async invite(input: InviteMemberInput): Promise<Membership> {
+		const row = await this.prisma.membership.create({
+			data: {
+				invitedEmail: input.invitedEmail,
+				companyId: input.companyId,
+				role: input.role,
+				status: "INVITED",
+				invitedBy: input.invitedBy,
+				userId: null,
+				acceptedAt: null,
+			},
+		});
+
+		return this.toDomain(row);
+	}
+
+	async findByEmailAndCompany(
+		email: string,
+		companyId: string,
+	): Promise<Membership | null> {
+		const row = await this.prisma.membership.findFirst({
+			where: {
+				invitedEmail: email,
+				companyId,
+			},
+		});
+
+		if (row === null) {
+			return null;
+		}
+
+		return this.toDomain(row);
 	}
 
 	/** Maps a raw Prisma row back into the domain entity. */

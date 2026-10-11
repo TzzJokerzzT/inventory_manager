@@ -1,4 +1,4 @@
-import type { Membership } from "../entities/membership.js";
+import type { Membership, MembershipRole } from "../entities/membership.js";
 
 /**
  * Port for membership persistence.
@@ -13,6 +13,17 @@ import type { Membership } from "../entities/membership.js";
  * remain forbidden. The reason this port stays narrow is to keep the write
  * surface unbuilt, not to block the reads a new feature needs.
  */
+export interface InviteMemberInput {
+	/** The email of the user being invited. Must be lowercased by the caller. */
+	invitedEmail: string;
+	/** The company to invite the user to. */
+	companyId: string;
+	/** The role the user will have once they accept. */
+	role: MembershipRole;
+	/** The user ID of the inviter (the caller). */
+	invitedBy: string;
+}
+
 export interface MembershipRepository {
 	/**
 	 * Resolves the user's ACTIVE membership for the given company, or `null`
@@ -37,4 +48,33 @@ export interface MembershipRepository {
 	 * `CompanyRepository.findAllForUser` in the use case, not here.
 	 */
 	findActiveByUser(userId: string): Promise<Membership[]>;
+
+	/**
+	 * Creates an INVITED membership for the given email.
+	 *
+	 * The caller is responsible for ensuring the email is normalized
+	 * (trimmed + lowercased) and that no ACTIVE or INVITED membership already
+	 * exists for this email + company pair. The method itself is a pure
+	 * persistence operation.
+	 *
+	 * The created membership has:
+	 * - `userId`: null (the user has not accepted yet)
+	 * - `status`: INVITED
+	 * - `acceptedAt`: null
+	 *
+	 * Returns the created membership.
+	 */
+	invite(input: InviteMemberInput): Promise<Membership>;
+
+	/**
+	 * Finds any membership (regardless of status) for the given email + company.
+	 *
+	 * Returns the membership if one exists, or null otherwise. This read is
+	 * used by MI-45 to enforce the uniqueness invariant: a user cannot be
+	 * invited to a company they already belong to (ACTIVE or INVITED).
+	 */
+	findByEmailAndCompany(
+		email: string,
+		companyId: string,
+	): Promise<Membership | null>;
 }

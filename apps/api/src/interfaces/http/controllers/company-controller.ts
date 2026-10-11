@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { parse } from "valibot";
 import type { MediaUploadSigner } from "../../../application/ports/media-upload-signer.js";
 import type { CreateCompanyUseCase } from "../../../application/use-cases/create-company.js";
+import type { InviteMemberUseCase } from "../../../application/use-cases/invite-member.js";
 import type { ListCompaniesUseCase } from "../../../application/use-cases/list-companies.js";
 import type { User } from "../../../domain/entities/user.js";
 import {
@@ -11,10 +12,12 @@ import {
 } from "../../../domain/errors/company-context-forbidden-error.js";
 import type { CompanyContext } from "../middlewares/require-company-context.js";
 import { createCompanySchema } from "../validators/company-validator.js";
+import { inviteMemberSchema } from "../validators/member-invite-validator.js";
 
 export interface CompanyControllerDependencies {
 	createCompany: CreateCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
+	inviteMember: InviteMemberUseCase;
 	/** Mounted on `/companies/:companyId/*` ahead of the context handler. */
 	requireCompanyContext: RequestHandler;
 	/** Signs the server-decided upload parameters for a company. */
@@ -26,6 +29,7 @@ export interface CompanyController {
 	list: RequestHandler;
 	context: RequestHandler;
 	mediaSignature: RequestHandler;
+	inviteMember: RequestHandler;
 	requireCompanyContext: RequestHandler;
 }
 
@@ -137,6 +141,29 @@ export function createCompanyController(
 				// Never the api secret: the response is exactly the parameters the
 				// browser has to send to the provider.
 				response.status(StatusCodes.OK).json(signature);
+			} catch (error) {
+				next(error);
+			}
+		},
+		inviteMember: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+				const context = resolvedCompanyContext(request);
+				const input = parse(inviteMemberSchema, request.body);
+
+				// Normalize the email: trim + lowercase. The lowercasing is a
+				// persistence invariant (the Membership entity enforces it too),
+				// and doing it here ensures the use case receives a canonical value.
+				const membership = await dependencies.inviteMember.execute(
+					{ email: input.email.trim().toLowerCase(), role: input.role },
+					{
+						companyId: context.companyId,
+						inviterId: user.id,
+						inviterRole: context.role,
+					},
+				);
+
+				response.status(StatusCodes.CREATED).json(membership);
 			} catch (error) {
 				next(error);
 			}

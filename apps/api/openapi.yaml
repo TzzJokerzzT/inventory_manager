@@ -315,6 +315,67 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/members:
+    post:
+      tags: [companies]
+      summary: Invite a user to the company
+      description: |
+        Creates an INVITED membership for the given email. The user will not
+        have access to the company until they accept the invitation.
+
+        Authorization rules (enforced by the use case):
+        - MEMBER cannot invite anyone
+        - ADMIN can invite MEMBER or ADMIN
+        - OWNER can invite MEMBER, ADMIN, or OWNER
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`),
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`), or the caller's role cannot assign
+            the target role (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The email already has an ACTIVE or INVITED membership in the
+            company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /me:
     get:
       tags: [me]
@@ -504,6 +565,58 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MeMembership"
+
+    InviteMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+          description: The email of the user to invite. Will be lowercased before persistence.
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: The role the user will have once they accept.
+
+    Membership:
+      type: object
+      required: [id, userId, invitedEmail, companyId, role, status, invitedBy, acceptedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null until the user accepts the invitation.
+        invitedEmail:
+          type: string
+          format: email
+          description: Lowercased email of the invited user.
+        companyId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+        status:
+          type: string
+          enum: [INVITED, ACTIVE, REVOKED]
+        invitedBy:
+          type: string
+          format: uuid
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     UpdateMeRequest:
       type: object

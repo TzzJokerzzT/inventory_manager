@@ -1,5 +1,8 @@
-import type { Membership } from "../../domain/entities/membership.js";
-import type { MembershipRepository } from "../../domain/repositories/membership-repository.js";
+import { Membership } from "../../domain/entities/membership.js";
+import type {
+	InviteMemberInput,
+	MembershipRepository,
+} from "../../domain/repositories/membership-repository.js";
 
 /**
  * In-memory adapter for the {@link MembershipRepository} port.
@@ -40,6 +43,36 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 		return Array.from(this.memberships.values()).filter(
 			(m) => m.userId === userId && m.status === "ACTIVE",
 		);
+	}
+
+	async findByEmailAndCompany(
+		email: string,
+		companyId: string,
+	): Promise<Membership | null> {
+		// Any status matches on purpose: the caller (MI-45 uniqueness check)
+		// decides whether a REVOKED row may be re-invited. The adapter mirrors
+		// the Prisma one, which also omits a status filter here.
+		const membership = Array.from(this.memberships.values()).find(
+			(m) => m.invitedEmail === email && m.companyId === companyId,
+		);
+
+		return membership ?? null;
+	}
+
+	async invite(input: InviteMemberInput): Promise<Membership> {
+		const membership = Membership.create({
+			userId: null,
+			invitedEmail: input.invitedEmail,
+			companyId: input.companyId,
+			role: input.role,
+			status: "INVITED",
+			invitedBy: input.invitedBy,
+			acceptedAt: null,
+		});
+
+		this.memberships.set(membership.id, membership);
+
+		return membership;
 	}
 
 	/** Adapter-specific: lets the test suite insert memberships directly. */

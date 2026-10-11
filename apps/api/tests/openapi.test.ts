@@ -177,6 +177,7 @@ function buildRoutesForEnumeration(): Router {
 			list: noop,
 			context: noop,
 			mediaSignature: noop,
+			inviteMember: noop,
 			requireCompanyContext: noop,
 		},
 		me: {
@@ -212,6 +213,7 @@ function createTestApp() {
 	return buildApp({
 		createCompany: {} as never,
 		getCurrentUser: {} as never,
+		inviteMember: {} as never,
 		listCompanies: {} as never,
 		loginWithCredentials: {} as never,
 		registerUser: {} as never,

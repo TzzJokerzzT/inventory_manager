@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from "cloudinary";
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
+import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
@@ -90,6 +91,7 @@ const app = buildApp({
 		companyRepository,
 		membershipRepository,
 	}),
+	inviteMember: new InviteMemberUseCase({ membershipRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
 	loginWithCredentials: new LoginWithCredentialsUseCase({
 		identityProvider,

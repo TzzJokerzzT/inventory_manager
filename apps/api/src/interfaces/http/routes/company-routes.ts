@@ -25,6 +25,10 @@ export function companyRoutes(controller: CompanyController): Router {
 	// `requireCompanyContext`: a non-member can never sign an upload in the
 	// company's name.
 	companyScoped.post("/media/signature", controller.mediaSignature);
+	// Member management routes. They inherit `requireCompanyContext`, so only
+	// users with an ACTIVE membership can reach them. The role-based
+	// authorization (who can invite whom) is enforced by the InviteMemberUseCase.
+	companyScoped.post("/members", controller.inviteMember);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

@@ -9,6 +9,7 @@ import YAML from "yamljs";
 import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
+import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
@@ -52,6 +53,7 @@ function loadOpenApiDocument(): swaggerUi.JsonObject {
 export interface AppDependencies {
 	createCompany: CreateCompanyUseCase;
 	getCurrentUser: GetCurrentUserUseCase;
+	inviteMember: InviteMemberUseCase;
 	listCompanies: ListCompaniesUseCase;
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;

@@ -1,5 +1,6 @@
 import { Membership } from "../../domain/entities/membership.js";
 import type {
+	AcceptMembershipInput,
 	InviteMemberInput,
 	MembershipRepository,
 } from "../../domain/repositories/membership-repository.js";
@@ -73,6 +74,43 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 		this.memberships.set(membership.id, membership);
 
 		return membership;
+	}
+
+	async findInvitedByEmail(email: string): Promise<Membership[]> {
+		// Same `status: "INVITED"` rule as the Prisma adapter, so the two stay
+		// interchangeable behind the port.
+		return Array.from(this.memberships.values()).filter(
+			(m) => m.invitedEmail === email && m.status === "INVITED",
+		);
+	}
+
+	async accept(input: AcceptMembershipInput): Promise<Membership | null> {
+		const existing = this.memberships.get(input.membershipId);
+
+		// Fail-closed mirror of the Prisma `where: { status: "INVITED" }` guard: a
+		// row that is no longer INVITED is not accepted, never revived.
+		if (existing === undefined || existing.status !== "INVITED") {
+			return null;
+		}
+
+		// The entity is immutable, so accepting builds the next state and
+		// replaces the row under the same id.
+		const accepted = Membership.create({
+			id: existing.id,
+			userId: input.userId,
+			invitedEmail: existing.invitedEmail,
+			companyId: existing.companyId,
+			role: existing.role,
+			status: "ACTIVE",
+			invitedBy: existing.invitedBy,
+			acceptedAt: new Date(),
+			createdAt: existing.createdAt,
+			updatedAt: existing.updatedAt,
+		});
+
+		this.memberships.set(accepted.id, accepted);
+
+		return accepted;
 	}
 
 	/** Adapter-specific: lets the test suite insert memberships directly. */

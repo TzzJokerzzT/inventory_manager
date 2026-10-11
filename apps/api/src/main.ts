@@ -1,4 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
+import { AcceptInvitationsUseCase } from "./application/use-cases/accept-invitations.js";
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
 import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
@@ -86,6 +87,7 @@ const authCookieOptions: AuthCookieOptions = {
 const corsOrigin = env.webOrigin ?? "http://localhost:3000";
 
 const app = buildApp({
+	acceptInvitations: new AcceptInvitationsUseCase({ membershipRepository }),
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	getCurrentUser: new GetCurrentUserUseCase({
 		companyRepository,

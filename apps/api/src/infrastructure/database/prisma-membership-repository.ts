@@ -1,5 +1,6 @@
 import { Membership } from "../../domain/entities/membership.js";
 import type {
+	AcceptMembershipInput,
 	InviteMemberInput,
 	MembershipRepository,
 } from "../../domain/repositories/membership-repository.js";
@@ -93,6 +94,45 @@ export class PrismaMembershipRepository implements MembershipRepository {
 				invitedEmail: email,
 				companyId,
 			},
+		});
+
+		if (row === null) {
+			return null;
+		}
+
+		return this.toDomain(row);
+	}
+
+	async findInvitedByEmail(email: string): Promise<Membership[]> {
+		// `status: "INVITED"` is the same hard-coded rule the other lookups
+		// apply, mirrored: here the still-pending rows are exactly the ones this
+		// read must return, and an ACTIVE or REVOKED row must never appear.
+		const rows = await this.prisma.membership.findMany({
+			where: { invitedEmail: email, status: "INVITED" },
+		});
+
+		return rows.map((row) => this.toDomain(row));
+	}
+
+	async accept(input: AcceptMembershipInput): Promise<Membership | null> {
+		// `updateMany` (not `update`) because it accepts the extra `status`
+		// predicate: the write only lands while the row is still INVITED, so a
+		// revocation racing this acceptance wins instead of being overwritten.
+		const { count } = await this.prisma.membership.updateMany({
+			where: { id: input.membershipId, status: "INVITED" },
+			data: {
+				userId: input.userId,
+				status: "ACTIVE",
+				acceptedAt: new Date(),
+			},
+		});
+
+		if (count === 0) {
+			return null;
+		}
+
+		const row = await this.prisma.membership.findUnique({
+			where: { id: input.membershipId },
 		});
 
 		if (row === null) {

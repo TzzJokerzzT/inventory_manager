@@ -7,6 +7,7 @@ import morgan from "morgan";
 import * as swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
+import type { AcceptInvitationsUseCase } from "../../application/use-cases/accept-invitations.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
 import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
@@ -51,6 +52,7 @@ function loadOpenApiDocument(): swaggerUi.JsonObject {
 }
 
 export interface AppDependencies {
+	acceptInvitations: AcceptInvitationsUseCase;
 	createCompany: CreateCompanyUseCase;
 	getCurrentUser: GetCurrentUserUseCase;
 	inviteMember: InviteMemberUseCase;
@@ -104,6 +106,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,
 				updateUserFullName: dependencies.updateUserFullName,
+				acceptInvitations: dependencies.acceptInvitations,
 			}),
 			auth: createAuthController({
 				loginWithCredentials: dependencies.loginWithCredentials,

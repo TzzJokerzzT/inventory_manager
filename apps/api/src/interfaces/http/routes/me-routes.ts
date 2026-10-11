@@ -10,6 +10,11 @@ import type { MeController } from "../controllers/me-controller.js";
  * run through `requireCompanyContext`. `PATCH /me` writes to the caller's own
  * row only; `requireUser` is what makes the subject implicit, so the body can
  * never name another user.
+ *
+ * `POST /me/invitations/accept` hangs off the same pair for the same reason:
+ * accepting an invitation is an action on the caller's own account, and
+ * requiring a company context first would make it unreachable exactly for the
+ * user who has no ACTIVE membership yet -- the one who needs it.
  */
 export function meRoutes(
 	controller: MeController,
@@ -19,5 +24,11 @@ export function meRoutes(
 	const router = Router();
 	router.get("/me", requireAuth, requireUser, controller.get);
 	router.patch("/me", requireAuth, requireUser, controller.update);
+	router.post(
+		"/me/invitations/accept",
+		requireAuth,
+		requireUser,
+		controller.acceptInvitations,
+	);
 	return router;
 }

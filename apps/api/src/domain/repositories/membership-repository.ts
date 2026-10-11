@@ -24,6 +24,13 @@ export interface InviteMemberInput {
 	invitedBy: string;
 }
 
+export interface AcceptMembershipInput {
+	/** The membership to accept. */
+	membershipId: string;
+	/** The user accepting it; becomes the membership's `userId`. */
+	userId: string;
+}
+
 export interface MembershipRepository {
 	/**
 	 * Resolves the user's ACTIVE membership for the given company, or `null`
@@ -77,4 +84,29 @@ export interface MembershipRepository {
 		email: string,
 		companyId: string,
 	): Promise<Membership | null>;
+
+	/**
+	 * Lists every INVITED membership addressed to the given email, across
+	 * companies.
+	 *
+	 * Only `INVITED` rows are returned: an `ACTIVE` one is already accepted and a
+	 * `REVOKED` one must never be revived. The caller passes the canonical
+	 * (lowercased) email it owns -- `User.email` already is -- so the match never
+	 * depends on the case the invitee was typed with.
+	 *
+	 * This is the read MI-46 uses to find what the caller still has to accept.
+	 */
+	findInvitedByEmail(email: string): Promise<Membership[]>;
+
+	/**
+	 * Accepts a pending invitation: sets `userId`, `status = ACTIVE` and
+	 * `acceptedAt`, but only if the row is still `INVITED`.
+	 *
+	 * The `INVITED` guard is part of the contract, not an optimisation: a
+	 * revocation that lands between the read and this write must not be undone
+	 * by the acceptance racing it. Returns the updated membership, or `null`
+	 * when the row was no longer `INVITED` (or no longer exists), which the
+	 * caller treats as "nothing to accept".
+	 */
+	accept(input: AcceptMembershipInput): Promise<Membership | null>;
 }

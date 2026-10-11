@@ -441,6 +441,48 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /me/invitations/accept:
+    post:
+      tags: [me]
+      summary: Accept the caller's pending company invitations
+      description: |
+        Turns every membership addressed to the caller's own email and still in
+        the `INVITED` state into an `ACTIVE` one. The subject is the resolved
+        user, so the request carries no body and can never name another email.
+
+        It is idempotent: calling it again after everything is accepted returns
+        an empty array with the same `200`. Having nothing pending is the normal
+        case, not an error, which is why there is no `404`.
+
+        A membership that stopped being `INVITED` before the write (a
+        revocation, or a concurrent acceptance) is skipped rather than revived.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: |
+            The memberships that became ACTIVE. Empty when nothing was pending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Membership"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:

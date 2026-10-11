@@ -1,6 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { parse } from "valibot";
+import type { AcceptInvitationsUseCase } from "../../../application/use-cases/accept-invitations.js";
 import type { GetCurrentUserUseCase } from "../../../application/use-cases/get-current-user.js";
 import type { UpdateUserFullNameUseCase } from "../../../application/use-cases/update-user-full-name.js";
 import type { User } from "../../../domain/entities/user.js";
@@ -9,11 +10,13 @@ import { updateMeSchema } from "../validators/me-validator.js";
 export interface MeControllerDependencies {
 	getCurrentUser: GetCurrentUserUseCase;
 	updateUserFullName: UpdateUserFullNameUseCase;
+	acceptInvitations: AcceptInvitationsUseCase;
 }
 
 export interface MeController {
 	get: RequestHandler;
 	update: RequestHandler;
+	acceptInvitations: RequestHandler;
 }
 
 /**
@@ -45,6 +48,10 @@ function resolvedUser(request: Request): User {
  * `PATCH /me` answers with the same representation as `GET /me`, so both
  * handlers share the view assembly and only differ in the entity they pass to
  * it (see the `update` handler for why it must be the updated one).
+ *
+ * `POST /me/invitations/accept` is a write on the caller's own memberships, not
+ * on the identity: it takes no body and answers with the memberships that
+ * became ACTIVE, so it never has to build the `/me` view.
  */
 export function createMeController(
 	dependencies: MeControllerDependencies,
@@ -78,6 +85,21 @@ export function createMeController(
 					await dependencies.getCurrentUser.execute(updated);
 
 				response.status(StatusCodes.OK).json({ ...view, memberships });
+			} catch (error) {
+				next(error);
+			}
+		},
+		acceptInvitations: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// The email comes from the resolved user, never from the request, so a
+				// caller can only ever accept invitations addressed to their own
+				// account. An empty array is a 200: having nothing pending is the
+				// normal case, not an error.
+				const memberships = await dependencies.acceptInvitations.execute(user);
+
+				response.status(StatusCodes.OK).json(memberships);
 			} catch (error) {
 				next(error);
 			}

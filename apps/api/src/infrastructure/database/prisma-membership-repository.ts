@@ -1,4 +1,7 @@
-import { Membership } from "../../domain/entities/membership.js";
+import {
+	Membership,
+	type MembershipRole,
+} from "../../domain/entities/membership.js";
 import type {
 	AcceptMembershipInput,
 	InviteMemberInput,
@@ -140,6 +143,66 @@ export class PrismaMembershipRepository implements MembershipRepository {
 		}
 
 		return this.toDomain(row);
+	}
+
+	async findByCompany(companyId: string): Promise<Membership[]> {
+		// `REVOKED` is excluded in the WHERE clause, so the database -- not the
+		// mapping code -- decides what the roster is.
+		const rows = await this.prisma.membership.findMany({
+			where: { companyId, status: { in: ["ACTIVE", "INVITED"] } },
+			orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+		});
+
+		return rows.map((row) => this.toDomain(row));
+	}
+
+	async findById(membershipId: string): Promise<Membership | null> {
+		const row = await this.prisma.membership.findUnique({
+			where: { id: membershipId },
+		});
+
+		if (row === null) {
+			return null;
+		}
+
+		return this.toDomain(row);
+	}
+
+	async updateRole(
+		membershipId: string,
+		role: MembershipRole,
+	): Promise<Membership | null> {
+		// Same guarded-write shape as `accept()`: the status predicate is what
+		// keeps a REVOKED row from being brought back into the roster.
+		const { count } = await this.prisma.membership.updateMany({
+			where: { id: membershipId, status: { in: ["ACTIVE", "INVITED"] } },
+			data: { role },
+		});
+
+		if (count === 0) {
+			return null;
+		}
+
+		return this.findById(membershipId);
+	}
+
+	async revoke(membershipId: string): Promise<Membership | null> {
+		const { count } = await this.prisma.membership.updateMany({
+			where: { id: membershipId, status: { in: ["ACTIVE", "INVITED"] } },
+			data: { status: "REVOKED" },
+		});
+
+		if (count === 0) {
+			return null;
+		}
+
+		return this.findById(membershipId);
+	}
+
+	async countActiveOwners(companyId: string): Promise<number> {
+		return this.prisma.membership.count({
+			where: { companyId, role: "OWNER", status: "ACTIVE" },
+		});
 	}
 
 	/** Maps a raw Prisma row back into the domain entity. */

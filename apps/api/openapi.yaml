@@ -316,6 +316,58 @@ paths:
           $ref: "#/components/responses/InternalServerError"
 
   /companies/{companyId}/members:
+    get:
+      tags: [companies]
+      summary: List the company's membership roster
+      description: |
+        Returns the company's memberships: `ACTIVE` and `INVITED` rows. A
+        `REVOKED` row is never returned -- it is not part of the roster any
+        more -- and an unaccepted invitation is, with its `INVITED` status, so
+        the UI can show it as pending.
+
+        The roster is scoped to the company the caller has context for, which
+        is how "only the users of your own companies" is enforced. Every role
+        may list (`view_users`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The company's memberships.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Membership"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
     post:
       tags: [companies]
       summary: Invite a user to the company
@@ -367,6 +419,237 @@ paths:
           description: |
             The email already has an ACTIVE or INVITED membership in the
             company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/members/me:
+    delete:
+      tags: [companies]
+      summary: Leave the company
+      description: |
+        Revokes the caller's own membership, which is resolved from the
+        authenticated user: the request names no membership, so it can only
+        ever remove the caller's own access.
+
+        Leaving is `status = REVOKED`, never a delete: the row stays so the
+        historical stock movements remain readable.
+
+        Anyone may leave except the **last active OWNER**, because a company
+        with no active OWNER is an unrecoverable state. That refusal is a 409
+        (`last_active_owner`), not a 403: it is about what the company would
+        become.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The caller's revoked membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The caller's membership vanished between the context check and the
+            write; the `code` is `membership_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The caller is the last active OWNER; the `code` is
+            `last_active_owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/members/{membershipId}:
+    patch:
+      tags: [companies]
+      summary: Change a membership's role
+      description: |
+        Authorization, per `docs/stack.md` §5.8:
+        - removing the old role and assigning the new one each need the
+          matching row: `assign_member` (ADMIN/OWNER), `assign_admin` (OWNER),
+          `assign_owner` (OWNER). So an ADMIN can promote a MEMBER but cannot
+          demote another ADMIN, because removing ADMIN is an OWNER action.
+        - nobody changes their own role (`change_own_role`), which is what
+          kills self-escalation.
+        - the company must keep at least one active OWNER; otherwise the answer
+          is 409 `last_active_owner`.
+
+        Setting the role the membership already has is a no-op that answers
+        200 with the membership unchanged.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRoleRequest"
+      responses:
+        "200":
+          description: The updated membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          description: |
+            The company id or membership id is not a UUID, or the role is not
+            one of OWNER, ADMIN, MEMBER.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), the caller
+            cannot assign or remove that role, or the target is the caller's
+            own membership (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The membership does not belong to this company, or is REVOKED or
+            gone; the `code` is `membership_not_found`. A membership of another
+            company and a nonexistent one are answered identically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The change would leave the company without an active OWNER; the
+            `code` is `last_active_owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: [companies]
+      summary: Revoke a membership
+      description: |
+        Revoking is `status = REVOKED`, never a delete (§5.8), so the
+        historical movements stay readable.
+
+        Removing someone else's role needs the same permission as assigning it:
+        an ADMIN can revoke a MEMBER but not another ADMIN. Revoking the
+        caller's own membership is treated as leaving and follows the `leave`
+        row instead; `/members/me` is the explicit route for that.
+
+        The company must keep at least one active OWNER: revoking the last one
+        is 409 `last_active_owner`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The revoked membership, with `status: REVOKED`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          description: The company id or membership id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), or the
+            caller cannot remove that role (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The membership does not belong to this company, or is already
+            REVOKED; the `code` is `membership_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The revocation would leave the company without an active OWNER; the
+            `code` is `last_active_owner`.
           content:
             application/json:
               schema:
@@ -607,6 +890,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MeMembership"
+
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: The role the membership will have after the change.
 
     InviteMemberRequest:
       type: object

@@ -178,6 +178,10 @@ function buildRoutesForEnumeration(): Router {
 			context: noop,
 			mediaSignature: noop,
 			inviteMember: noop,
+			listMembers: noop,
+			changeMemberRole: noop,
+			revokeMember: noop,
+			leaveCompany: noop,
 			requireCompanyContext: noop,
 		},
 		me: {
@@ -213,8 +217,12 @@ function loadDocumentFromRepository(): Record<string, unknown> {
 function createTestApp() {
 	return buildApp({
 		createCompany: {} as never,
+		changeMemberRole: {} as never,
 		getCurrentUser: {} as never,
 		inviteMember: {} as never,
+		leaveCompany: {} as never,
+		listMembers: {} as never,
+		revokeMember: {} as never,
 		listCompanies: {} as never,
 		loginWithCredentials: {} as never,
 		registerUser: {} as never,

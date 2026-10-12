@@ -1,12 +1,16 @@
 import { v2 as cloudinary } from "cloudinary";
 import { AcceptInvitationsUseCase } from "./application/use-cases/accept-invitations.js";
+import { ChangeMemberRoleUseCase } from "./application/use-cases/change-member-role.js";
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
 import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
+import { LeaveCompanyUseCase } from "./application/use-cases/leave-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
+import { ListMembersUseCase } from "./application/use-cases/list-members.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
+import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
 import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
@@ -88,12 +92,16 @@ const corsOrigin = env.webOrigin ?? "http://localhost:3000";
 
 const app = buildApp({
 	acceptInvitations: new AcceptInvitationsUseCase({ membershipRepository }),
+	changeMemberRole: new ChangeMemberRoleUseCase({ membershipRepository }),
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	getCurrentUser: new GetCurrentUserUseCase({
 		companyRepository,
 		membershipRepository,
 	}),
 	inviteMember: new InviteMemberUseCase({ membershipRepository }),
+	leaveCompany: new LeaveCompanyUseCase({ membershipRepository }),
+	listMembers: new ListMembersUseCase({ membershipRepository }),
+	revokeMember: new RevokeMembershipUseCase({ membershipRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
 	loginWithCredentials: new LoginWithCredentialsUseCase({
 		identityProvider,

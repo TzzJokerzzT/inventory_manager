@@ -3,8 +3,8 @@ import type { MembershipRole } from "../entities/membership.js";
 /**
  * The actions the authorization matrix (docs/stack.md §5.8, `:596-605`) rules
  * on. Member-management endpoints (assign, promote, demote) are MI-45/MI-47 and
- * do not exist yet, so this stays a pure predicate: no HTTP or repository
- * import belongs in this file.
+ * live here so the endpoints can never carry their own copy of the rules: no
+ * HTTP or repository import belongs in this file.
  */
 export type AuthorizationAction =
 	| "assign_member"
@@ -14,6 +14,34 @@ export type AuthorizationAction =
 	| "leave"
 	| "create_company"
 	| "view_users";
+
+/**
+ * The three assignment rows of the matrix. §5.8 rules on *assigning or
+ * removing* a role, so one action covers both directions: removing a MEMBER
+ * needs `assign_member`, removing an ADMIN needs `assign_admin`, and removing
+ * an OWNER needs `assign_owner`.
+ *
+ * The mapping lives here, next to the matrix it belongs to, instead of being
+ * re-derived per use case: invite, change-role and revoke all need it, and a
+ * second copy would be a second place to drift.
+ */
+export type MemberAssignmentAction =
+	| "assign_member"
+	| "assign_admin"
+	| "assign_owner";
+
+export function assignmentActionForRole(
+	role: MembershipRole,
+): MemberAssignmentAction {
+	switch (role) {
+		case "MEMBER":
+			return "assign_member";
+		case "ADMIN":
+			return "assign_admin";
+		case "OWNER":
+			return "assign_owner";
+	}
+}
 
 /**
  * Pure authorization matrix.

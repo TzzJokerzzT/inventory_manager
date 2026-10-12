@@ -1,4 +1,7 @@
-import { Membership } from "../../domain/entities/membership.js";
+import {
+	Membership,
+	type MembershipRole,
+} from "../../domain/entities/membership.js";
 import type {
 	AcceptMembershipInput,
 	InviteMemberInput,
@@ -111,6 +114,98 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 		this.memberships.set(accepted.id, accepted);
 
 		return accepted;
+	}
+
+	async findByCompany(companyId: string): Promise<Membership[]> {
+		// Same roster rule as the Prisma adapter: ACTIVE and INVITED, never
+		// REVOKED. Ordering is stable by creation then id, as in the adapters
+		// that hit the database.
+		return Array.from(this.memberships.values())
+			.filter(
+				(m) =>
+					m.companyId === companyId &&
+					(m.status === "ACTIVE" || m.status === "INVITED"),
+			)
+			.sort(
+				(a, b) =>
+					a.createdAt.getTime() - b.createdAt.getTime() ||
+					a.id.localeCompare(b.id),
+			);
+	}
+
+	async findById(membershipId: string): Promise<Membership | null> {
+		return this.memberships.get(membershipId) ?? null;
+	}
+
+	async updateRole(
+		membershipId: string,
+		role: MembershipRole,
+	): Promise<Membership | null> {
+		const existing = this.memberships.get(membershipId);
+
+		// Mirrors the Prisma guard: only a row still in the roster changes role.
+		if (
+			existing === undefined ||
+			(existing.status !== "ACTIVE" && existing.status !== "INVITED")
+		) {
+			return null;
+		}
+
+		const updated = Membership.create({
+			id: existing.id,
+			userId: existing.userId,
+			invitedEmail: existing.invitedEmail,
+			companyId: existing.companyId,
+			role,
+			status: existing.status,
+			invitedBy: existing.invitedBy,
+			acceptedAt: existing.acceptedAt,
+			createdAt: existing.createdAt,
+			updatedAt: existing.updatedAt,
+		});
+
+		this.memberships.set(updated.id, updated);
+
+		return updated;
+	}
+
+	async revoke(membershipId: string): Promise<Membership | null> {
+		const existing = this.memberships.get(membershipId);
+
+		if (
+			existing === undefined ||
+			(existing.status !== "ACTIVE" && existing.status !== "INVITED")
+		) {
+			return null;
+		}
+
+		// Revoking is a status change, never a delete (§5.8): the row stays so the
+		// historical movements keep pointing at a readable user.
+		const revoked = Membership.create({
+			id: existing.id,
+			userId: existing.userId,
+			invitedEmail: existing.invitedEmail,
+			companyId: existing.companyId,
+			role: existing.role,
+			status: "REVOKED",
+			invitedBy: existing.invitedBy,
+			acceptedAt: existing.acceptedAt,
+			createdAt: existing.createdAt,
+			updatedAt: existing.updatedAt,
+		});
+
+		this.memberships.set(revoked.id, revoked);
+
+		return revoked;
+	}
+
+	async countActiveOwners(companyId: string): Promise<number> {
+		return Array.from(this.memberships.values()).filter(
+			(m) =>
+				m.companyId === companyId &&
+				m.role === "OWNER" &&
+				m.status === "ACTIVE",
+		).length;
 	}
 
 	/** Adapter-specific: lets the test suite insert memberships directly. */

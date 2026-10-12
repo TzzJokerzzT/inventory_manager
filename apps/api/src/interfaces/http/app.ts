@@ -8,13 +8,17 @@ import * as swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
 import type { AcceptInvitationsUseCase } from "../../application/use-cases/accept-invitations.js";
+import type { ChangeMemberRoleUseCase } from "../../application/use-cases/change-member-role.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
 import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
+import type { LeaveCompanyUseCase } from "../../application/use-cases/leave-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
+import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
+import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
 import type { UpdateUserFullNameUseCase } from "../../application/use-cases/update-user-full-name.js";
 import {
 	type AuthCookieOptions,
@@ -53,10 +57,14 @@ function loadOpenApiDocument(): swaggerUi.JsonObject {
 
 export interface AppDependencies {
 	acceptInvitations: AcceptInvitationsUseCase;
+	changeMemberRole: ChangeMemberRoleUseCase;
 	createCompany: CreateCompanyUseCase;
 	getCurrentUser: GetCurrentUserUseCase;
 	inviteMember: InviteMemberUseCase;
+	leaveCompany: LeaveCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
+	listMembers: ListMembersUseCase;
+	revokeMember: RevokeMembershipUseCase;
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;
 	refreshSession: RefreshSessionUseCase;

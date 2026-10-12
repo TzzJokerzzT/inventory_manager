@@ -109,4 +109,57 @@ export interface MembershipRepository {
 	 * caller treats as "nothing to accept".
 	 */
 	accept(input: AcceptMembershipInput): Promise<Membership | null>;
+
+	/**
+	 * Lists the membership roster of a company: `ACTIVE` and `INVITED` rows.
+	 *
+	 * `REVOKED` is excluded on purpose. A revoked row is not part of the roster
+	 * any more -- it exists only so the historical stock movements keep pointing
+	 * at a readable user (MOV-05) -- and showing it would make the listing look
+	 * like the person is still a member. An invitation that has not been
+	 * accepted *is* part of the roster: the UI has to show it, which is why it
+	 * is returned with its `INVITED` status rather than hidden.
+	 */
+	findByCompany(companyId: string): Promise<Membership[]>;
+
+	/**
+	 * Resolves a single membership by id, whatever its status, or `null`.
+	 *
+	 * The caller is responsible for checking `companyId` against the company it
+	 * is authorised for; this read is deliberately not company-scoped so that
+	 * the use case can tell "no such membership" from "belongs to another
+	 * company" and answer both the same way.
+	 */
+	findById(membershipId: string): Promise<Membership | null>;
+
+	/**
+	 * Changes the role of a membership that is still part of the roster.
+	 *
+	 * Guarded to `ACTIVE`/`INVITED` like `accept()` is guarded to `INVITED`: a
+	 * `REVOKED` row must not be brought back by a role change, and returns
+	 * `null` when nothing was updated.
+	 */
+	updateRole(
+		membershipId: string,
+		role: MembershipRole,
+	): Promise<Membership | null>;
+
+	/**
+	 * Revokes a membership by setting `status = REVOKED` -- never by deleting
+	 * the row (§5.8).
+	 *
+	 * Guarded to `ACTIVE`/`INVITED` so revoking twice is a `null` (nothing to
+	 * do) rather than a second silent update.
+	 */
+	revoke(membershipId: string): Promise<Membership | null>;
+
+	/**
+	 * Counts the company's active OWNERs.
+	 *
+	 * This is the fact the last-OWNER invariant turns on, and it is a count, not
+	 * a role: it is the one read the `leave` row of the matrix cannot express on
+	 * its own. Only `ACTIVE` rows count -- an `INVITED` OWNER has not accepted,
+	 * so it cannot be the OWNER that keeps the company alive.
+	 */
+	countActiveOwners(companyId: string): Promise<number>;
 }

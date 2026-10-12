@@ -4,7 +4,10 @@ import type {
 } from "../../domain/entities/membership.js";
 import { InsufficientRoleError } from "../../domain/errors/insufficient-role-error.js";
 import { MembershipAlreadyExistsError } from "../../domain/errors/membership-already-exists-error.js";
-import { can } from "../../domain/policies/authorization.js";
+import {
+	assignmentActionForRole,
+	can,
+} from "../../domain/policies/authorization.js";
 import type { MembershipRepository } from "../../domain/repositories/membership-repository.js";
 
 export interface InviteMemberInput {
@@ -76,25 +79,8 @@ export class InviteMemberUseCase {
 		inviterRole: MembershipRole,
 		targetRole: MembershipRole,
 	): void {
-		const action = this.actionForRole(targetRole);
-		if (!can(inviterRole, action)) {
+		if (!can(inviterRole, assignmentActionForRole(targetRole))) {
 			throw new InsufficientRoleError();
-		}
-	}
-
-	/**
-	 * Maps a target role to the corresponding authorization action.
-	 */
-	private actionForRole(
-		role: MembershipRole,
-	): "assign_member" | "assign_admin" | "assign_owner" {
-		switch (role) {
-			case "MEMBER":
-				return "assign_member";
-			case "ADMIN":
-				return "assign_admin";
-			case "OWNER":
-				return "assign_owner";
 		}
 	}
 

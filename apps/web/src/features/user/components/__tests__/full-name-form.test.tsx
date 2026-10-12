@@ -13,6 +13,14 @@ jest.mock("../../api/use-me", () => ({
 	useMe: jest.fn(),
 }));
 
+// The profile test asserts the profile, not the members card (that section has
+// its own test); the stub keeps the host's query tree out of this suite.
+jest.mock("@/src/features/member/components/members-section", () => ({
+	MembersSection: function MembersSectionStub() {
+		return null;
+	},
+}));
+
 const useMeMock = useMe as jest.MockedFunction<typeof useMe>;
 
 const useUpdateFullNameMock = useUpdateFullName as jest.MockedFunction<

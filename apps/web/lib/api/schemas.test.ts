@@ -3,6 +3,8 @@ import {
 	parseCompaniesResponse,
 	parseCompany,
 	parseLoginResponse,
+	parseMembership,
+	parseMembershipsResponse,
 	parseMeResponse,
 } from "./schemas";
 
@@ -158,5 +160,105 @@ describe("parseMeResponse", () => {
 		});
 
 		expect(() => parseMeResponse(response)).toThrow(/respuesta inesperada/);
+	});
+});
+
+function membership(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "m1",
+		userId: "user-1",
+		invitedEmail: "ana@empresa.com",
+		companyId: "c1",
+		role: "OWNER",
+		status: "ACTIVE",
+		invitedBy: "user-1",
+		acceptedAt: "2026-10-06T00:00:00.000Z",
+		createdAt: "2026-10-06T00:00:00.000Z",
+		updatedAt: "2026-10-06T00:00:00.000Z",
+		...overrides,
+	};
+}
+
+describe("parseMembershipsResponse", () => {
+	it("returns the roster exactly as the API serializes it", () => {
+		const roster = [
+			membership(),
+			membership({
+				id: "m2",
+				userId: null,
+				status: "INVITED",
+				acceptedAt: null,
+				role: "MEMBER",
+			}),
+		];
+
+		expect(parseMembershipsResponse(roster)).toEqual(roster);
+	});
+
+	it("accepts an empty list, the normal case when nothing is pending", () => {
+		expect(parseMembershipsResponse([])).toEqual([]);
+	});
+
+	it("accepts an invitation with no user yet", () => {
+		const parsed = parseMembershipsResponse([
+			membership({ userId: null, status: "INVITED", acceptedAt: null }),
+		]);
+
+		expect(parsed[0].userId).toBeNull();
+		expect(parsed[0].acceptedAt).toBeNull();
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseMembershipsResponse({ members: [] })).toThrow(ApiError);
+	});
+
+	it("rejects a membership with a role outside the contract", () => {
+		expect(() =>
+			parseMembershipsResponse([membership({ role: "SUPERUSER" })]),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a membership with a status outside the contract", () => {
+		expect(() =>
+			parseMembershipsResponse([membership({ status: "PENDING" })]),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects an entry whose fields are missing or mistyped", () => {
+		expect(() =>
+			parseMembershipsResponse([{ id: "m1", invitedEmail: "ana@empresa.com" }]),
+		).toThrow(/respuesta inesperada/);
+
+		expect(() =>
+			parseMembershipsResponse([membership({ invitedEmail: 123 })]),
+		).toThrow(/respuesta inesperada/);
+	});
+});
+
+describe("parseMembership", () => {
+	it("returns the created or updated membership", () => {
+		const parsed = parseMembership(membership({ role: "MEMBER" }));
+
+		expect(parsed.role).toBe("MEMBER");
+		expect(parsed.invitedEmail).toBe("ana@empresa.com");
+	});
+
+	it("returns a REVOKED membership from a revoke response", () => {
+		const parsed = parseMembership(membership({ status: "REVOKED" }));
+
+		expect(parsed.status).toBe("REVOKED");
+	});
+
+	it("rejects a membership whose shape changed", () => {
+		expect(() => parseMembership({ id: "m1" })).toThrow(ApiError);
+	});
+
+	it("rejects a role or status outside the contract", () => {
+		expect(() => parseMembership(membership({ role: "ROOT" }))).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseMembership(membership({ status: "GONE" }))).toThrow(
+			/respuesta inesperada/,
+		);
 	});
 });

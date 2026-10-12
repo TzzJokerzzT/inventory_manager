@@ -6,6 +6,7 @@ import { useCompanies } from "@/src/features/company/api/use-companies";
 import { useCreateCompany } from "@/src/features/company/api/use-create-company";
 import { useMe } from "@/src/features/user/api/use-me";
 import { useUpdateFullName } from "@/src/features/user/api/use-update-full-name";
+import { QueryProvider } from "@/src/providers/query-provider";
 
 jest.mock("next/navigation", () => ({
 	useRouter: jest.fn(),
@@ -101,6 +102,14 @@ function mockUpdateFullName() {
 	} as unknown as ReturnType<typeof useUpdateFullName>);
 }
 
+/**
+ * The no-companies card now also hosts the accept-invitation action, whose
+ * mutation needs a query client even though it never fires on render.
+ */
+function renderPage() {
+	return render(<SinEmpresasPage />, { wrapper: QueryProvider });
+}
+
 describe("SinEmpresasPage", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -115,7 +124,7 @@ describe("SinEmpresasPage", () => {
 		mockCompanies({ data: [company("c1", "Primera")] });
 		mockMe({ data: meResponse("Ana Pérez") });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(replace).toHaveBeenCalledWith("/dashboard");
 		expect(screen.queryByLabelText("Nombre completo")).toBeNull();
@@ -124,7 +133,7 @@ describe("SinEmpresasPage", () => {
 	it("shows the loading state while the companies query is pending", () => {
 		mockCompanies({ isPending: true });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(screen.getByLabelText("Cargando")).toBeTruthy();
 		expect(replace).not.toHaveBeenCalled();
@@ -134,7 +143,7 @@ describe("SinEmpresasPage", () => {
 		mockCompanies({ data: [] });
 		mockMe({ isPending: true });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(screen.getByLabelText("Cargando")).toBeTruthy();
 		expect(screen.queryByLabelText("Nombre completo")).toBeNull();
@@ -144,7 +153,7 @@ describe("SinEmpresasPage", () => {
 		mockCompanies({ data: [] });
 		mockMe({ data: meResponse(null) });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(screen.getByLabelText("Nombre completo")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Guardar nombre" })).toBeTruthy();
@@ -155,7 +164,7 @@ describe("SinEmpresasPage", () => {
 		mockCompanies({ data: [] });
 		mockMe({ data: meResponse("   ") });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(screen.getByLabelText("Nombre completo")).toBeTruthy();
 		expect(screen.queryByText("Todavía no tenés una empresa")).toBeNull();
@@ -165,7 +174,7 @@ describe("SinEmpresasPage", () => {
 		mockCompanies({ data: [] });
 		mockMe({ isError: true, error: new ApiError("boom", 500) });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(screen.getByLabelText("Nombre completo")).toBeTruthy();
 		expect(screen.queryByText("Todavía no tenés una empresa")).toBeNull();
@@ -175,7 +184,7 @@ describe("SinEmpresasPage", () => {
 		mockCompanies({ data: [] });
 		mockMe({ data: meResponse("Ana Pérez") });
 
-		render(<SinEmpresasPage />);
+		renderPage();
 
 		expect(
 			screen.getByRole("heading", { name: "Todavía no tenés una empresa" }),

@@ -9,6 +9,7 @@ import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { ROLE_LABELS } from "@/src/utils/constants";
 import { getInitials } from "@/src/utils/getInitials";
 import { formatDate } from "../../dashboard/mock";
+import { MembersSection } from "../../member/components/members-section";
 import { useMe } from "../api/use-me";
 import { DetailItem } from "./detail-item";
 import { FullNameForm } from "./full-name-form";
@@ -54,7 +55,7 @@ export function User() {
 			className="flex flex-col gap-6"
 		>
 			<ViewHeader
-				title="Clientes"
+				title="Usuario"
 				subTitle="Ver la información relacionada a su usuario."
 			/>
 
@@ -148,6 +149,10 @@ export function User() {
 					</section>
 				</div>
 			</ViewLayout>
+
+			<div className="flex w-full max-w-4xl flex-col gap-6 rounded-md border border-border bg-surface p-8">
+				<MembersSection />
+			</div>
 		</LazyMotionTag>
 	);
 }

@@ -138,3 +138,69 @@ export function parseMeResponse(data: unknown): MeResponse {
 
 	return result.output;
 }
+
+/**
+ * One membership exactly as the memberships endpoints serialize it.
+ *
+ * `userId` and `acceptedAt` are nullable because an unaccepted invitation has
+ * no user yet; `role` and `status` are closed lists, not free strings, so an
+ * unknown value fails here instead of reaching the permission selector (which
+ * decides what the UI offers from those two values).
+ */
+export const membershipSchema = object({
+	id: string(),
+	userId: nullable(string()),
+	invitedEmail: string(),
+	companyId: string(),
+	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
+	status: picklist(["INVITED", "ACTIVE", "REVOKED"]),
+	invitedBy: string(),
+	acceptedAt: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+});
+
+/** One membership of a company, derived from the OpenAPI contract. */
+export type Membership = components["schemas"]["Membership"];
+
+/**
+ * Shape of the endpoints that answer a list of memberships:
+ * `GET /companies/{companyId}/members` and `POST /me/invitations/accept`.
+ */
+export const membershipsResponseSchema = array(membershipSchema);
+
+/** A list of memberships, derived from the OpenAPI contract. */
+export type MembershipsResponse = components["schemas"]["Membership"][];
+
+/**
+ * Validates a membership list at the boundary (roster and accepted invitations).
+ *
+ * Same contract as {@link parseCompaniesResponse}: a backend that changes shape
+ * fails as an {@link ApiError} with a readable message instead of exploding
+ * inside the roster, and an unknown `role`/`status` never reaches the
+ * permission selector.
+ */
+export function parseMembershipsResponse(data: unknown): MembershipsResponse {
+	const result = safeParse(membershipsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single membership, for the endpoints that answer one (invite,
+ * role change and revoke).
+ *
+ * It exists so those responses go through the same boundary as the listed ones:
+ * a cast here would let a shape change reach the roster unnoticed.
+ */
+export function parseMembership(data: unknown): Membership {
+	const result = safeParse(membershipSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}

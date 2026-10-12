@@ -1,4 +1,5 @@
 import { Membership } from "../src/domain/entities/membership.js";
+import { LastActiveOwnerError } from "../src/domain/errors/last-active-owner-error.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 
 function activeMembership(companyId: string, userId = "user-1"): Membership {
@@ -158,5 +159,28 @@ describe("InMemoryMembershipRepository", () => {
 			"company-own",
 		]);
 		expect(result[0]?.userId).toBe("user-1");
+	});
+});
+
+describe("InMemoryMembershipRepository owner guard", () => {
+	const owner = (id: string): Membership =>
+		Membership.create({
+			id,
+			userId: id,
+			invitedEmail: `${id}@example.com`,
+			companyId: "company-1",
+			role: "OWNER",
+			status: "ACTIVE",
+			invitedBy: id,
+			acceptedAt: new Date("2026-01-01T00:00:00.000Z"),
+		});
+
+	it("refuses to take the OWNER role from the company's only ACTIVE OWNER", async () => {
+		const repository = new InMemoryMembershipRepository();
+		repository.save(owner("m-owner"));
+
+		await expect(repository.revoke("m-owner")).rejects.toThrow(
+			LastActiveOwnerError,
+		);
 	});
 });

@@ -138,6 +138,8 @@ export interface MembershipRepository {
 	 * Guarded to `ACTIVE`/`INVITED` like `accept()` is guarded to `INVITED`: a
 	 * `REVOKED` row must not be brought back by a role change, and returns
 	 * `null` when nothing was updated.
+	 *
+	 * Like `revoke()`, it enforces §5.8 invariant 4 atomically.
 	 */
 	updateRole(
 		membershipId: string,
@@ -150,6 +152,8 @@ export interface MembershipRepository {
 	 *
 	 * Guarded to `ACTIVE`/`INVITED` so revoking twice is a `null` (nothing to
 	 * do) rather than a second silent update.
+	 *
+	 * It also enforces §5.8 invariant 4 atomically, in the same statement.
 	 */
 	revoke(membershipId: string): Promise<Membership | null>;
 

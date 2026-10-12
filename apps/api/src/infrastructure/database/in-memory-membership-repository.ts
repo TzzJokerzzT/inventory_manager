@@ -2,6 +2,7 @@ import {
 	Membership,
 	type MembershipRole,
 } from "../../domain/entities/membership.js";
+import { LastActiveOwnerError } from "../../domain/errors/last-active-owner-error.js";
 import type {
 	AcceptMembershipInput,
 	InviteMemberInput,
@@ -151,6 +152,8 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 			return null;
 		}
 
+		this.assertOwnerSurvives(existing);
+
 		const updated = Membership.create({
 			id: existing.id,
 			userId: existing.userId,
@@ -179,6 +182,8 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 			return null;
 		}
 
+		this.assertOwnerSurvives(existing);
+
 		// Revoking is a status change, never a delete (§5.8): the row stays so the
 		// historical movements keep pointing at a readable user.
 		const revoked = Membership.create({
@@ -197,6 +202,25 @@ export class InMemoryMembershipRepository implements MembershipRepository {
 		this.memberships.set(revoked.id, revoked);
 
 		return revoked;
+	}
+
+	/** §5.8 invariant 4 lives in the write, mirroring the Prisma adapter. */
+	private assertOwnerSurvives(membership: Membership): void {
+		if (membership.role !== "OWNER" || membership.status !== "ACTIVE") {
+			return;
+		}
+
+		const otherActiveOwners = Array.from(this.memberships.values()).filter(
+			(m) =>
+				m.companyId === membership.companyId &&
+				m.role === "OWNER" &&
+				m.status === "ACTIVE" &&
+				m.id !== membership.id,
+		).length;
+
+		if (otherActiveOwners === 0) {
+			throw new LastActiveOwnerError();
+		}
 	}
 
 	async countActiveOwners(companyId: string): Promise<number> {

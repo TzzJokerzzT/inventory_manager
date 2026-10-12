@@ -1,13 +1,17 @@
 import { Membership } from "../src/domain/entities/membership.js";
+import { LastActiveOwnerError } from "../src/domain/errors/last-active-owner-error.js";
 import type { PrismaClient } from "../src/infrastructure/database/generated/prisma/client.js";
 import { PrismaMembershipRepository } from "../src/infrastructure/database/prisma-membership-repository.js";
 
 /**
- * The adapter only talks to the `membership` delegate, so the fake narrows the
- * injected surface to the one method the repository actually calls. It is a
+ * The adapter talks to the `membership` delegate plus the raw-statement entry
+ * point, so the fake narrows the injected surface to what it calls. It is a
  * hand-written double: no database and no generated client is loaded here.
  */
-type MembershipDelegate = Pick<PrismaClient, "membership">;
+type MembershipDelegate = Pick<
+	PrismaClient,
+	"membership" | "$executeRawUnsafe"
+>;
 
 function buildFakeDelegate() {
 	const findFirst = jest.fn();
@@ -164,6 +168,48 @@ describe("PrismaMembershipRepository", () => {
 		expect(result[0]?.invitedEmail).toBe("member@example.com");
 		expect(JSON.parse(JSON.stringify(result[0]))).not.toHaveProperty(
 			"extraColumn",
+		);
+	});
+});
+
+describe("PrismaMembershipRepository owner guard", () => {
+	it("writes with the owner guard in the same statement and explains a refusal", async () => {
+		const executeRawUnsafe = jest.fn().mockResolvedValue(1);
+		const findUnique = jest.fn().mockResolvedValue(ROW);
+		const delegate = {
+			membership: {
+				findUnique,
+				count: jest.fn().mockResolvedValue(0),
+				findFirst: jest.fn(),
+				findMany: jest.fn(),
+			},
+			$executeRawUnsafe: executeRawUnsafe,
+		} as unknown as MembershipDelegate;
+		const repository = new PrismaMembershipRepository({ prisma: delegate });
+
+		await repository.revoke("membership-1");
+		await repository.updateRole("membership-1", "ADMIN");
+		const [revokeSql, ...revokeParams] = executeRawUnsafe.mock.calls[0] as [
+			string,
+			...unknown[],
+		];
+		expect(revokeSql).toContain("SET \"status\" = 'REVOKED'");
+		expect(revokeSql).toContain("other.\"role\" = 'OWNER'");
+		expect(revokeParams).toEqual(["membership-1"]);
+
+		const [roleSql, ...roleParams] = executeRawUnsafe.mock.calls[1] as [
+			string,
+			...unknown[],
+		];
+		expect(roleSql).toContain('"MembershipRole"');
+		expect(roleParams).toEqual(["membership-1", "ADMIN"]);
+
+		// A refused write is the invariant, not a missing row.
+		executeRawUnsafe.mockResolvedValue(0);
+		findUnique.mockResolvedValue({ ...ROW, role: "OWNER" });
+
+		await expect(repository.revoke("membership-1")).rejects.toThrow(
+			LastActiveOwnerError,
 		);
 	});
 });

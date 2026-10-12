@@ -76,6 +76,9 @@ donde corresponde.
 - `cd apps/web && bun run test` → **54 suites / 332 tests, 0 fallos**
 - `cd apps/web && bun run check-types` → OK (next typegen + tsc check + cypress tsc)
 - `bunx biome check apps/web` → 178 archivos, sin errores
+- Commit `d575fc6` (34 archivos, 2.766 líneas)
+- **Review RDD: `approved`** (línea `review-e0728ad3737ded6b`, riesgo medium, 1 lente `review-reliability`, autoridad quemada). El candidato se recortó a este commit: el que ofrece el controlador por defecto es la rama acumulada y no entra en el presupuesto de lentes.
+- **2 hallazgos advisory** del review aprobado, no bloqueantes: `src/features/member/components/leave-company-action.tsx:34` y `src/features/member/components/invite-member-form.tsx:49`.
 
 ### Decisiones y desviaciones declaradas
 

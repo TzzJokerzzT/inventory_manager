@@ -11,6 +11,7 @@ import { getInitials } from "@/src/utils/getInitials";
 import { formatDate } from "../../dashboard/mock";
 import { MembersSection } from "../../member/components/members-section";
 import { PendingInvitationsSection } from "../../member/components/pending-invitations-section";
+import { NotificationsSection } from "../../notification/components/notifications-section";
 import { useMe } from "../api/use-me";
 import { DetailItem } from "./detail-item";
 import { FullNameForm } from "./full-name-form";
@@ -158,6 +159,13 @@ export function User() {
 					</section>
 				</div>
 			</ViewLayout>
+
+			{/*
+			 * Its own card, because the section hides itself when there is no news
+			 * and an empty card would be noise. The block only exists for a caller
+			 * who has something to read.
+			 */}
+			<NotificationsSection />
 
 			<div className="flex w-full max-w-4xl flex-col gap-6 rounded-md border border-border bg-surface p-8">
 				<MembersSection />

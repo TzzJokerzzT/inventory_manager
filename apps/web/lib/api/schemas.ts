@@ -261,3 +261,47 @@ export function parsePendingInvitations(
 
 	return result.output;
 }
+
+/**
+ * One notification event exactly as `GET /me/notifications` serializes it:
+ * `{ id, type, createdAt, readAt, company }`.
+ *
+ * `type` is a free string, not a picklist: the contract allows new event kinds
+ * later, and the UI degrades unknown ones to neutral copy instead of failing
+ * the whole list at the boundary. `readAt` is null while unread, and `company`
+ * is null when the event's company could not be resolved — a missing company
+ * never hides the event, because the event is the fact.
+ */
+export const meNotificationSchema = object({
+	id: string(),
+	type: string(),
+	createdAt: string(),
+	readAt: nullable(string()),
+	company: nullable(companySchema),
+});
+
+/** One notification event, derived from the OpenAPI contract. */
+export type MeNotification = components["schemas"]["MeNotification"];
+
+/** Shape of `GET /me/notifications`: the caller's own events, newest first. */
+export const notificationsResponseSchema = array(meNotificationSchema);
+
+/** `GET /me/notifications` response, derived from the OpenAPI contract. */
+export type NotificationsResponse = components["schemas"]["MeNotification"][];
+
+/**
+ * Validates the notifications response at the boundary.
+ *
+ * Same contract as {@link parsePendingInvitations}: a shape change fails as an
+ * {@link ApiError} with a readable message instead of exploding inside the
+ * profile section, and an unknown `type` is accepted on purpose so a new event
+ * kind reaches the UI instead of breaking the read.
+ */
+export function parseNotifications(data: unknown): NotificationsResponse {
+	const result = safeParse(notificationsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}

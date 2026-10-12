@@ -6,6 +6,7 @@ import {
 	parseMembership,
 	parseMembershipsResponse,
 	parseMeResponse,
+	parseNotifications,
 	parsePendingInvitations,
 } from "./schemas";
 
@@ -283,6 +284,70 @@ function pendingInvitation(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	};
 }
+
+function notification(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "n1",
+		type: "membership.accepted",
+		createdAt: "2026-10-06T00:00:00.000Z",
+		readAt: null,
+		company: {
+			id: "c1",
+			name: "Acme",
+			createdAt: "2026-10-01T00:00:00.000Z",
+		},
+		...overrides,
+	};
+}
+
+describe("parseNotifications", () => {
+	it("returns the notifications exactly as the API serializes them", () => {
+		const list = [notification()];
+
+		expect(parseNotifications(list)).toEqual(list);
+	});
+
+	it("accepts an empty list, the normal case when there is no news", () => {
+		expect(parseNotifications([])).toEqual([]);
+	});
+
+	it("accepts a read notification", () => {
+		const parsed = parseNotifications([
+			notification({ readAt: "2026-10-07T00:00:00.000Z" }),
+		]);
+
+		expect(parsed[0].readAt).toBe("2026-10-07T00:00:00.000Z");
+	});
+
+	it("accepts a null company without dropping the notification", () => {
+		const parsed = parseNotifications([notification({ company: null })]);
+
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0].company).toBeNull();
+	});
+
+	it("accepts an unknown event type so the UI can degrade to neutral copy", () => {
+		const parsed = parseNotifications([
+			notification({ type: "company.renamed" }),
+		]);
+
+		expect(parsed[0].type).toBe("company.renamed");
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseNotifications({ notifications: [] })).toThrow(ApiError);
+	});
+
+	it("rejects an entry whose fields are missing or mistyped", () => {
+		expect(() => parseNotifications([{ id: "n1" }])).toThrow(
+			/respuesta inesperada/,
+		);
+
+		expect(() => parseNotifications([notification({ readAt: 123 })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+});
 
 describe("parsePendingInvitations", () => {
 	it("returns the pending invitations exactly as the API serializes them", () => {

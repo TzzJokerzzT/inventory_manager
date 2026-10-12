@@ -83,9 +83,12 @@ La ventana omitida **no corrompe estado**, y el camino de falla está **cubierto
 
 | # | Tarea | Archivo | Estado |
 |---|-------|---------|--------|
-| 1 | Schemas + hooks (`use-notifications`, marcar leída) | `lib/api/schemas.ts`, `src/features/member/api/` | pending |
-| 2 | Bloque de novedades en la vista de usuario | `src/features/member/components/` | pending |
-| 3 | Tests | `src/features/member/**/__tests__/` | pending |
+| 1 | Schemas + hooks (`use-notifications`, marcar leídas) | `lib/api/schemas.ts`, `src/features/notification/api/` | done |
+| 2 | Bloque de novedades en la vista de usuario | `src/features/notification/components/notifications-section.tsx` | done |
+| 3 | Montaje como card propia | `src/features/user/components/user.tsx` | done |
+| 4 | Tests | `src/features/notification/**/__tests__/`, `lib/api/schemas.test.ts` | done |
+
+**Corrección de ruta respecto del plan:** el plan decía `src/features/member/api/` y `src/features/member/components/`. Se hizo en **`src/features/notification/`**: las notificaciones son un contexto propio (tabla, entidad y puerto propios en el backend), y meterlas dentro de `member` habría contradicho el diseño que se defendió en el slice B.
 
 ## Sin tiempo real: por qué alcanza
 
@@ -109,7 +112,19 @@ La ventana omitida **no corrompe estado**, y el camino de falla está **cubierto
 
 La lectura reusa **exactamente** el criterio del `AcceptInvitationsUseCase` (`findInvitedByEmail(user.email)`), así que no hay dos definiciones de "invitación pendiente". Las empresas se resuelven en **una sola** llamada batch después de la lectura de membresías: dos queries, nunca N+1. Una membresía cuya empresa el batch no devolvió se descarta **fail-closed**, igual que `GET /me`.
 
-_(B y C pendientes)_
+### C — Bloque de novedades (frontend)
+
+- `cd apps/web && bun run test` → **59 suites / 374 tests, 0 fallos**
+- `cd apps/web && bun run check-types` → OK · `bunx biome check apps/web` → 188 archivos, sin errores
+- **RED observado** antes del GREEN: 5 suites / 7 tests fallaban con `parseNotifications is not a function` y módulos de hooks/componente inexistentes.
+
+El bloque no se renderiza si la lista está vacía (una card vacía en el perfil sería ruido), distingue no leída (`readAt === null`) de leída, y tiene **una** acción: marcar todas como leídas. Un `type` desconocido y una empresa `null` degradan a una frase neutra en vez de romper: el contrato admite tipos nuevos y el cliente no puede caerse cuando aparezca el primero.
+
+### Dos hallazgos de esta rebanada que corrigen supuestos míos
+
+**1. `refetchOnWindowFocus` está en `false` globalmente.** `src/providers/query-provider.tsx:27` lo desactiva para *todas* las queries. Mi argumento de diseño —"las novedades aparecen cuando el invitador vuelve a la pestaña, y eso viene por defecto"— **era incorrecto para este repo**: el default de la librería es `true`, pero la app lo apaga. Sin una excepción por query, el mecanismo de entrega no disparaba. Se agregó `refetchOnWindowFocus: true` **sólo** en la query de notificaciones. Queda como decisión: o se mantiene la excepción quirúrgica, o se revisa el global (afecta a todas las queries de la app).
+
+**2. La notificación no dice *quién* aceptó.** `MeNotification` expone `id`, `type`, `createdAt`, `readAt` y `company` — **no** el actor. El payload guarda `{ membershipId, companyId }`, y la lectura no resuelve el usuario que aceptó, así que el copy queda en *"Alguien aceptó tu invitación a Acme"*. Funciona, pero es media información: lo que el invitador quiere saber es **quién**. Se resuelve agregando el actor al payload en la creación (el `accept` ya conoce `user.id`) y resolviéndolo en la lectura con el `findByIds` batch que ya existe — slice B2, chico.
 
 ### A2 — Invitador nombrado y sección condicional
 

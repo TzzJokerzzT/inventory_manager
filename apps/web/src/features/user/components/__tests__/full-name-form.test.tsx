@@ -42,6 +42,17 @@ jest.mock("@/src/features/member/components/accept-invitations-action", () => ({
 	},
 }));
 
+// Notifications are their own query tree; the profile test asserts the profile,
+// not the news block, so the stub keeps that read out of this suite.
+jest.mock(
+	"@/src/features/notification/components/notifications-section",
+	() => ({
+		NotificationsSection: function NotificationsSectionStub() {
+			return null;
+		},
+	}),
+);
+
 const useMeMock = useMe as jest.MockedFunction<typeof useMe>;
 
 const useUpdateFullNameMock = useUpdateFullName as jest.MockedFunction<

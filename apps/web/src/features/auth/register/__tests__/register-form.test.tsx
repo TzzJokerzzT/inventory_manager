@@ -22,22 +22,18 @@ function mockRegister(state: Partial<ReturnType<typeof useRegister>> = {}) {
 }
 
 function fill(values: {
-	name?: string;
 	email?: string;
-	companyName?: string;
 	password?: string;
+	confirmPassword?: string;
 }) {
-	fireEvent.change(screen.getByLabelText("Nombre y apellido"), {
-		target: { value: values.name ?? "" },
-	});
 	fireEvent.change(screen.getByLabelText("Correo electrónico"), {
 		target: { value: values.email ?? "" },
 	});
-	fireEvent.change(screen.getByLabelText("Nombre de la empresa"), {
-		target: { value: values.companyName ?? "" },
-	});
 	fireEvent.change(screen.getByLabelText("Contraseña"), {
 		target: { value: values.password ?? "" },
+	});
+	fireEvent.change(screen.getByLabelText("Confirme la contraseña"), {
+		target: { value: values.confirmPassword ?? "" },
 	});
 }
 
@@ -48,10 +44,9 @@ function submit() {
 }
 
 const VALID = {
-	name: "Ana Pérez",
 	email: "ana@empresa.com",
-	companyName: "Empresa S.A.S",
 	password: "password123",
+	confirmPassword: "password123",
 };
 
 describe("RegisterForm", () => {
@@ -65,10 +60,10 @@ describe("RegisterForm", () => {
 
 		submit();
 
-		expect(screen.getByText("Ingresá tu nombre y apellido.")).toBeTruthy();
 		expect(screen.getByText("Ingresá tu correo electrónico.")).toBeTruthy();
-		expect(screen.getByText("Ingresá el nombre de tu empresa.")).toBeTruthy();
 		expect(screen.getByText("Ingresá tu contraseña.")).toBeTruthy();
+		// The confirmation is client-side only, so its message is the mismatch one.
+		expect(screen.getByText("Las contraseñas no coinciden.")).toBeTruthy();
 		expect(mutate).not.toHaveBeenCalled();
 	});
 
@@ -89,11 +84,9 @@ describe("RegisterForm", () => {
 		fill(VALID);
 
 		submit();
-		// TODO: Fix this test
-		// expect(mutate).toHaveBeenCalledWith({
-		// 	email: "ana@empresa.com",
-		// 	password: "password123",
-		// });
+
+		// Only email and password: the confirmation is a visual check and never
+		// leaves the client.
 		expect(mutate.mock.calls[0][0]).toEqual({
 			email: "ana@empresa.com",
 			password: "password123",

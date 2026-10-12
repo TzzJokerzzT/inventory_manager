@@ -24,6 +24,10 @@ export function createFakeUserRepository(users: User[] = []): UserRepository {
 		upsertFromIdentity: async (identity) => User.create(identity),
 		findByAuth0Sub: async (auth0Sub) =>
 			rows.find((user) => user.auth0Sub === auth0Sub) ?? null,
+		findByIds: async (ids) => {
+			const wanted = new Set(ids);
+			return rows.filter((user) => wanted.has(user.id));
+		},
 		updateFullName: async (userId, fullName) => {
 			const index = rows.findIndex((user) => user.id === userId);
 			if (index === -1) {

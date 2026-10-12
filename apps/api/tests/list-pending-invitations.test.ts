@@ -7,9 +7,12 @@ import {
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
+import { createFakeUserRepository } from "./support/fake-user-repository.js";
 
 const USER_ID = "user-1";
 const USER_EMAIL = "invitee@example.com";
+const INVITER_ID = "owner-1";
+const INVITER_EMAIL = "owner@example.com";
 const INVITED_AT = new Date("2026-01-02T03:04:05.000Z");
 
 function buildUser(email = USER_EMAIL): User {
@@ -20,14 +23,29 @@ function buildUser(email = USER_EMAIL): User {
 	});
 }
 
+function inviterUser(fullName: string | null = null): User {
+	return User.create({
+		id: INVITER_ID,
+		auth0Sub: "auth0|owner-1",
+		email: INVITER_EMAIL,
+		fullName,
+	});
+}
+
+const RESOLVED_INVITER = {
+	id: INVITER_ID,
+	fullName: null,
+	email: INVITER_EMAIL,
+};
+
 async function createCompany(
 	repository: InMemoryCompanyRepository,
 	id: string,
 	name: string,
 ): Promise<Company> {
 	return repository.createOwnedBy(Company.create({ id, name }), {
-		userId: "owner-1",
-		email: "owner@example.com",
+		userId: INVITER_ID,
+		email: INVITER_EMAIL,
 	});
 }
 
@@ -48,21 +66,23 @@ function invitation(
 		companyId,
 		role: overrides.role ?? "MEMBER",
 		status: overrides.status ?? "INVITED",
-		invitedBy: "owner-1",
+		invitedBy: INVITER_ID,
 		acceptedAt: null,
 		createdAt: overrides.createdAt ?? INVITED_AT,
 	});
 }
 
-function buildUseCase() {
+function buildUseCase(users: User[] = [inviterUser()]) {
 	const companyRepository = new InMemoryCompanyRepository();
 	const membershipRepository = new InMemoryMembershipRepository();
+	const userRepository = createFakeUserRepository(users);
 	const useCase = new ListPendingInvitationsUseCase({
 		companyRepository,
 		membershipRepository,
+		userRepository,
 	});
 
-	return { useCase, companyRepository, membershipRepository };
+	return { useCase, companyRepository, membershipRepository, userRepository };
 }
 
 describe("ListPendingInvitationsUseCase", () => {
@@ -86,6 +106,7 @@ describe("ListPendingInvitationsUseCase", () => {
 				role: "ADMIN",
 				invitedAt: INVITED_AT.toISOString(),
 				company: acme,
+				inviter: RESOLVED_INVITER,
 			},
 		]);
 	});
@@ -123,6 +144,54 @@ describe("ListPendingInvitationsUseCase", () => {
 
 		expect(findByIds).toHaveBeenCalledTimes(1);
 		expect(findByIds).toHaveBeenCalledWith(["company-a", "company-b"]);
+	});
+
+	it("resolves the inviter summary so the caller knows who invited them", async () => {
+		const { useCase, companyRepository, membershipRepository } = buildUseCase([
+			inviterUser("Owner Name"),
+		]);
+		await createCompany(companyRepository, "company-a", "Acme");
+		membershipRepository.save(invitation("company-a"));
+
+		const result = await useCase.execute(buildUser());
+
+		expect(result[0]?.inviter).toEqual({
+			id: INVITER_ID,
+			fullName: "Owner Name",
+			email: INVITER_EMAIL,
+		});
+	});
+
+	it("answers a null inviter without hiding the invitation when the user row is gone", async () => {
+		// The invitation is the important fact; the inviter is context. An
+		// unresolvable inviter must not drop the row and must not throw.
+		const { useCase, companyRepository, membershipRepository } = buildUseCase(
+			[],
+		);
+		await createCompany(companyRepository, "company-a", "Acme");
+		membershipRepository.save(invitation("company-a"));
+
+		const result = await useCase.execute(buildUser());
+
+		expect(result).toHaveLength(1);
+		expect(result[0]?.inviter).toBeNull();
+	});
+
+	it("resolves repeated inviters in a single batch read, deduplicated", async () => {
+		const { useCase, companyRepository, membershipRepository, userRepository } =
+			buildUseCase();
+		await createCompany(companyRepository, "company-a", "Acme");
+		await createCompany(companyRepository, "company-b", "Globex");
+		// Same person, two invitations: the inviter must be read once, not once
+		// per invitation.
+		membershipRepository.save(invitation("company-a"));
+		membershipRepository.save(invitation("company-b"));
+		const findByIds = jest.spyOn(userRepository, "findByIds");
+
+		await useCase.execute(buildUser());
+
+		expect(findByIds).toHaveBeenCalledTimes(1);
+		expect(findByIds).toHaveBeenCalledWith([INVITER_ID]);
 	});
 
 	it("drops a membership whose company the batch read did not return", async () => {

@@ -7,18 +7,21 @@ import {
 	parseMembershipsResponse,
 } from "@/lib/api/schemas";
 import { getAccessToken } from "@/src/features/auth/api/get-access-token";
+import { pendingInvitationsQueryKey } from "./use-pending-invitations";
 
 /**
  * Accepts every pending invitation for the caller (`POST /me/invitations/accept`).
  *
  * `GET /me` only returns `ACTIVE` memberships, so the client cannot see a
- * pending invitation: the only way to find out is to call this endpoint and
- * check whether it answered anything. It is idempotent and an empty list is the
- * normal "nothing pending" answer, not an error.
+ * pending invitation: the pending list comes from `GET /me/invitations`.
+ * It is idempotent and an empty list is the normal "nothing pending" answer,
+ * not an error.
  *
- * On success `["companies"]` and `["me"]` are invalidated: the acceptance
- * rewrites both, and the `/sin-empresas` redirect reacts to the refreshed
- * company list without this hook owning any navigation of its own.
+ * On success `["companies"]`, `["me"]` and `["pending-invitations"]` are
+ * invalidated: the acceptance rewrites both the company list and `/me`, and it
+ * empties the pending list, which is what makes the panel section disappear.
+ * The `/sin-empresas` redirect reacts to the refreshed company list without
+ * this hook owning any navigation of its own.
  */
 export function useAcceptInvitations() {
 	const queryClient = useQueryClient();
@@ -33,6 +36,7 @@ export function useAcceptInvitations() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["companies"] });
 			queryClient.invalidateQueries({ queryKey: ["me"] });
+			queryClient.invalidateQueries({ queryKey: pendingInvitationsQueryKey });
 		},
 	});
 }

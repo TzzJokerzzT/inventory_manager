@@ -914,9 +914,28 @@ components:
         company:
           $ref: "#/components/schemas/Company"
 
+    InviterSummary:
+      type: object
+      required: [id, fullName, email]
+      description: |
+        The person who sent an invitation. `fullName` is nullable because a
+        user created by Auth0 starts without a display name; the email is then
+        the identifier the UI falls back to. It is deliberately minimal -- no
+        roles, no memberships -- so it stays context, not a second profile.
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+
     PendingInvitation:
       type: object
-      required: [membershipId, companyId, role, invitedAt, company]
+      required: [membershipId, companyId, role, invitedAt, company, inviter]
       description: |
         A still-pending invitation. It carries no `status` because the read
         pins the membership to `INVITED`; the field would repeat the query.
@@ -939,6 +958,15 @@ components:
             `createdAt`.
         company:
           $ref: "#/components/schemas/Company"
+        inviter:
+          description: |
+            Who sent the invitation, or `null` when their user row could not
+            be resolved. A missing inviter never hides the invitation: the
+            invitation is the fact, the inviter is context, and the UI falls
+            back to a neutral label.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/InviterSummary"
 
     MeResponse:
       type: object

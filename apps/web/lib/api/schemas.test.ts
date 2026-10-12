@@ -6,6 +6,7 @@ import {
 	parseMembership,
 	parseMembershipsResponse,
 	parseMeResponse,
+	parsePendingInvitations,
 } from "./schemas";
 
 describe("parseLoginResponse", () => {
@@ -260,5 +261,84 @@ describe("parseMembership", () => {
 		expect(() => parseMembership(membership({ status: "GONE" }))).toThrow(
 			/respuesta inesperada/,
 		);
+	});
+});
+
+function pendingInvitation(overrides: Record<string, unknown> = {}) {
+	return {
+		membershipId: "m1",
+		companyId: "c1",
+		role: "MEMBER",
+		invitedAt: "2026-10-06T00:00:00.000Z",
+		company: {
+			id: "c1",
+			name: "Primera",
+			createdAt: "2026-10-06T00:00:00.000Z",
+		},
+		inviter: {
+			id: "user-1",
+			fullName: "Ana Pérez",
+			email: "ana@empresa.com",
+		},
+		...overrides,
+	};
+}
+
+describe("parsePendingInvitations", () => {
+	it("returns the pending invitations exactly as the API serializes them", () => {
+		const list = [pendingInvitation()];
+
+		expect(parsePendingInvitations(list)).toEqual(list);
+	});
+
+	it("accepts an empty list, the normal case when nothing is pending", () => {
+		expect(parsePendingInvitations([])).toEqual([]);
+	});
+
+	it("accepts an inviter without a full name", () => {
+		const parsed = parsePendingInvitations([
+			pendingInvitation({
+				inviter: { id: "user-1", fullName: null, email: "ana@empresa.com" },
+			}),
+		]);
+
+		expect(parsed[0].inviter?.fullName).toBeNull();
+	});
+
+	it("accepts a null inviter without dropping the invitation", () => {
+		const parsed = parsePendingInvitations([
+			pendingInvitation({ inviter: null }),
+		]);
+
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0].inviter).toBeNull();
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parsePendingInvitations({ invitations: [] })).toThrow(
+			ApiError,
+		);
+	});
+
+	it("rejects an invitation whose role is outside the contract", () => {
+		expect(() =>
+			parsePendingInvitations([pendingInvitation({ role: "SUPERUSER" })]),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects an invitation missing the inviter field", () => {
+		const { inviter: _inviter, ...withoutInviter } = pendingInvitation();
+
+		expect(() => parsePendingInvitations([withoutInviter])).toThrow(ApiError);
+	});
+
+	it("rejects an entry whose fields are missing or mistyped", () => {
+		expect(() =>
+			parsePendingInvitations([{ membershipId: "m1", companyId: "c1" }]),
+		).toThrow(/respuesta inesperada/);
+
+		expect(() =>
+			parsePendingInvitations([pendingInvitation({ invitedAt: 123 })]),
+		).toThrow(/respuesta inesperada/);
 	});
 });

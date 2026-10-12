@@ -21,6 +21,19 @@ jest.mock("@/src/features/member/components/members-section", () => ({
 	},
 }));
 
+// The pending-invitations section now owns the heading the profile test
+// asserts and fetches its own data; the stub keeps that query tree out of this
+// suite while still exposing the heading, so the existing mount assertion keeps
+// proving `user.tsx` mounts the section.
+jest.mock(
+	"@/src/features/member/components/pending-invitations-section",
+	() => ({
+		PendingInvitationsSection: function PendingInvitationsSectionStub() {
+			return <h2>Invitaciones pendientes</h2>;
+		},
+	}),
+);
+
 // Same reason: the accept action owns its own suite, and the profile test only
 // needs to prove the section is mounted for a user who already has a company.
 jest.mock("@/src/features/member/components/accept-invitations-action", () => ({

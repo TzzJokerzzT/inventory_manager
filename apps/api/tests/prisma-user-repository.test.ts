@@ -12,13 +12,14 @@ type UserDelegate = Pick<PrismaClient, "user">;
 function buildFakeDelegate() {
 	const upsert = jest.fn();
 	const findUnique = jest.fn();
+	const findMany = jest.fn();
 	const update = jest.fn();
 
 	const delegate = {
-		user: { upsert, findUnique, update },
+		user: { upsert, findUnique, findMany, update },
 	} as unknown as UserDelegate;
 
-	return { delegate, upsert, findUnique, update };
+	return { delegate, upsert, findUnique, findMany, update };
 }
 
 const ROW = {
@@ -126,6 +127,41 @@ describe("PrismaUserRepository", () => {
 		const hit = await repository.findByAuth0Sub("auth0|abc123");
 
 		expect(hit?.fullName).toBe("Jane");
+	});
+
+	it("findByIds resolves every requested user in one query and maps rows into entities", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([
+			{ ...ROW, id: "user-1", fullName: "Jane" },
+			{ ...ROW, id: "user-2", email: "other@example.com", fullName: null },
+		]);
+
+		const repository = new PrismaUserRepository({ prisma: delegate });
+
+		const result = await repository.findByIds(["user-1", "user-2"]);
+
+		expect(findMany).toHaveBeenCalledTimes(1);
+		expect(findMany).toHaveBeenCalledWith({
+			where: { id: { in: ["user-1", "user-2"] } },
+		});
+		expect(result).toHaveLength(2);
+		expect(result[0]).toBeInstanceOf(User);
+		expect(result[0]).toMatchObject({ id: "user-1", fullName: "Jane" });
+		expect(result[1]).toMatchObject({
+			id: "user-2",
+			email: "other@example.com",
+			fullName: null,
+		});
+	});
+
+	it("findByIds never queries for an empty id list", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		const repository = new PrismaUserRepository({ prisma: delegate });
+
+		const result = await repository.findByIds([]);
+
+		expect(result).toEqual([]);
+		expect(findMany).not.toHaveBeenCalled();
 	});
 
 	describe("updateFullName", () => {

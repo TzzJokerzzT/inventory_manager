@@ -66,6 +66,11 @@ describe("useAcceptInvitations", () => {
 		expect(answer).toHaveLength(1);
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["companies"] });
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["me"] });
+		// The accepted invitation is gone, so the panel section that renders it
+		// must re-read and disappear.
+		expect(invalidate).toHaveBeenCalledWith({
+			queryKey: ["pending-invitations"],
+		});
 	});
 
 	it("accepts the empty list as the normal 'nothing pending' answer", async () => {

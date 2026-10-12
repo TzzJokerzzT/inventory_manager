@@ -49,6 +49,7 @@ describe("GET /me/invitations", () => {
 			listPendingInvitations: new ListPendingInvitationsUseCase({
 				companyRepository,
 				membershipRepository,
+				userRepository,
 			}),
 			createCompany: {} as never,
 			changeMemberRole: {} as never,
@@ -138,6 +139,11 @@ describe("GET /me/invitations", () => {
 					id: "company-a",
 					name: "Acme",
 					createdAt: INVITED_AT.toISOString(),
+				},
+				inviter: {
+					id: owner.id,
+					fullName: null,
+					email: owner.email,
 				},
 			},
 		]);

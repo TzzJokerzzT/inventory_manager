@@ -16,7 +16,7 @@ Cerrar los dos huecos que dejó la gestión de miembros en el frontend, sin agre
 | 3 | **Sin tiempo real**: no hay polling, ni SSE, ni webhooks. El jefe no espera pegado a la pantalla; la notificación persistida en la app alcanza, y si necesita más le escribe al empleado por sus propios canales. |
 | 4 | Las notificaciones **se purgan**. |
 | 5 | **Pendientes** (estado actual) y **notificaciones** (eventos) son entidades **separadas**. |
-| 6 | El nombre del invitador **no se muestra**: la autoridad es de la empresa y sus roles, y el rol ofrecido ya viaja en la lista. |
+| 6 | El invitador **sí se muestra**: `{ id, fullName, email }`. `fullName` es nullable (un usuario de Auth0 arranca sin nombre), así que la UI cae al email y, si el invitador no se pudo resolver, a una etiqueta neutra. **Una invitación nunca se oculta por falta de nombre**: la invitación es el hecho, el invitador es contexto. |
 | 7 | Las notificaciones se ven **en la misma vista de usuario**. Cuando existan las de stock bajo se reconsidera el destino. |
 
 ## Modelo
@@ -47,14 +47,19 @@ El criterio del invitado es **el mismo** que usa `AcceptInvitationsUseCase` (`fi
 
 Respuesta: `{ membershipId, companyId, role, invitedAt, company: { id, name, createdAt } }[]`. La empresa es lo que hace útil la lista (sin ella dice "tenés una invitación" y no **a qué**). El `company` es el mismo join en memoria que ya hace `GET /me`.
 
-### A2 — Frontend: sección condicional
+### A2 — Invitador nombrado + sección condicional (rebanada vertical)
 
 | # | Tarea | Archivo | Estado |
 |---|-------|---------|--------|
-| 1 | `pendingInvitationSchema` + `parsePendingInvitations` | `lib/api/schemas.ts` | pending |
-| 2 | `use-pending-invitations` | `src/features/member/api/` | pending |
-| 3 | Sección que sólo se muestra **si hay pendientes**, con empresa y rol | `src/features/member/components/` | pending |
-| 4 | Tests | `src/features/member/**/__tests__/` | pending |
+| 1 | `findByIds` en el puerto de usuarios (batch, dedup antes de leer) | `domain/repositories/user-repository.ts`, `prisma-user-repository.ts`, `tests/support/fake-user-repository.ts` | done |
+| 2 | `inviter: { id, fullName, email } \| null` en la respuesta | `application/use-cases/list-pending-invitations.ts` | done |
+| 3 | Contrato (`InviterSummary`, nullable) + regenerar tipos del web | `openapi.yaml`, `apps/web/lib/api/openapi.d.ts` | done |
+| 4 | `pendingInvitationSchema` + `parsePendingInvitations` | `lib/api/schemas.ts` | done |
+| 5 | `use-pending-invitations` (clave `["pending-invitations"]`) | `src/features/member/api/` | done |
+| 6 | Aceptar también invalida `["pending-invitations"]` → la sección desaparece | `src/features/member/api/use-accept-invitations.ts` | done |
+| 7 | Sección que **sólo se renderiza si hay pendientes**, con empresa, rol, fecha e invitador | `src/features/member/components/pending-invitations-section.tsx` | done |
+| 8 | Montarla en el panel, en lugar del bloque siempre visible | `src/features/user/components/user.tsx` | done |
+| 9 | Tests (API y web) | `apps/api/tests/*`, `apps/web/src/features/member/**/__tests__/`, `apps/web/lib/api/schemas.test.ts` | done |
 
 La sección reemplaza al botón a ciegas actual: con la lista, el botón ya no es una apuesta.
 
@@ -101,6 +106,19 @@ La sección reemplaza al botón a ciegas actual: con la lista, el botón ya no e
 La lectura reusa **exactamente** el criterio del `AcceptInvitationsUseCase` (`findInvitedByEmail(user.email)`), así que no hay dos definiciones de "invitación pendiente". Las empresas se resuelven en **una sola** llamada batch después de la lectura de membresías: dos queries, nunca N+1. Una membresía cuya empresa el batch no devolvió se descarta **fail-closed**, igual que `GET /me`.
 
 _(B y C pendientes)_
+
+### A2 — Invitador nombrado y sección condicional
+
+- `cd apps/api && bun run test` → **38 suites / 358 tests, 0 fallos**
+- `cd apps/web && bun run test` → **56 suites / 353 tests, 0 fallos**
+- `check-types` en ambos lados → OK · `bunx biome check apps/api apps/web` → 293 archivos, sin errores
+- El artefacto generado del web se regeneró con `bun run openapi:generate` (nunca a mano)
+
+La lectura quedó en **tres queries** (membresías → empresas en batch → invitadores en batch), con los ids de invitador **deduplicados** antes de leer: varias invitaciones del mismo jefe cuestan una sola consulta. Un invitador que el batch no devolvió **no oculta la invitación**: responde `inviter: null` y la UI usa una etiqueta neutra. Una empresa que el batch no devolvió sí descarta la fila (fail-closed), como en `GET /me`.
+
+**Límite declarado:** la sección devuelve `null` mientras la lectura está en vuelo **y si falla**. Es deliberado (no mostrar una lista falsa ni alarmar por un bloque secundario), pero significa que un error de `/me/invitations` es **silencioso** en el panel. Se puede agregar un reintento cuando el bloque crezca.
+
+**Desviación declarada:** no se observó un RED real en esta rebanada — los tests y la implementación se escribieron juntos. Como chequeo de carga se forzó temporalmente `inviter = undefined` y se verificó que los tests fallaban, revirtiendo después. Es una mutación, no un RED.
 
 ## Fuera de alcance
 

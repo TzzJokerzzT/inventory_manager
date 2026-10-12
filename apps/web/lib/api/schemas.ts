@@ -204,3 +204,60 @@ export function parseMembership(data: unknown): Membership {
 
 	return result.output;
 }
+
+/**
+ * One inviter exactly as `GET /me/invitations` serializes it:
+ * `{ id, fullName, email }`. `fullName` is nullable because a user created by
+ * Auth0 starts without a display name; the email is then the identifier the UI
+ * falls back to.
+ */
+export const inviterSummarySchema = object({
+	id: string(),
+	fullName: nullable(string()),
+	email: string(),
+});
+
+/**
+ * One pending invitation exactly as the API serializes it: the membership, the
+ * role offered, when it was sent, the company and the inviter.
+ *
+ * `inviter` is nullable on purpose: a missing inviter must never hide the
+ * invitation, so the boundary accepts `null` and the section falls back to a
+ * neutral label instead of the parser rejecting the whole list.
+ */
+export const pendingInvitationSchema = object({
+	membershipId: string(),
+	companyId: string(),
+	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
+	invitedAt: string(),
+	company: companySchema,
+	inviter: nullable(inviterSummarySchema),
+});
+
+/** One pending invitation, derived from the OpenAPI contract. */
+export type PendingInvitation = components["schemas"]["PendingInvitation"];
+
+/** Shape of `GET /me/invitations`: the caller's own pending invitations. */
+export const pendingInvitationsResponseSchema = array(pendingInvitationSchema);
+
+/** `GET /me/invitations` response, derived from the OpenAPI contract. */
+export type PendingInvitationsResponse =
+	components["schemas"]["PendingInvitation"][];
+
+/**
+ * Validates the pending invitations response at the boundary.
+ *
+ * Same contract as {@link parseCompaniesResponse}: a shape change fails as an
+ * {@link ApiError} with a readable message instead of exploding inside the
+ * profile section, and an unknown `role` never reaches the role label.
+ */
+export function parsePendingInvitations(
+	data: unknown,
+): PendingInvitationsResponse {
+	const result = safeParse(pendingInvitationsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}

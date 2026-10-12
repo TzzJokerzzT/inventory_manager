@@ -9,8 +9,8 @@ import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { ROLE_LABELS } from "@/src/utils/constants";
 import { getInitials } from "@/src/utils/getInitials";
 import { formatDate } from "../../dashboard/mock";
-import { AcceptInvitationsAction } from "../../member/components/accept-invitations-action";
 import { MembersSection } from "../../member/components/members-section";
+import { PendingInvitationsSection } from "../../member/components/pending-invitations-section";
 import { useMe } from "../api/use-me";
 import { DetailItem } from "./detail-item";
 import { FullNameForm } from "./full-name-form";
@@ -136,27 +136,13 @@ export function User() {
 						)}
 					</section>
 
-					<section
-						aria-labelledby="pending-invitations-heading"
-						className="flex flex-col gap-3"
-					>
-						<h2
-							id="pending-invitations-heading"
-							className="text-lg font-semibold text-text-primary"
-						>
-							Invitaciones pendientes
-						</h2>
-						<p className="text-sm text-text-secondary">
-							Si te invitaron a otra empresa, aceptá la invitación desde acá.
-							Vas a poder cambiarte a ella con el selector de empresas.
-						</p>
-						{/*
-						 * This mount exists because `/sin-empresas` —the other one— is only
-						 * reachable with zero companies: someone who already belongs to a
-						 * company would never see the invitation to the next one.
-						 */}
-						<AcceptInvitationsAction variant="panel" />
-					</section>
+					{/*
+					 * This mount exists because `/sin-empresas` --the other one-- is only
+					 * reachable with zero companies: someone who already belongs to a
+					 * company would never see the invitation to the next one. The section
+					 * renders itself only when there is something to accept.
+					 */}
+					<PendingInvitationsSection />
 
 					<section
 						aria-labelledby="edit-heading"

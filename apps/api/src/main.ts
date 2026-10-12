@@ -105,6 +105,7 @@ const app = buildApp({
 	listPendingInvitations: new ListPendingInvitationsUseCase({
 		companyRepository,
 		membershipRepository,
+		userRepository,
 	}),
 	revokeMember: new RevokeMembershipUseCase({ membershipRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),

@@ -101,6 +101,27 @@ export class PrismaUserRepository implements UserRepository {
 		});
 	}
 
+	async findByIds(ids: string[]): Promise<User[]> {
+		// The guard keeps an empty read from turning into a query with `in: []`.
+		if (ids.length === 0) {
+			return [];
+		}
+
+		const rows = await this.prisma.user.findMany({
+			where: { id: { in: ids } },
+		});
+
+		return rows.map((row) =>
+			User.create({
+				id: row.id,
+				auth0Sub: row.auth0Sub,
+				email: row.email,
+				fullName: row.fullName,
+				createdAt: row.createdAt,
+			}),
+		);
+	}
+
 	async updateFullName(
 		userId: string,
 		fullName: string | null,

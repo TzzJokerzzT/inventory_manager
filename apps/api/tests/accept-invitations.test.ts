@@ -92,6 +92,13 @@ function createRepository(
 
 			return acceptedMembership;
 		},
+		// The acceptance tests never reach these roster/management reads; the
+		// explicit `{} as never` records that they are intentionally absent.
+		findByCompany: {} as never,
+		findById: {} as never,
+		updateRole: {} as never,
+		revoke: {} as never,
+		countActiveOwners: {} as never,
 	};
 }
 

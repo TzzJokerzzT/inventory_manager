@@ -103,6 +103,18 @@ describe("POST /companies/:companyId/members", () => {
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
 			}),
+			// The invite slice never reaches these; the explicit `{} as never`
+			// records that the wiring is intentionally inert rather than forgotten.
+			acceptInvitations: {} as never,
+			changeMemberRole: {} as never,
+			getCurrentUser: {} as never,
+			leaveCompany: {} as never,
+			listMembers: {} as never,
+			listNotifications: {} as never,
+			listPendingInvitations: {} as never,
+			markNotificationsRead: {} as never,
+			revokeMember: {} as never,
+			updateUserFullName: {} as never,
 			mediaUploadSigner: {} as never,
 			authCookieOptions: {
 				httpOnly: true,

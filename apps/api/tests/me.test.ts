@@ -61,6 +61,21 @@ describe("me endpoint", () => {
 			}),
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: (_request, _response, next) => next(),
+			// The me slice never reaches these; the explicit `{} as never` records
+			// that the wiring is intentionally inert rather than forgotten.
+			acceptInvitations: {} as never,
+			changeMemberRole: {} as never,
+			inviteMember: {} as never,
+			leaveCompany: {} as never,
+			listMembers: {} as never,
+			listNotifications: {} as never,
+			listPendingInvitations: {} as never,
+			loginWithCredentials: {} as never,
+			markNotificationsRead: {} as never,
+			mediaUploadSigner: {} as never,
+			registerUser: {} as never,
+			revokeMember: {} as never,
+			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});
 

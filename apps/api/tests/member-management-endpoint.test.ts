@@ -114,6 +114,11 @@ describe("member management endpoints", () => {
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
 			}),
+			// The member-management slice never reaches these; the explicit
+			// `{} as never` records that the wiring is intentionally inert.
+			listNotifications: {} as never,
+			listPendingInvitations: {} as never,
+			markNotificationsRead: {} as never,
 			mediaUploadSigner: {} as never,
 			authCookieOptions: {
 				httpOnly: true,

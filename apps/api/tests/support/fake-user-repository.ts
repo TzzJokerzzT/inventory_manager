@@ -1,5 +1,8 @@
 import { User } from "../../src/domain/entities/user.js";
-import type { UserRepository } from "../../src/domain/repositories/user-repository.js";
+import type {
+	UserIdentity,
+	UserRepository,
+} from "../../src/domain/repositories/user-repository.js";
 
 /**
  * The `sub` the local JWKS issuer stamps into tokens by default. Keeping it in
@@ -16,12 +19,27 @@ export const TEST_SUB = "auth0|test-user";
  * the new name, which is what `PATCH /me` followed by `GET /me` depends on. It
  * bridges through `User.create`, so the domain normalisation point is applied
  * here exactly as it is by the Prisma adapter.
+ *
+ * `upsertCalls` records the identities the port was asked to persist, so a
+ * suite can assert both what was written and that a rejected path wrote
+ * nothing. It is exposed on the double's type rather than typed away.
  */
-export function createFakeUserRepository(users: User[] = []): UserRepository {
+export type FakeUserRepository = UserRepository & {
+	upsertCalls: UserIdentity[];
+};
+
+export function createFakeUserRepository(
+	users: User[] = [],
+): FakeUserRepository {
 	const rows = [...users];
+	const upsertCalls: UserIdentity[] = [];
 
 	return {
-		upsertFromIdentity: async (identity) => User.create(identity),
+		upsertCalls,
+		upsertFromIdentity: async (identity) => {
+			upsertCalls.push(identity);
+			return User.create(identity);
+		},
 		findByAuth0Sub: async (auth0Sub) =>
 			rows.find((user) => user.auth0Sub === auth0Sub) ?? null,
 		findByIds: async (ids) => {

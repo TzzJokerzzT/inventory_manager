@@ -32,6 +32,21 @@ function createTestApp() {
 		requireAuth: (_request, _response, next) => next(),
 		requireUser: (_request, _response, next) => next(),
 		requireCompanyContext: (_request, _response, next) => next(),
+		// The CORS layer never reaches these; the explicit `{} as never` records
+		// that the wiring is intentionally inert rather than forgotten.
+		acceptInvitations: {} as never,
+		changeMemberRole: {} as never,
+		getCurrentUser: {} as never,
+		inviteMember: {} as never,
+		leaveCompany: {} as never,
+		listMembers: {} as never,
+		listNotifications: {} as never,
+		listPendingInvitations: {} as never,
+		markNotificationsRead: {} as never,
+		mediaUploadSigner: {} as never,
+		registerUser: {} as never,
+		revokeMember: {} as never,
+		updateUserFullName: {} as never,
 		authCookieOptions: cookieOptions,
 		corsOrigin: ALLOWED_ORIGIN,
 	});

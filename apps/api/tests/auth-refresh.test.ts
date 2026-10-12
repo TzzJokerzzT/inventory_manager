@@ -11,16 +11,11 @@ import { ListCompaniesUseCase } from "../src/application/use-cases/list-companie
 import { LoginWithCredentialsUseCase } from "../src/application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "../src/application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "../src/application/use-cases/register-user.js";
-import { User } from "../src/domain/entities/user.js";
 import { IdentityProviderUnavailableError } from "../src/domain/errors/identity-provider-unavailable-error.js";
 import {
 	REFRESH_TOKEN_REJECTED_MESSAGE,
 	RefreshTokenRejectedError,
 } from "../src/domain/errors/refresh-token-rejected-error.js";
-import type {
-	UserIdentity,
-	UserRepository,
-} from "../src/domain/repositories/user-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import {
@@ -29,6 +24,8 @@ import {
 	REFRESH_TOKEN_MAX_AGE_MS,
 } from "../src/interfaces/http/controllers/auth-controller.js";
 import { AUTH_REFRESH_RATE_LIMIT } from "../src/interfaces/http/middlewares/rate-limit.js";
+import { createFakeUserRepository } from "./support/fake-user-repository.js";
+import { responseCookies } from "./support/response-cookies.js";
 
 const ACCESS_TOKEN = "fresh-access-token";
 const OLD_REFRESH_TOKEN = "old-refresh-token";
@@ -66,16 +63,6 @@ class FakeIdentityProvider implements IdentityProvider {
 	}
 }
 
-class FakeUserRepository implements UserRepository {
-	async upsertFromIdentity(identity: UserIdentity): Promise<User> {
-		return User.create(identity);
-	}
-
-	async findByAuth0Sub(_auth0Sub: string): Promise<User | null> {
-		return null;
-	}
-}
-
 const passthroughAuth: RequestHandler = (_request, _response, next) => {
 	next();
 };
@@ -93,7 +80,7 @@ function createTestApp(options: {
 	cookieOptions?: Partial<AuthCookieOptions>;
 }) {
 	const companyRepository = new InMemoryCompanyRepository();
-	const userRepository = new FakeUserRepository();
+	const userRepository = createFakeUserRepository();
 
 	return buildApp({
 		createCompany: new CreateCompanyUseCase({ companyRepository }),
@@ -111,6 +98,20 @@ function createTestApp(options: {
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
 		requireCompanyContext: passthroughAuth,
+		// The refresh slice never reaches these; the explicit `{} as never`
+		// records that the wiring is intentionally inert rather than forgotten.
+		acceptInvitations: {} as never,
+		changeMemberRole: {} as never,
+		getCurrentUser: {} as never,
+		inviteMember: {} as never,
+		leaveCompany: {} as never,
+		listMembers: {} as never,
+		listNotifications: {} as never,
+		listPendingInvitations: {} as never,
+		markNotificationsRead: {} as never,
+		mediaUploadSigner: {} as never,
+		revokeMember: {} as never,
+		updateUserFullName: {} as never,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: "http://localhost:3000",
 	});
@@ -165,15 +166,15 @@ describe("POST /auth/refresh", () => {
 		// The provider received exactly the token that was in the cookie.
 		expect(provider.refreshCalls).toEqual([OLD_REFRESH_TOKEN]);
 
-		const cookies = response.headers["set-cookie"] as string[] | undefined;
+		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
 		expect(cookies).toHaveLength(1);
-		expect(cookies[0]).toContain(
+		expect(cookies?.[0]).toContain(
 			`${REFRESH_TOKEN_COOKIE_NAME}=${NEW_REFRESH_TOKEN}`,
 		);
-		expect(cookies[0]).toContain("Path=/auth");
-		expect(cookies[0]).toContain("HttpOnly");
-		expect(cookies[0]).toContain("SameSite=Lax");
+		expect(cookies?.[0]).toContain("Path=/auth");
+		expect(cookies?.[0]).toContain("HttpOnly");
+		expect(cookies?.[0]).toContain("SameSite=Lax");
 	});
 
 	it("omits Set-Cookie when the provider does not rotate the refresh token", async () => {
@@ -223,10 +224,10 @@ describe("POST /auth/refresh", () => {
 		expect(rejected.status).toBe(401);
 		expect(rejected.body).toEqual(noCookie.body);
 
-		const cookies = rejected.headers["set-cookie"] as string[] | undefined;
+		const cookies = responseCookies(rejected.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
-		expect(cookies[0]).toContain(`${REFRESH_TOKEN_COOKIE_NAME}=;`);
-		expect(cookies[0]).toContain("Path=/auth");
+		expect(cookies?.[0]).toContain(`${REFRESH_TOKEN_COOKIE_NAME}=;`);
+		expect(cookies?.[0]).toContain("Path=/auth");
 	});
 
 	it("returns 503 for an unavailable provider, distinct from 401", async () => {

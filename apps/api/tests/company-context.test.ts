@@ -78,6 +78,23 @@ describe("GET /companies/:companyId/context", () => {
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
 			}),
+			// The context slice never reaches these; the explicit `{} as never`
+			// records that the wiring is intentionally inert rather than forgotten.
+			acceptInvitations: {} as never,
+			changeMemberRole: {} as never,
+			getCurrentUser: {} as never,
+			inviteMember: {} as never,
+			leaveCompany: {} as never,
+			listMembers: {} as never,
+			listNotifications: {} as never,
+			listPendingInvitations: {} as never,
+			loginWithCredentials: {} as never,
+			markNotificationsRead: {} as never,
+			mediaUploadSigner: {} as never,
+			registerUser: {} as never,
+			revokeMember: {} as never,
+			updateUserFullName: {} as never,
+			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});
 

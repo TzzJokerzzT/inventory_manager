@@ -13,6 +13,9 @@ function createMembershipRepository(
 		findActiveByUserAndCompany: async () => null,
 		findActiveByUser: async () => [],
 		findByEmailAndCompany: async () => existing,
+		// Unused by the invite use case; explicit absence over silent omission.
+		findInvitedByEmail: {} as never,
+		accept: {} as never,
 		invite: async (input) => {
 			invited.push(input);
 			return Membership.create({
@@ -22,6 +25,13 @@ function createMembershipRepository(
 				acceptedAt: null,
 			});
 		},
+		// The invitation tests never reach these roster/management reads; the
+		// explicit `{} as never` records that they are intentionally absent.
+		findByCompany: {} as never,
+		findById: {} as never,
+		updateRole: {} as never,
+		revoke: {} as never,
+		countActiveOwners: {} as never,
 	};
 }
 

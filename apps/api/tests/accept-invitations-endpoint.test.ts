@@ -111,6 +111,16 @@ describe("POST /me/invitations/accept", () => {
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
 			}),
+			// The acceptance slice never reaches these; the explicit `{} as never`
+			// records that the wiring is intentionally inert rather than forgotten.
+			changeMemberRole: {} as never,
+			inviteMember: {} as never,
+			leaveCompany: {} as never,
+			listMembers: {} as never,
+			listNotifications: {} as never,
+			listPendingInvitations: {} as never,
+			markNotificationsRead: {} as never,
+			revokeMember: {} as never,
 			// A stub signer: the media-signature route is used here only as the
 			// cheapest company-scoped endpoint, to prove that the company context
 			// starts and stops resolving around the acceptance.

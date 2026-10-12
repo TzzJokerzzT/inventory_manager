@@ -64,6 +64,10 @@ describe("GET /me/invitations", () => {
 			refreshSession: {} as never,
 			updateUserFullName: {} as never,
 			acceptInvitations: {} as never,
+			// The pending-invitations slice never reaches these; the explicit
+			// `{} as never` records that the wiring is intentionally inert.
+			listNotifications: {} as never,
+			markNotificationsRead: {} as never,
 			mediaUploadSigner: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,

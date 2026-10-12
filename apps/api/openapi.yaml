@@ -985,14 +985,16 @@ components:
         company:
           $ref: "#/components/schemas/Company"
 
-    InviterSummary:
+    UserSummary:
       type: object
       required: [id, fullName, email]
       description: |
-        The person who sent an invitation. `fullName` is nullable because a
-        user created by Auth0 starts without a display name; the email is then
-        the identifier the UI falls back to. It is deliberately minimal -- no
-        roles, no memberships -- so it stays context, not a second profile.
+        A user as another member sees them: the inviter of a pending invitation
+        or the actor of a notification event. One shape for both, so they
+        cannot drift apart. `fullName` is nullable because a user created by
+        Auth0 starts without a display name; the email is then the identifier
+        the UI falls back to. It is deliberately minimal -- no roles, no
+        memberships -- so it stays context, not a second profile.
       properties:
         id:
           type: string
@@ -1037,17 +1039,18 @@ components:
             back to a neutral label.
           nullable: true
           allOf:
-            - $ref: "#/components/schemas/InviterSummary"
+            - $ref: "#/components/schemas/UserSummary"
 
     MeNotification:
       type: object
-      required: [id, type, createdAt, readAt, company]
+      required: [id, type, createdAt, readAt, company, actor]
       description: |
         A notification event (e.g. an invitation was accepted). It is not a
         pending invitation: that is state, read from `GET /me/invitations`.
         `readAt` is null while unread. `company` is null when the event's
-        company could not be resolved; the event is the fact, the company is
-        context.
+        company could not be resolved and `actor` is null when the person who
+        triggered it could not be resolved (including rows written before the
+        actor was recorded); the event is the fact, the rest is context.
       properties:
         id:
           type: string
@@ -1070,6 +1073,14 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/Company"
+        actor:
+          description: |
+            Who triggered the event, or `null` when it could not be resolved.
+            A missing actor never hides the notification: the UI falls back to
+            a neutral label.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
 
     MeResponse:
       type: object

@@ -117,12 +117,23 @@ export function NotificationsSection() {
  * kind the backend emits today; anything else — a future kind the client does
  * not know yet — falls back to neutral copy that still names the company when
  * it resolved, because the event must never be hidden for a missing sentence.
+ *
+ * The actor is named when the read resolved them, degrading from full name to
+ * email to the neutral "Alguien": the event is the fact, the attribution is
+ * context.
  */
 function notificationMessage(notification: MeNotification): string {
 	const company = notification.company?.name;
+	const actor = actorLabel(notification.actor);
 
 	switch (notification.type) {
 		case "membership.accepted":
+			if (actor && company) {
+				return `${actor} aceptó tu invitación a ${company}.`;
+			}
+			if (actor) {
+				return `${actor} aceptó tu invitación.`;
+			}
 			return company
 				? `Alguien aceptó tu invitación a ${company}.`
 				: "Alguien aceptó tu invitación.";
@@ -131,4 +142,23 @@ function notificationMessage(notification: MeNotification): string {
 				? `Tenés una novedad en ${company}.`
 				: "Tenés una novedad.";
 	}
+}
+
+/**
+ * The actor's display label: their full name, then their email, then `null` so
+ * the caller falls back to the neutral "Alguien". A blank name or email counts
+ * as absent instead of rendering as whitespace.
+ */
+function actorLabel(actor: MeNotification["actor"]): string | null {
+	if (actor === null) {
+		return null;
+	}
+
+	const fullName = actor.fullName?.trim();
+	if (fullName) {
+		return fullName;
+	}
+
+	const email = actor.email.trim();
+	return email !== "" ? email : null;
 }

@@ -296,6 +296,7 @@ function notification(overrides: Record<string, unknown> = {}) {
 			name: "Acme",
 			createdAt: "2026-10-01T00:00:00.000Z",
 		},
+		actor: null,
 		...overrides,
 	};
 }
@@ -324,6 +325,44 @@ describe("parseNotifications", () => {
 
 		expect(parsed).toHaveLength(1);
 		expect(parsed[0].company).toBeNull();
+	});
+
+	it("accepts an actor with a full name", () => {
+		const parsed = parseNotifications([
+			notification({
+				actor: { id: "u1", fullName: "Ana Pérez", email: "ana@empresa.com" },
+			}),
+		]);
+
+		expect(parsed[0].actor).toEqual({
+			id: "u1",
+			fullName: "Ana Pérez",
+			email: "ana@empresa.com",
+		});
+	});
+
+	it("accepts an actor without a full name", () => {
+		const parsed = parseNotifications([
+			notification({
+				actor: { id: "u1", fullName: null, email: "ana@empresa.com" },
+			}),
+		]);
+
+		expect(parsed[0].actor?.fullName).toBeNull();
+	});
+
+	it("accepts a null actor without dropping the event", () => {
+		// Rows written before the actor was recorded still read fine.
+		const parsed = parseNotifications([notification({ actor: null })]);
+
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0].actor).toBeNull();
+	});
+
+	it("rejects an actor with the wrong shape", () => {
+		expect(() =>
+			parseNotifications([notification({ actor: { id: "u1" } })]),
+		).toThrow(/respuesta inesperada/);
 	});
 
 	it("accepts an unknown event type so the UI can degrade to neutral copy", () => {

@@ -206,16 +206,21 @@ export function parseMembership(data: unknown): Membership {
 }
 
 /**
- * One inviter exactly as `GET /me/invitations` serializes it:
- * `{ id, fullName, email }`. `fullName` is nullable because a user created by
- * Auth0 starts without a display name; the email is then the identifier the UI
- * falls back to.
+ * A user as another member sees them — the inviter of a pending invitation or
+ * the actor of a notification event — exactly as the API serializes it:
+ * `{ id, fullName, email }`. One shape for both, matching the single
+ * `UserSummary` in the contract, so the two cannot drift. `fullName` is
+ * nullable because a user created by Auth0 starts without a display name; the
+ * email is then the identifier the UI falls back to.
  */
-export const inviterSummarySchema = object({
+export const userSummarySchema = object({
 	id: string(),
 	fullName: nullable(string()),
 	email: string(),
 });
+
+/** One user summary, derived from the OpenAPI contract. */
+export type UserSummary = components["schemas"]["UserSummary"];
 
 /**
  * One pending invitation exactly as the API serializes it: the membership, the
@@ -231,7 +236,7 @@ export const pendingInvitationSchema = object({
 	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
 	invitedAt: string(),
 	company: companySchema,
-	inviter: nullable(inviterSummarySchema),
+	inviter: nullable(userSummarySchema),
 });
 
 /** One pending invitation, derived from the OpenAPI contract. */
@@ -264,13 +269,14 @@ export function parsePendingInvitations(
 
 /**
  * One notification event exactly as `GET /me/notifications` serializes it:
- * `{ id, type, createdAt, readAt, company }`.
+ * `{ id, type, createdAt, readAt, company, actor }`.
  *
  * `type` is a free string, not a picklist: the contract allows new event kinds
  * later, and the UI degrades unknown ones to neutral copy instead of failing
- * the whole list at the boundary. `readAt` is null while unread, and `company`
- * is null when the event's company could not be resolved — a missing company
- * never hides the event, because the event is the fact.
+ * the whole list at the boundary. `readAt` is null while unread; `company` and
+ * `actor` are null when they could not be resolved — the actor is also absent
+ * on rows written before it was recorded — and a missing one never hides the
+ * event, because the event is the fact.
  */
 export const meNotificationSchema = object({
 	id: string(),
@@ -278,6 +284,7 @@ export const meNotificationSchema = object({
 	createdAt: string(),
 	readAt: nullable(string()),
 	company: nullable(companySchema),
+	actor: nullable(userSummarySchema),
 });
 
 /** One notification event, derived from the OpenAPI contract. */

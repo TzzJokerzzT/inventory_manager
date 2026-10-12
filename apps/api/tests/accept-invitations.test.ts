@@ -230,10 +230,24 @@ describe("AcceptInvitationsUseCase notifications", () => {
 		expect(events[0]?.type).toBe("membership.accepted");
 		expect(events.map((event) => event.payload)).toEqual(
 			expect.arrayContaining([
-				{ membershipId: "membership-1", companyId: "company-1" },
-				{ membershipId: "membership-2", companyId: "company-1" },
+				{
+					membershipId: "membership-1",
+					companyId: "company-1",
+					actorId: USER_ID,
+				},
+				{
+					membershipId: "membership-2",
+					companyId: "company-1",
+					actorId: USER_ID,
+				},
 			]),
 		);
+
+		// The actor is the accepting user, recorded at accept time so the read
+		// never has to infer who triggered the event.
+		for (const event of events) {
+			expect(event.payload.actorId).toBe(USER_ID);
+		}
 	});
 
 	it("records no event when the guarded accept loses the race", async () => {

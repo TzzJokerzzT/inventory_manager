@@ -4,11 +4,14 @@ import { Notification } from "../src/domain/entities/notification.js";
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryNotificationRepository } from "../src/infrastructure/database/in-memory-notification-repository.js";
+import { createFakeUserRepository } from "./support/fake-user-repository.js";
 
 const USER_ID = "user-1";
 const USER_EMAIL = "inviter@example.com";
 const OWNER_ID = "owner-1";
 const OWNER_EMAIL = "owner@example.com";
+const ACTOR_ID = "actor-1";
+const ACTOR_EMAIL = "actor@example.com";
 
 function buildUser(): User {
 	return User.create({
@@ -57,15 +60,17 @@ function event(
 	});
 }
 
-function buildUseCase() {
+function buildUseCase(users: User[] = []) {
 	const companyRepository = new InMemoryCompanyRepository();
 	const notificationRepository = new InMemoryNotificationRepository();
+	const userRepository = createFakeUserRepository(users);
 	const useCase = new ListNotificationsUseCase({
 		companyRepository,
 		notificationRepository,
+		userRepository,
 	});
 
-	return { useCase, companyRepository, notificationRepository };
+	return { useCase, companyRepository, notificationRepository, userRepository };
 }
 
 describe("ListNotificationsUseCase", () => {
@@ -101,6 +106,7 @@ describe("ListNotificationsUseCase", () => {
 			createdAt: "2026-02-01T00:00:00.000Z",
 			readAt: null,
 			company: acme,
+			actor: null,
 		});
 	});
 
@@ -173,5 +179,84 @@ describe("ListNotificationsUseCase", () => {
 		const result = await useCase.execute(buildUser());
 
 		expect(result.map((item) => item.id)).toEqual(["mine"]);
+	});
+
+	it("names the actor who triggered the event", async () => {
+		const actor = User.create({
+			id: ACTOR_ID,
+			auth0Sub: "auth0|actor",
+			email: ACTOR_EMAIL,
+			fullName: "Ana Pérez",
+		});
+		const { useCase, notificationRepository } = buildUseCase([actor]);
+		notificationRepository.save(
+			event({
+				payload: {
+					membershipId: "membership-1",
+					companyId: "company-a",
+					actorId: ACTOR_ID,
+				},
+			}),
+		);
+
+		const [result] = await useCase.execute(buildUser());
+
+		expect(result?.actor).toEqual({
+			id: ACTOR_ID,
+			fullName: "Ana Pérez",
+			email: ACTOR_EMAIL,
+		});
+	});
+
+	it("resolves the actors in a single batch read, deduplicated", async () => {
+		const actor = User.create({
+			id: ACTOR_ID,
+			auth0Sub: "auth0|actor",
+			email: ACTOR_EMAIL,
+		});
+		const { useCase, notificationRepository, userRepository } = buildUseCase([
+			actor,
+		]);
+		notificationRepository.save(
+			event({ id: "one", payload: { actorId: ACTOR_ID } }),
+		);
+		notificationRepository.save(
+			event({ id: "two", payload: { actorId: ACTOR_ID } }),
+		);
+		const findByIds = jest.spyOn(userRepository, "findByIds");
+
+		await useCase.execute(buildUser());
+
+		expect(findByIds).toHaveBeenCalledTimes(1);
+		expect(findByIds.mock.calls[0][0]).toEqual([ACTOR_ID]);
+	});
+
+	it("answers actor null without hiding the event when the payload carried no actor id", async () => {
+		// Rows written before the actor was recorded: the event still shows,
+		// only the attribution is missing.
+		const { useCase, notificationRepository } = buildUseCase();
+		notificationRepository.save(
+			event({
+				payload: { membershipId: "membership-1", companyId: "company-a" },
+			}),
+		);
+
+		const [result] = await useCase.execute(buildUser());
+
+		expect(result?.actor).toBeNull();
+		expect(result?.type).toBe("membership.accepted");
+	});
+
+	it("answers actor null when the batch read does not resolve the actor", async () => {
+		const { useCase, notificationRepository } = buildUseCase();
+		notificationRepository.save(
+			event({
+				payload: { membershipId: "membership-1", actorId: "user-ghost" },
+			}),
+		);
+
+		const [result] = await useCase.execute(buildUser());
+
+		expect(result?.actor).toBeNull();
 	});
 });

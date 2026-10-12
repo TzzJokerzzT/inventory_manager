@@ -6,14 +6,17 @@ import type { MembershipRepository } from "../../domain/repositories/membership-
 import type { UserRepository } from "../../domain/repositories/user-repository.js";
 
 /**
- * The inviter as the caller sees them.
+ * A user as another member sees them: the inviter of a pending invitation or
+ * the actor of a notification event.
  *
- * `fullName` is nullable because a user provisioned by Auth0 starts without a
- * name; the email is then the identifier the UI falls back to. The shape is
- * deliberately minimal -- no roles, no memberships -- to keep it context, not a
- * second user profile.
+ * One shape for both: the two were structurally identical, and two types that
+ * must stay identical drift the moment one of them grows a field. `fullName`
+ * is nullable because a user provisioned by Auth0 starts without a name; the
+ * email is then the identifier the UI falls back to. The shape is deliberately
+ * minimal -- no roles, no memberships -- to keep it context, not a second user
+ * profile.
  */
-export interface InviterSummary {
+export interface UserSummary {
 	id: string;
 	fullName: string | null;
 	email: string;
@@ -39,7 +42,7 @@ export interface PendingInvitation {
 	/** When the invitation was created, i.e. the membership's `createdAt`. */
 	invitedAt: string;
 	company: Company;
-	inviter: InviterSummary | null;
+	inviter: UserSummary | null;
 }
 
 export interface ListPendingInvitationsDependencies {

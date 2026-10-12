@@ -33,6 +33,7 @@ function notification(overrides: Partial<MeNotification> = {}): MeNotification {
 			name: "Acme",
 			createdAt: "2026-10-01T00:00:00.000Z",
 		},
+		actor: null,
 		...overrides,
 	};
 }
@@ -97,6 +98,44 @@ describe("NotificationsSection", () => {
 		expect(
 			screen.getByRole("heading", { name: "Notificaciones" }),
 		).toBeTruthy();
+		expect(
+			screen.getByText("Alguien aceptó tu invitación a Acme."),
+		).toBeTruthy();
+	});
+
+	it("names the actor by full name when they resolved", () => {
+		mockNotifications([
+			notification({
+				actor: { id: "u1", fullName: "Ana Pérez", email: "ana@empresa.com" },
+			}),
+		]);
+
+		render(<NotificationsSection />);
+
+		expect(
+			screen.getByText("Ana Pérez aceptó tu invitación a Acme."),
+		).toBeTruthy();
+	});
+
+	it("falls back to the actor's email when there is no name", () => {
+		mockNotifications([
+			notification({
+				actor: { id: "u1", fullName: null, email: "ana@empresa.com" },
+			}),
+		]);
+
+		render(<NotificationsSection />);
+
+		expect(
+			screen.getByText("ana@empresa.com aceptó tu invitación a Acme."),
+		).toBeTruthy();
+	});
+
+	it("falls back to a neutral actor when it could not be resolved", () => {
+		mockNotifications([notification({ actor: null })]);
+
+		render(<NotificationsSection />);
+
 		expect(
 			screen.getByText("Alguien aceptó tu invitación a Acme."),
 		).toBeTruthy();

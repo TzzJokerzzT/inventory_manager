@@ -150,9 +150,31 @@ Detalles que importan: la lectura resuelve las empresas con el `findByIds` batch
 
 **Desviación declarada:** tampoco hubo RED limpio acá; el único rojo real fue una aserción mía mal escrita (orden en `list-notifications`) que se corrigió en el test, no en el código.
 
-### Hallazgo de infraestructura de tests (no es de esta rebanada)
+### Hallazgo de infraestructura de tests — **arreglado en `bd1fa4d`**
 
-`apps/api/tsconfig.json` tiene `"include": ["src/**/*.ts"]`, así que **`bun run check-types` no type-checkea `tests/`**. Un test puede llamar a un caso de uso omitiendo una dependencia obligatoria y compila igual; el error aparece recién en runtime. Ya pasó dos veces en esta sesión con los montajes que agregaban dependencias. Arreglarlo (un `tsconfig` de tests o incluirlos) es trabajo aparte.
+`apps/api/tsconfig.json` tiene `"include": ["src/**/*.ts"]`, así que `bun run check-types` **no type-checkeaba `tests/`**: un test podía llamar a un caso de uso omitiendo una dependencia obligatoria y compilaba igual.
+
+Se agregó `tsconfig.check.json` (extiende el de build, suma los tipos de `jest`, ensancha `rootDir`, `noEmit`) y `check-types` apunta ahí, siguiendo el precedente que el **web ya usaba**. El config de build sigue emitiendo sólo `src`: se verificó que **`dist/tests` no existe** tras `bun run build`.
+
+Al encenderlo aparecieron **56 errores en 17 suites**, todos del lado de los tests:
+
+- cuatro clases `FakeUserRepository` **locales** que habían derivado → se borraron a favor del doble compartido (que es exactamente por qué habían derivado)
+- objetos `AppDependencies` parciales en ~10 llamadas a `buildApp`
+- accesos a `set-cookie` casteados sobre `string \| string[] \| undefined` → un helper compartido
+
+Sin borrar, saltear ni aflojar un solo test: la suite sigue en **43/405**.
+
+### B2 — La notificación dice **quién** aceptó
+
+- `cd apps/api && bun run test` → **43 suites / 410 tests** · `cd apps/web && bun run test` → **59 suites / 381 tests**
+- `check-types` en ambos lados · `bunx biome check apps/api apps/web` → 312 archivos, sin errores
+- **Sin migración**: el actor vive en la columna JSON `notifications.payload` que ya existía. Verificado que `prisma/schema.prisma` y `prisma/migrations` no cambiaron.
+
+El actor se **graba en el payload al aceptar** (el `accept` ya conoce el usuario) y la lectura lo resuelve con **una** lectura batch deduplicada — no releyendo la membresía, porque el payload es el registro de lo que pasó. Un actor que no resuelve, o **ausente** (filas escritas antes de este cambio), responde `actor: null` y **conserva la notificación**: el evento es el hecho, el actor es contexto — la misma regla que ya regían el invitador y la empresa.
+
+Se **compartió el tipo** en vez de duplicarlo: `InviterSummary` pasó a llamarse `UserSummary` y lo usan tanto el invitador de una invitación pendiente como el actor de una notificación. Dos interfaces estructuralmente idénticas es exactamente la duplicación que deriva.
+
+**Desviación declarada:** tampoco hubo RED limpio; el único rojo real fue un **fixture web viejo** que el contrato nuevo volvió obsoleto (la suite de `use-notifications` no tenía `actor`). Se arregló el fixture **y no se aflojó el parser**: un borde estricto que convierte un cambio de forma en un `ApiError` legible es una convención deliberada de este repo, y lo que estaba viejo era el fixture.
 
 ## Fuera de alcance
 

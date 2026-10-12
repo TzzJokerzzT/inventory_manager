@@ -61,6 +61,7 @@ describe("me notifications endpoints", () => {
 			listNotifications: new ListNotificationsUseCase({
 				companyRepository,
 				notificationRepository,
+				userRepository,
 			}),
 			markNotificationsRead: new MarkNotificationsReadUseCase({
 				notificationRepository,
@@ -112,19 +113,25 @@ describe("me notifications endpoints", () => {
 			id: string;
 			userId: string;
 			companyId?: string;
+			actorId?: string;
 			readAt?: Date | null;
 		},
 	): Notification {
+		const payload: Record<string, unknown> = {
+			membershipId: `membership-${overrides.id}`,
+		};
+		if (overrides.companyId) {
+			payload.companyId = overrides.companyId;
+		}
+		if (overrides.actorId) {
+			payload.actorId = overrides.actorId;
+		}
+
 		const notification = Notification.create({
 			id: overrides.id,
 			userId: overrides.userId,
 			type: "membership.accepted",
-			payload: overrides.companyId
-				? {
-						membershipId: `membership-${overrides.id}`,
-						companyId: overrides.companyId,
-					}
-				: { membershipId: `membership-${overrides.id}` },
+			payload,
 			dedupeKey: `membership.accepted:${overrides.id}`,
 			readAt: overrides.readAt ?? null,
 			createdAt: CREATED_AT,
@@ -161,6 +168,7 @@ describe("me notifications endpoints", () => {
 					name: "Acme",
 					createdAt: COMPANY_CREATED_AT.toISOString(),
 				},
+				actor: null,
 			},
 		]);
 		// Storage details the reader does not need must not leak onto the wire.
@@ -194,6 +202,28 @@ describe("me notifications endpoints", () => {
 		expect(response.status).toBe(200);
 		expect(response.body).toHaveLength(1);
 		expect(response.body[0].company).toBeNull();
+	});
+
+	it("names the actor who triggered the event", async () => {
+		const { app, caller, other, notificationRepository } =
+			await createTestApp();
+		seedNotification(notificationRepository, {
+			id: "notification-actor",
+			userId: caller.id,
+			companyId: "company-a",
+			actorId: other.id,
+		});
+
+		const response = await request(app)
+			.get("/me/notifications")
+			.set("authorization", authorization(caller.auth0Sub));
+
+		expect(response.status).toBe(200);
+		expect(response.body[0].actor).toEqual({
+			id: other.id,
+			fullName: other.fullName,
+			email: other.email,
+		});
 	});
 
 	it("never returns another user's notifications", async () => {

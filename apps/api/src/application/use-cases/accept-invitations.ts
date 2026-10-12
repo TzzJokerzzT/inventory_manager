@@ -60,7 +60,7 @@ export class AcceptInvitationsUseCase {
 
 			if (result !== null) {
 				accepted.push(result);
-				await this.notifyInviter(result);
+				await this.notifyInviter(result, user.id);
 			}
 		}
 
@@ -78,10 +78,14 @@ export class AcceptInvitationsUseCase {
 	 *
 	 * The audience is `membership.invitedBy`, which the acceptance already
 	 * resolved -- no extra lookup is needed to know who to notify. The payload
-	 * carries the ids the reader needs (`membershipId`, `companyId`) so the
-	 * read never has to guess the company.
+	 * carries the ids the reader needs (`membershipId`, `companyId`) plus the
+	 * accepting user as `actorId`, so the read never has to guess the company or
+	 * who to name: the caller *is* the actor, so the accept already knows it.
 	 */
-	private async notifyInviter(membership: Membership): Promise<void> {
+	private async notifyInviter(
+		membership: Membership,
+		actorId: string,
+	): Promise<void> {
 		try {
 			await this.notificationRepository.create({
 				userId: membership.invitedBy,
@@ -89,6 +93,7 @@ export class AcceptInvitationsUseCase {
 				payload: {
 					membershipId: membership.id,
 					companyId: membership.companyId,
+					actorId,
 				},
 				// Deterministic from the event: a retried accept or a double
 				// click resolves to the same key and is a no-op.

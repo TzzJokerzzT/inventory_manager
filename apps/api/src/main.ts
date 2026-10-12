@@ -112,6 +112,7 @@ const app = buildApp({
 	listNotifications: new ListNotificationsUseCase({
 		companyRepository,
 		notificationRepository,
+		userRepository,
 	}),
 	listPendingInvitations: new ListPendingInvitationsUseCase({
 		companyRepository,

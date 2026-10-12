@@ -28,6 +28,7 @@ function notification(overrides: Record<string, unknown> = {}) {
 			name: "Acme",
 			createdAt: "2026-10-01T00:00:00.000Z",
 		},
+		actor: null,
 		...overrides,
 	};
 }

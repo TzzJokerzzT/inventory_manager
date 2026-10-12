@@ -148,6 +148,17 @@ La lectura quedó en **tres queries** (membresías → empresas en batch → inv
 
 Detalles que importan: la lectura resuelve las empresas con el `findByIds` batch que ya existía (sin N+1), es **por usuario** (nunca se lee ni se marca la de otro) y `company: null` no oculta el evento. La purga de 90 días corre en la misma transacción que el insert.
 
+> **Acción abierta (bloqueante en producción).** La migración `20261012000000_add_notifications`
+> está **sin aplicar** en la base real: `public.notifications` no existe y los endpoints de
+> notificaciones responden **500**. La migración se validó offline con `prisma migrate diff` porque
+> este entorno no tiene base viva, y **`prisma migrate dev` no se corrió**. Aplicarla es manual:
+> `cd apps/api && bun run db:deploy`.
+>
+> **Por qué no lo detectó nada:** los tests usan dobles in-memory y nunca tocan la base, así que una
+> migración sin aplicar deja la suite en verde y sólo rompe en producción. El `TODO(migrations)`
+> quedó documentado en `docs/stack.md` §3.3 y en el encabezado de `prisma/schema.prisma`; automatizar
+> `db:deploy` en el deploy quedó como decisión pendiente del usuario (por ahora: manual y documentado).
+
 **Desviación declarada:** tampoco hubo RED limpio acá; el único rojo real fue una aserción mía mal escrita (orden en `list-notifications`) que se corrigió en el test, no en el código.
 
 ### Hallazgo de infraestructura de tests — **arreglado en `bd1fa4d`**

@@ -1,3 +1,13 @@
+// TODO(migrations): nothing applies migrations to the deployed database. CI runs
+// `db:deploy` against an ephemeral Postgres only (see .github/workflows/ci.yml),
+// and the API's build is just `tsc`, so a new model declared here reaches
+// production as a missing table: the Prisma client knows it, the suites pass
+// (they use in-memory doubles), and every query on it answers 500. Until a
+// deploy step runs `prisma migrate deploy` (see docs/stack.md §3.3), applying a
+// migration is a manual, required step:
+//
+//   cd apps/api && bun run db:deploy
+
 generator client {
 	provider = "prisma-client"
 	output   = "../src/infrastructure/database/generated/prisma"

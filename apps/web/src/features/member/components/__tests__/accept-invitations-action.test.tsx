@@ -74,6 +74,32 @@ describe("AcceptInvitationsAction", () => {
 		expect(screen.queryByText("No tenés invitaciones pendientes.")).toBeNull();
 	});
 
+	it("tells the panel what changed, because there is no redirect to run there", () => {
+		mutate.mockImplementation((_variables, options) => {
+			options?.onSuccess?.([{ id: "m1", status: "ACTIVE" }]);
+		});
+		render(<AcceptInvitationsAction variant="panel" />);
+
+		clickAccept();
+
+		expect(
+			screen.getByText(
+				"Ya sos miembro. Vas a encontrar la empresa en el selector de empresas.",
+			),
+		).toBeTruthy();
+	});
+
+	it("says nothing was pending in the panel too", () => {
+		mutate.mockImplementation((_variables, options) => {
+			options?.onSuccess?.([]);
+		});
+		render(<AcceptInvitationsAction variant="panel" />);
+
+		clickAccept();
+
+		expect(screen.getByText("No tenés invitaciones pendientes.")).toBeTruthy();
+	});
+
 	it("shows the API message when accepting fails", () => {
 		mockAccept({
 			isError: true,

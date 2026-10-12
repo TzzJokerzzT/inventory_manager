@@ -21,6 +21,14 @@ jest.mock("@/src/features/member/components/members-section", () => ({
 	},
 }));
 
+// Same reason: the accept action owns its own suite, and the profile test only
+// needs to prove the section is mounted for a user who already has a company.
+jest.mock("@/src/features/member/components/accept-invitations-action", () => ({
+	AcceptInvitationsAction: function AcceptInvitationsActionStub() {
+		return null;
+	},
+}));
+
 const useMeMock = useMe as jest.MockedFunction<typeof useMe>;
 
 const useUpdateFullNameMock = useUpdateFullName as jest.MockedFunction<
@@ -179,5 +187,16 @@ describe("User", () => {
 		expect(screen.getByRole("heading", { name: "Ana Pérez" })).toBeTruthy();
 		expect(screen.getByLabelText("Nombre completo")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Guardar nombre" })).toBeTruthy();
+	});
+
+	it("mounts the pending-invitations section for a user who already has a company", () => {
+		// The whole reason this mount exists: `/sin-empresas` is only reachable
+		// with zero companies, so the panel is the only place where an existing
+		// member can discover and accept the invitation to the next company.
+		render(<User />);
+
+		expect(
+			screen.getByRole("heading", { name: "Invitaciones pendientes" }),
+		).toBeTruthy();
 	});
 });

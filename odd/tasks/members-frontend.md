@@ -54,6 +54,8 @@ contra `users` (deuda anotada en MI-47).
 | 9 | Arreglar el título equivocado del header ("Clientes" → "Usuario") | `src/features/user/components/user.tsx` | done |
 | 10 | Tests: hooks, selector, tabla, formulario, aceptar | `src/features/member/**/__tests__/` | done |
 | 11 | Adaptar los tests de los dos componentes anfitriones (provider/mocks) | `src/features/company/__tests__/*`, `src/features/user/components/__tests__/full-name-form.test.tsx` | done |
+| 12 | Sección de aceptar invitación **también en el panel** (usuario que ya tiene empresa) | `src/features/user/components/user.tsx` | done |
+| 13 | Variante `panel` de la acción: avisa qué cambió, porque ahí no hay redirect | `src/features/member/components/accept-invitations-action.tsx` | done |
 
 **Corrección de la tarea 8:** el doc apuntaba a `src/features/auth/sin-empresas/components/sin-empresas.tsx`, pero el
 estado sin empresas lo renderiza `NoCompaniesState` (el gate sólo decide *si* mostrarlo). La acción se montó
@@ -79,6 +81,17 @@ donde corresponde.
 - Commit `d575fc6` (34 archivos, 2.766 líneas)
 - **Review RDD: `approved`** (línea `review-e0728ad3737ded6b`, riesgo medium, 1 lente `review-reliability`, autoridad quemada). El candidato se recortó a este commit: el que ofrece el controlador por defecto es la rama acumulada y no entra en el presupuesto de lentes.
 - **2 hallazgos advisory** del review aprobado, no bloqueantes: `src/features/member/components/leave-company-action.tsx:34` y `src/features/member/components/invite-member-form.tsx:49`.
+
+### Segundo corte: los dos frentes del invitado
+
+Aceptar una invitación tiene **dos audiencias**, y cada una llega por una puerta distinta:
+
+| Quién | Por dónde llega | Estado antes | Estado ahora |
+|---|---|---|---|
+| Usuario **nuevo**, sin ninguna empresa | `/sin-empresas` | Aceptaba (card de "no tenés empresa") | Igual, sin cambios |
+| Usuario **existente**, que ya pertenece a otra empresa | `/dashboard/user` | **Invisible**: `RequireActiveCompany` sólo manda a `/sin-empresas` con cero empresas, así que nunca veía la invitación a la siguiente | Sección "Invitaciones pendientes" en la card de perfil, después de "Empresas" |
+
+La acción ganó una prop `variant` (`onboarding` | `panel`). No es cosmética: en `/sin-empresas` el redirect ya la está sacando de la pantalla, así que avisar sería ruido; en el panel el usuario **ya está** donde tiene que estar, no hay redirect, y sin mensaje el click parecería no hacer nada. Por eso el panel confirma que la empresa va a aparecer en el selector.
 
 ### Decisiones y desviaciones declaradas
 

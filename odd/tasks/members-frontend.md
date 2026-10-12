@@ -93,6 +93,8 @@ Aceptar una invitación tiene **dos audiencias**, y cada una llega por una puert
 
 La acción ganó una prop `variant` (`onboarding` | `panel`). No es cosmética: en `/sin-empresas` el redirect ya la está sacando de la pantalla, así que avisar sería ruido; en el panel el usuario **ya está** donde tiene que estar, no hay redirect, y sin mensaje el click parecería no hacer nada. Por eso el panel confirma que la empresa va a aparecer en el selector.
 
+Commit `5dad88d` (5 archivos, 127 líneas). Review RDD: **`approved`** (línea `review-37b83e1a81a24a3c`, 1 lente, autoridad quemada). 1 hallazgo advisory no bloqueante: `src/features/user/components/__tests__/full-name-form.test.tsx:192-200`.
+
 ### Decisiones y desviaciones declaradas
 
 1. **Los tests de los componentes anfitriones hubo que tocarlos.** Montar la sección y la acción de aceptar

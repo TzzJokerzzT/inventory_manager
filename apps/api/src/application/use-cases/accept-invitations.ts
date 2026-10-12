@@ -1,9 +1,12 @@
 import type { Membership } from "../../domain/entities/membership.js";
+import { MEMBERSHIP_ACCEPTED_NOTIFICATION_TYPE } from "../../domain/entities/notification.js";
 import type { User } from "../../domain/entities/user.js";
 import type { MembershipRepository } from "../../domain/repositories/membership-repository.js";
+import type { NotificationRepository } from "../../domain/repositories/notification-repository.js";
 
 export interface AcceptInvitationsDependencies {
 	membershipRepository: MembershipRepository;
+	notificationRepository: NotificationRepository;
 }
 
 /**
@@ -23,12 +26,24 @@ export interface AcceptInvitationsDependencies {
  * updated); a row that stopped being `INVITED` in between -- a revocation, or a
  * concurrent acceptance -- comes back `null` and is simply skipped rather than
  * reported as accepted.
+ *
+ * Acceptance also records an event for the inviter ("your invitation was
+ * accepted"). That write is a *second* statement after the membership write,
+ * deliberately not atomic with it: making the membership invariant depend on
+ * the notification schema would couple two bounded contexts, and the accepted
+ * state is true either way. The declared window is that a process death
+ * between the two writes loses the notification while the membership stays
+ * `ACTIVE`; the inviter still sees the truth in the roster. The notification
+ * write is idempotent on `dedupeKey`, so the retry the client already does
+ * cannot double-record it.
  */
 export class AcceptInvitationsUseCase {
 	private readonly membershipRepository: MembershipRepository;
+	private readonly notificationRepository: NotificationRepository;
 
 	constructor(dependencies: AcceptInvitationsDependencies) {
 		this.membershipRepository = dependencies.membershipRepository;
+		this.notificationRepository = dependencies.notificationRepository;
 	}
 
 	async execute(user: User): Promise<Membership[]> {
@@ -45,9 +60,45 @@ export class AcceptInvitationsUseCase {
 
 			if (result !== null) {
 				accepted.push(result);
+				await this.notifyInviter(result);
 			}
 		}
 
 		return accepted;
+	}
+
+	/**
+	 * Records the accepted-invitation event for the inviter.
+	 *
+	 * The acceptance already happened, so a failed notification write must not
+	 * fail the request or roll the membership back. It is a real failure,
+	 * though, so it is reported through the same channel the infrastructure
+	 * adapters use (`console.error`) rather than swallowed: losing the event is
+	 * acceptable, hiding it is not.
+	 *
+	 * The audience is `membership.invitedBy`, which the acceptance already
+	 * resolved -- no extra lookup is needed to know who to notify. The payload
+	 * carries the ids the reader needs (`membershipId`, `companyId`) so the
+	 * read never has to guess the company.
+	 */
+	private async notifyInviter(membership: Membership): Promise<void> {
+		try {
+			await this.notificationRepository.create({
+				userId: membership.invitedBy,
+				type: MEMBERSHIP_ACCEPTED_NOTIFICATION_TYPE,
+				payload: {
+					membershipId: membership.id,
+					companyId: membership.companyId,
+				},
+				// Deterministic from the event: a retried accept or a double
+				// click resolves to the same key and is a no-op.
+				dedupeKey: `${MEMBERSHIP_ACCEPTED_NOTIFICATION_TYPE}:${membership.id}`,
+			});
+		} catch (error) {
+			console.error(
+				`Failed to record the membership-accepted notification for membership ${membership.id}:`,
+				error,
+			);
+		}
 	}
 }

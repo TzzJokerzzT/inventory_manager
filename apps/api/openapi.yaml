@@ -811,6 +811,77 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /me/notifications:
+    get:
+      tags: [me]
+      summary: List the caller's notifications
+      description: |
+        Returns the caller's notification events, newest first, each with the
+        company the event happened in (or `null` when it could not be
+        resolved). A notification is an event ("X accepted your invitation"),
+        not a pending invitation: the latter is state and is read from
+        `GET /me/invitations`.
+
+        The subject is the resolved user, so the request names no id and can
+        never read another account's notifications. No news is the normal
+        case: the answer is an empty array with a `200`, never a `404`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: |
+            The caller's notifications, newest first. Empty when there are
+            none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MeNotification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /me/notifications/read:
+    post:
+      tags: [me]
+      summary: Mark all the caller's notifications as read
+      description: |
+        Marks every unread notification of the caller as read. It is one
+        action for the whole list, so the UI needs a single button, and it is
+        idempotent: marking again changes nothing. The subject is the resolved
+        user, so a request can never mark another account's notifications.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: The caller's unread notifications were marked read.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -967,6 +1038,38 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/InviterSummary"
+
+    MeNotification:
+      type: object
+      required: [id, type, createdAt, readAt, company]
+      description: |
+        A notification event (e.g. an invitation was accepted). It is not a
+        pending invitation: that is state, read from `GET /me/invitations`.
+        `readAt` is null while unread. `company` is null when the event's
+        company could not be resolved; the event is the fact, the company is
+        context.
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: The event kind, e.g. `membership.accepted`.
+          example: membership.accepted
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        company:
+          description: |
+            The company the event happened in, or `null` when it could not be
+            resolved. A missing company never hides the notification.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Company"
 
     MeResponse:
       type: object

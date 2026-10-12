@@ -3,7 +3,9 @@ import { StatusCodes } from "http-status-codes";
 import { parse } from "valibot";
 import type { AcceptInvitationsUseCase } from "../../../application/use-cases/accept-invitations.js";
 import type { GetCurrentUserUseCase } from "../../../application/use-cases/get-current-user.js";
+import type { ListNotificationsUseCase } from "../../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../../application/use-cases/list-pending-invitations.js";
+import type { MarkNotificationsReadUseCase } from "../../../application/use-cases/mark-notifications-read.js";
 import type { UpdateUserFullNameUseCase } from "../../../application/use-cases/update-user-full-name.js";
 import type { User } from "../../../domain/entities/user.js";
 import { updateMeSchema } from "../validators/me-validator.js";
@@ -13,6 +15,8 @@ export interface MeControllerDependencies {
 	updateUserFullName: UpdateUserFullNameUseCase;
 	acceptInvitations: AcceptInvitationsUseCase;
 	listPendingInvitations: ListPendingInvitationsUseCase;
+	listNotifications: ListNotificationsUseCase;
+	markNotificationsRead: MarkNotificationsReadUseCase;
 }
 
 export interface MeController {
@@ -20,6 +24,8 @@ export interface MeController {
 	update: RequestHandler;
 	acceptInvitations: RequestHandler;
 	listPendingInvitations: RequestHandler;
+	listNotifications: RequestHandler;
+	markNotificationsRead: RequestHandler;
 }
 
 /**
@@ -59,6 +65,11 @@ function resolvedUser(request: Request): User {
  * `GET /me/invitations` is its read counterpart: it answers the caller's still
  * pending invitations with their companies, again without building the `/me`
  * view.
+ *
+ * `GET /me/notifications` and `POST /me/notifications/read` are the event
+ * side, and they sit on the same pair for the same reason: the inviter is not
+ * acting on a company here, they are reading their own news. Both are scoped
+ * by the resolved user, so no id from the request is ever trusted.
  */
 export function createMeController(
 	dependencies: MeControllerDependencies,
@@ -122,6 +133,35 @@ export function createMeController(
 					await dependencies.listPendingInvitations.execute(user);
 
 				response.status(StatusCodes.OK).json(invitations);
+			} catch (error) {
+				next(error);
+			}
+		},
+		listNotifications: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// The read is scoped to the resolved user's id, so the request names no
+				// subject and can never read another account's events. An empty array is
+				// a 200: no news is the normal case, not a 404.
+				const notifications =
+					await dependencies.listNotifications.execute(user);
+
+				response.status(StatusCodes.OK).json(notifications);
+			} catch (error) {
+				next(error);
+			}
+		},
+		markNotificationsRead: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// One action for the whole list, so the UI has one button. It is
+				// idempotent -- marking again is a no-op -- and answers 204 because there
+				// is no representation to return.
+				await dependencies.markNotificationsRead.execute(user);
+
+				response.status(StatusCodes.NO_CONTENT).send();
 			} catch (error) {
 				next(error);
 			}

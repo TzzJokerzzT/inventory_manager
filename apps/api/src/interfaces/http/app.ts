@@ -15,8 +15,10 @@ import type { InviteMemberUseCase } from "../../application/use-cases/invite-mem
 import type { LeaveCompanyUseCase } from "../../application/use-cases/leave-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
+import type { ListNotificationsUseCase } from "../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../application/use-cases/list-pending-invitations.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
+import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
@@ -65,7 +67,9 @@ export interface AppDependencies {
 	leaveCompany: LeaveCompanyUseCase;
 	listCompanies: ListCompaniesUseCase;
 	listMembers: ListMembersUseCase;
+	listNotifications: ListNotificationsUseCase;
 	listPendingInvitations: ListPendingInvitationsUseCase;
+	markNotificationsRead: MarkNotificationsReadUseCase;
 	revokeMember: RevokeMembershipUseCase;
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;
@@ -118,6 +122,8 @@ export function buildApp(dependencies: AppDependencies): Express {
 				updateUserFullName: dependencies.updateUserFullName,
 				acceptInvitations: dependencies.acceptInvitations,
 				listPendingInvitations: dependencies.listPendingInvitations,
+				listNotifications: dependencies.listNotifications,
+				markNotificationsRead: dependencies.markNotificationsRead,
 			}),
 			auth: createAuthController({
 				loginWithCredentials: dependencies.loginWithCredentials,

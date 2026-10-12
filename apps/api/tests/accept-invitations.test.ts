@@ -5,9 +5,12 @@ import {
 } from "../src/domain/entities/membership.js";
 import { User } from "../src/domain/entities/user.js";
 import type { MembershipRepository } from "../src/domain/repositories/membership-repository.js";
+import type { NotificationRepository } from "../src/domain/repositories/notification-repository.js";
+import { InMemoryNotificationRepository } from "../src/infrastructure/database/in-memory-notification-repository.js";
 
 const USER_ID = "user-1";
 const USER_EMAIL = "invitee@example.com";
+const INVITER_ID = "owner-1";
 
 function user(id = USER_ID, email = USER_EMAIL): User {
 	return User.create({ auth0Sub: `auth0|${id}`, email, id });
@@ -23,7 +26,7 @@ function invited(
 		companyId: "company-1",
 		role: "MEMBER",
 		status: overrides.status ?? "INVITED",
-		invitedBy: "owner-1",
+		invitedBy: INVITER_ID,
 		acceptedAt: null,
 	});
 }
@@ -92,15 +95,29 @@ function createRepository(
 	};
 }
 
+function buildUseCase(
+	membershipRepository: MembershipRepository,
+	notificationRepository: NotificationRepository = new InMemoryNotificationRepository(),
+): {
+	useCase: AcceptInvitationsUseCase;
+	notificationRepository: NotificationRepository;
+} {
+	return {
+		useCase: new AcceptInvitationsUseCase({
+			membershipRepository,
+			notificationRepository,
+		}),
+		notificationRepository,
+	};
+}
+
 describe("AcceptInvitationsUseCase", () => {
 	it("accepts every pending invitation for the caller's email", async () => {
 		const repository = createRepository([
 			invited({ id: "membership-1" }),
 			invited({ id: "membership-2" }),
 		]);
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		const accepted = await useCase.execute(user());
 
@@ -110,9 +127,7 @@ describe("AcceptInvitationsUseCase", () => {
 
 	it("asks the repository for the caller's own email", async () => {
 		const repository = createRepository();
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		await useCase.execute(user(USER_ID, "Someone@Example.COM"));
 
@@ -123,9 +138,7 @@ describe("AcceptInvitationsUseCase", () => {
 
 	it("returns the memberships already ACTIVE after accepting them", async () => {
 		const repository = createRepository([invited({ id: "membership-1" })]);
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		const [accepted] = await useCase.execute(user());
 
@@ -137,10 +150,7 @@ describe("AcceptInvitationsUseCase", () => {
 	});
 
 	it("returns an empty array when nothing is pending", async () => {
-		const repository = createRepository();
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(createRepository());
 
 		await expect(useCase.execute(user())).resolves.toEqual([]);
 	});
@@ -152,9 +162,7 @@ describe("AcceptInvitationsUseCase", () => {
 			[invited({ id: "membership-1" }), invited({ id: "membership-2" })],
 			{ refuseIds: ["membership-1"] },
 		);
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		const accepted = await useCase.execute(user());
 
@@ -166,9 +174,7 @@ describe("AcceptInvitationsUseCase", () => {
 			invited({ id: "membership-1" }),
 			invited({ id: "membership-other", email: "other@example.com" }),
 		]);
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		const accepted = await useCase.execute(user());
 
@@ -180,9 +186,7 @@ describe("AcceptInvitationsUseCase", () => {
 		const repository = createRepository([
 			invited({ id: "membership-1", status: "REVOKED" }),
 		]);
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		await expect(useCase.execute(user())).resolves.toEqual([]);
 		expect(repository.acceptedIds).toEqual([]);
@@ -190,14 +194,92 @@ describe("AcceptInvitationsUseCase", () => {
 
 	it("is idempotent: a second run accepts nothing", async () => {
 		const repository = createRepository([invited({ id: "membership-1" })]);
-		const useCase = new AcceptInvitationsUseCase({
-			membershipRepository: repository,
-		});
+		const { useCase } = buildUseCase(repository);
 
 		const first = await useCase.execute(user());
 		const second = await useCase.execute(user());
 
 		expect(first).toHaveLength(1);
 		expect(second).toEqual([]);
+	});
+});
+
+describe("AcceptInvitationsUseCase notifications", () => {
+	it("records one accepted event for the inviter per accepted membership", async () => {
+		const repository = createRepository([
+			invited({ id: "membership-1" }),
+			invited({ id: "membership-2" }),
+		]);
+		const { useCase, notificationRepository } = buildUseCase(repository);
+
+		await useCase.execute(user());
+
+		const events = await notificationRepository.findByUser(INVITER_ID);
+		expect(events).toHaveLength(2);
+		expect(events.map((event) => event.dedupeKey).sort()).toEqual([
+			"membership.accepted:membership-1",
+			"membership.accepted:membership-2",
+		]);
+		expect(events[0]?.type).toBe("membership.accepted");
+		expect(events.map((event) => event.payload)).toEqual(
+			expect.arrayContaining([
+				{ membershipId: "membership-1", companyId: "company-1" },
+				{ membershipId: "membership-2", companyId: "company-1" },
+			]),
+		);
+	});
+
+	it("records no event when the guarded accept loses the race", async () => {
+		// A revocation or a concurrent acceptance won: the use case reports
+		// nothing accepted, and must therefore record no event either.
+		const repository = createRepository([invited({ id: "membership-1" })], {
+			refuseIds: ["membership-1"],
+		});
+		const { useCase, notificationRepository } = buildUseCase(repository);
+
+		await useCase.execute(user());
+
+		await expect(
+			notificationRepository.findByUser(INVITER_ID),
+		).resolves.toEqual([]);
+	});
+
+	it("does not double-record the event when the accept runs again", async () => {
+		const repository = createRepository([invited({ id: "membership-1" })]);
+		const { useCase, notificationRepository } = buildUseCase(repository);
+
+		await useCase.execute(user());
+		await useCase.execute(user());
+
+		await expect(
+			notificationRepository.findByUser(INVITER_ID),
+		).resolves.toHaveLength(1);
+	});
+
+	it("does not fail the acceptance when the notification write fails", async () => {
+		// The acceptance already happened; a secondary failure must not undo it
+		// or turn the request into a 500. It must still be reported, though.
+		const repository = createRepository([invited({ id: "membership-1" })]);
+		const failingNotifications: NotificationRepository = {
+			create: async () => {
+				throw new Error("notification store is down");
+			},
+			findByUser: async () => [],
+			markAllRead: async () => 0,
+		};
+		const consoleError = jest
+			.spyOn(console, "error")
+			.mockImplementation(() => undefined);
+		const { useCase } = buildUseCase(repository, failingNotifications);
+
+		const accepted = await useCase.execute(user());
+
+		expect(accepted.map((m) => m.id)).toEqual(["membership-1"]);
+		expect(consoleError).toHaveBeenCalledWith(
+			expect.stringContaining("membership-1"),
+			expect.any(Error),
+		);
+
+		consoleError.mockRestore();
 	});
 });

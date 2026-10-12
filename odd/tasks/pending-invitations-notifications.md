@@ -67,13 +67,17 @@ La sección reemplaza al botón a ciegas actual: con la lista, el botón ya no e
 
 | # | Tarea | Archivo | Estado |
 |---|-------|---------|--------|
-| 1 | Migración: tabla `notifications` (`id`, `user_id`, `type`, `payload`, `read_at`, `created_at` + índices) | `prisma/schema.prisma` | pending |
-| 2 | Entidad + puerto + adaptadores (Prisma e in-memory) | `domain/entities/`, `domain/repositories/`, `infrastructure/database/` | pending |
-| 3 | Crear la notificación **en la transacción del accept** (a quién notificar ya está en `membership.invitedBy`: sin cola ni outbox) | `application/use-cases/accept-invitations.ts` | pending |
-| 4 | Purga **sin cron**: `DELETE` oportunista de lo anterior a 90 días, en la misma transacción donde se escribe | adaptador + use case | pending |
-| 5 | `GET /me/notifications` + marcar como leída | controller + rutas | pending |
-| 6 | Contrato + regenerar tipos | `openapi.yaml`, `openapi.d.ts` | pending |
-| 7 | Tests | `apps/api/tests/*` | pending |
+| 1 | Migración: tabla `notifications` (`id`, `user_id`, `type`, `payload`, `dedupe_key` único, `read_at`, `created_at` + índices) | `prisma/schema.prisma`, `prisma/migrations/*` | done |
+| 2 | Entidad + puerto + adaptadores (Prisma e in-memory) | `domain/entities/notification.ts`, `domain/repositories/notification-repository.ts`, `infrastructure/database/*notification-repository.ts` | done |
+| 3 | Crear la notificación en el accept: **segunda escritura idempotente**, no atómica (ver decisión abajo) | `application/use-cases/accept-invitations.ts` | done |
+| 4 | Purga **sin cron**: `DELETE` de lo anterior a 90 días en la misma transacción donde se escribe | adaptador Prisma | done |
+| 5 | `GET /me/notifications` + `POST /me/notifications/read` | `controllers/me-controller.ts`, `routes/me-routes.ts` | done |
+| 6 | Contrato + regenerar tipos | `openapi.yaml`, `apps/web/lib/api/openapi.d.ts` | done |
+| 7 | Tests | `apps/api/tests/*notification*`, `tests/accept-invitations*.test.ts` | done |
+
+**Corrección de la tarea 3:** el plan original decía "en la transacción del accept". **No se hizo así, a propósito.** La notificación es una **segunda escritura idempotente** (clave de deduplicación única: `membership.accepted:<membershipId>`). El motivo es de límites: un adaptador que escribe la tabla de otro agregado —o un CTE que hace `UPDATE` en una tabla e `INSERT` en otra— acopla los dos contextos y hace que el invariante de membresías dependa del esquema de notificaciones. **Ventana declarada:** un `kill -9` entre las dos escrituras pierde la notificación mientras la membresía queda `ACTIVE`; el invitador sigue viendo la verdad en el roster. Si se quiere atomicidad real, el camino es un *unit of work*, que es un refactor aparte y no se cuela dentro de esta rebanada.
+
+La ventana omitida **no corrompe estado**, y el camino de falla está **cubierto por un test**, no sólo silenciado: `accept-invitations.test.ts` inyecta un repositorio que lanza y aserta que la aceptación igual devuelve la membresía (el fallo secundario no deshace lo ya aceptado).
 
 ### C — Frontend: bloque de novedades
 
@@ -119,6 +123,21 @@ La lectura quedó en **tres queries** (membresías → empresas en batch → inv
 **Límite declarado:** la sección devuelve `null` mientras la lectura está en vuelo **y si falla**. Es deliberado (no mostrar una lista falsa ni alarmar por un bloque secundario), pero significa que un error de `/me/invitations` es **silencioso** en el panel. Se puede agregar un reintento cuando el bloque crezca.
 
 **Desviación declarada:** no se observó un RED real en esta rebanada — los tests y la implementación se escribieron juntos. Como chequeo de carga se forzó temporalmente `inviter = undefined` y se verificó que los tests fallaban, revirtiendo después. Es una mutación, no un RED.
+
+### B — Notificaciones persistidas
+
+- `cd apps/api && bun run test` → **43 suites / 405 tests, 0 fallos**, y **cero** `console.error` en toda la corrida
+- `cd apps/api && bun run check-types` → OK · `bunx biome check apps/api apps/web` → 304 archivos, sin errores
+- Migración escrita a mano y validada **offline** contra el esquema con `prisma migrate diff --from-empty --to-schema`: el DDL coincide exactamente (tabla, `notifications_dedupe_key_key`, índice `(user_id, created_at DESC)`, FK `ON DELETE RESTRICT`). `prisma migrate dev` **no se corrió** (no hay base viva en este entorno) — declarado.
+- El cliente Prisma generado está **gitignoreado**, así que regenerarlo no ensucia el diff.
+
+Detalles que importan: la lectura resuelve las empresas con el `findByIds` batch que ya existía (sin N+1), es **por usuario** (nunca se lee ni se marca la de otro) y `company: null` no oculta el evento. La purga de 90 días corre en la misma transacción que el insert.
+
+**Desviación declarada:** tampoco hubo RED limpio acá; el único rojo real fue una aserción mía mal escrita (orden en `list-notifications`) que se corrigió en el test, no en el código.
+
+### Hallazgo de infraestructura de tests (no es de esta rebanada)
+
+`apps/api/tsconfig.json` tiene `"include": ["src/**/*.ts"]`, así que **`bun run check-types` no type-checkea `tests/`**. Un test puede llamar a un caso de uso omitiendo una dependencia obligatoria y compila igual; el error aparece recién en runtime. Ya pasó dos veces en esta sesión con los montajes que agregaban dependencias. Arreglarlo (un `tsconfig` de tests o incluirlos) es trabajo aparte.
 
 ## Fuera de alcance
 

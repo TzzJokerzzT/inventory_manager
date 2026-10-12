@@ -21,6 +21,13 @@ import type { MeController } from "../controllers/me-controller.js";
  * Both invitation routes are declared with their full `/me/invitations` path,
  * ahead of any future `/me/:param` route, so a parameterised route could never
  * shadow them.
+ *
+ * The notification routes hang off the same pair: a notification is addressed
+ * to the caller's own user id, not to a company, so `requireCompanyContext`
+ * would wrongly hide news about a company the caller does not belong to -- the
+ * inviter *is* a member of it, but the route is about their identity. They are
+ * declared ahead of any future `/me/:param` route for the same shadowing
+ * reason as the invitation routes.
  */
 export function meRoutes(
 	controller: MeController,
@@ -41,6 +48,18 @@ export function meRoutes(
 		requireAuth,
 		requireUser,
 		controller.acceptInvitations,
+	);
+	router.get(
+		"/me/notifications",
+		requireAuth,
+		requireUser,
+		controller.listNotifications,
+	);
+	router.post(
+		"/me/notifications/read",
+		requireAuth,
+		requireUser,
+		controller.markNotificationsRead,
 	);
 	return router;
 }

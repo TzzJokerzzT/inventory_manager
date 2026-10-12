@@ -8,6 +8,7 @@ import { Membership } from "../src/domain/entities/membership.js";
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
+import { InMemoryNotificationRepository } from "../src/infrastructure/database/in-memory-notification-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
 import { createRequireCompanyContext } from "../src/interfaces/http/middlewares/require-company-context.js";
@@ -42,6 +43,9 @@ describe("POST /me/invitations/accept", () => {
 	) {
 		const companyRepository = new InMemoryCompanyRepository();
 		const membershipRepository = new InMemoryMembershipRepository();
+		// The real adapter, not a stub: the acceptance writes the inviter's event
+		// through this port, and the suite has to observe it where it lands.
+		const notificationRepository = new InMemoryNotificationRepository();
 
 		const owner = User.create({
 			auth0Sub: "auth0|owner",
@@ -87,6 +91,7 @@ describe("POST /me/invitations/accept", () => {
 		const app = buildApp({
 			acceptInvitations: new AcceptInvitationsUseCase({
 				membershipRepository,
+				notificationRepository,
 			}),
 			createCompany: new CreateCompanyUseCase({ companyRepository }),
 			getCurrentUser: new GetCurrentUserUseCase({
@@ -122,7 +127,14 @@ describe("POST /me/invitations/accept", () => {
 			corsOrigin: TEST_WEB_ORIGIN,
 		});
 
-		return { app, company, owner, invitee, membershipRepository };
+		return {
+			app,
+			company,
+			owner,
+			invitee,
+			membershipRepository,
+			notificationRepository,
+		};
 	}
 
 	function authorization(sub: string): string {
@@ -197,8 +209,39 @@ describe("POST /me/invitations/accept", () => {
 		});
 	});
 
+	it("records exactly one accepted notification for the inviter", async () => {
+		const { app, company, owner, invitee, notificationRepository } =
+			await createTestApp();
+
+		const response = await request(app)
+			.post("/me/invitations/accept")
+			.set("authorization", authorization(invitee.auth0Sub))
+			.send({});
+
+		expect(response.status).toBe(200);
+		const membershipId = response.body[0].id as string;
+
+		// Asserted through the port, which is where the fact lives: one event,
+		// addressed to the inviter, carrying the ids the reader needs.
+		const events = await notificationRepository.findByUser(owner.id);
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({
+			userId: owner.id,
+			type: "membership.accepted",
+			payload: { membershipId, companyId: company.id },
+			dedupeKey: `membership.accepted:${membershipId}`,
+			readAt: null,
+		});
+
+		// And it is the inviter's event, never the invitee's own list.
+		await expect(
+			notificationRepository.findByUser(invitee.id),
+		).resolves.toEqual([]);
+	});
+
 	it("is idempotent: the second call answers 200 with an empty array", async () => {
-		const { app, invitee } = await createTestApp();
+		const { app, invitee, owner, notificationRepository } =
+			await createTestApp();
 
 		const first = await request(app)
 			.post("/me/invitations/accept")
@@ -213,6 +256,12 @@ describe("POST /me/invitations/accept", () => {
 		expect(first.body).toHaveLength(1);
 		expect(second.status).toBe(200);
 		expect(second.body).toEqual([]);
+
+		// The retry records nothing new: the dedupe key makes the second write
+		// a no-op, so the inviter still sees exactly one event.
+		await expect(
+			notificationRepository.findByUser(owner.id),
+		).resolves.toHaveLength(1);
 	});
 
 	it("does not accept an invitation addressed to another email", async () => {

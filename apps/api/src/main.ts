@@ -7,8 +7,10 @@ import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
 import { LeaveCompanyUseCase } from "./application/use-cases/leave-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { ListMembersUseCase } from "./application/use-cases/list-members.js";
+import { ListNotificationsUseCase } from "./application/use-cases/list-notifications.js";
 import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
+import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notifications-read.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
@@ -18,6 +20,7 @@ import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-pro
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
 import { PrismaMembershipRepository } from "./infrastructure/database/prisma-membership-repository.js";
+import { PrismaNotificationRepository } from "./infrastructure/database/prisma-notification-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { CloudinaryUploadSigner } from "./infrastructure/storage/cloudinary-upload-signer.js";
 import { buildApp } from "./interfaces/http/app.js";
@@ -36,6 +39,7 @@ const prisma = createPrismaClient();
 const companyRepository = new PrismaCompanyRepository({ prisma });
 const userRepository = new PrismaUserRepository({ prisma });
 const membershipRepository = new PrismaMembershipRepository({ prisma });
+const notificationRepository = new PrismaNotificationRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
 // but both the login endpoint and the protected routes cannot work without
@@ -92,7 +96,10 @@ const authCookieOptions: AuthCookieOptions = {
 const corsOrigin = env.webOrigin ?? "http://localhost:3000";
 
 const app = buildApp({
-	acceptInvitations: new AcceptInvitationsUseCase({ membershipRepository }),
+	acceptInvitations: new AcceptInvitationsUseCase({
+		membershipRepository,
+		notificationRepository,
+	}),
 	changeMemberRole: new ChangeMemberRoleUseCase({ membershipRepository }),
 	createCompany: new CreateCompanyUseCase({ companyRepository }),
 	getCurrentUser: new GetCurrentUserUseCase({
@@ -102,10 +109,17 @@ const app = buildApp({
 	inviteMember: new InviteMemberUseCase({ membershipRepository }),
 	leaveCompany: new LeaveCompanyUseCase({ membershipRepository }),
 	listMembers: new ListMembersUseCase({ membershipRepository }),
+	listNotifications: new ListNotificationsUseCase({
+		companyRepository,
+		notificationRepository,
+	}),
 	listPendingInvitations: new ListPendingInvitationsUseCase({
 		companyRepository,
 		membershipRepository,
 		userRepository,
+	}),
+	markNotificationsRead: new MarkNotificationsReadUseCase({
+		notificationRepository,
 	}),
 	revokeMember: new RevokeMembershipUseCase({ membershipRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),

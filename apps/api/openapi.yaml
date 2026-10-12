@@ -616,7 +616,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: The revoked membership, with `status: REVOKED`.
+          description: "The revoked membership, with `status: REVOKED`."
           content:
             application/json:
               schema:

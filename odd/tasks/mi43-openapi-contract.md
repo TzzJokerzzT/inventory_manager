@@ -66,3 +66,30 @@ la ruta de documentación.
 Delegada en dos unidades. **Test-first** aplicable en U1. Presupuesto ~250-350 líneas por unidad.
 **Límite declarado**: sin acceso a Jira, el criterio de "terminado" es el de los docs locales —
 especificación publicada, tipos generados y usados, y las 8 rutas cubiertas.
+
+## Hallazgo post-implementación — el drift guard atrapó un spec inválido
+
+Cuando los endpoints de miembros (`49152ae`) agregaron rutas al spec, el artefacto generado
+`apps/web/lib/api/openapi.d.ts` **no se regeneró** y `apps/web/lib/api/openapi-drift.test.ts` quedó rojo.
+La causa raíz resultó más profunda que un olvido: **el spec no era YAML válido**.
+
+`apps/api/openapi.yaml:619` tenía
+
+```yaml
+description: The revoked membership, with `status: REVOKED`.
+```
+
+Un *scalar plano* con `": "` adentro: YAML lo lee como un mapping anidado y `js-yaml`/`redocly`
+(el parser que usa `openapi-typescript`) aborta con `bad indentation of a mapping entry`. Por eso el
+generador nunca pudo correr y el stamp quedó viejo. **`yamljs`, con el que la API sirve el documento,
+es más permisivo y por eso `apps/api/tests/openapi.test.ts` seguía verde**: el bug era invisible desde
+el lado del backend.
+
+**Arreglo aplicado**: citar el valor (`description: "The revoked membership, with \`status: REVOKED\`."`)
+y regenerar con `bun run openapi:generate`. El diff del artefacto es aditivo (544 líneas, sólo se removió
+el stamp viejo).
+
+**Follow-up anotado (no implementado)**: el test de contrato de la API debería **validar el YAML con un
+parser estricto** además de cargarlo con `yamljs`, para que un spec malformado falle en el backend y no
+sólo al intentar regenerar. Es el mismo tipo de drift que este contrato existe para prevenir, un nivel
+más abajo.

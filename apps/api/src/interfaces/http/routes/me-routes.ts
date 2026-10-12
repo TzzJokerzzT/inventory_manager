@@ -15,6 +15,12 @@ import type { MeController } from "../controllers/me-controller.js";
  * accepting an invitation is an action on the caller's own account, and
  * requiring a company context first would make it unreachable exactly for the
  * user who has no ACTIVE membership yet -- the one who needs it.
+ *
+ * `GET /me/invitations` is the read counterpart and sits on the same pair for
+ * the same reason: the invitee is not a member of the inviting company yet.
+ * Both invitation routes are declared with their full `/me/invitations` path,
+ * ahead of any future `/me/:param` route, so a parameterised route could never
+ * shadow them.
  */
 export function meRoutes(
 	controller: MeController,
@@ -24,6 +30,12 @@ export function meRoutes(
 	const router = Router();
 	router.get("/me", requireAuth, requireUser, controller.get);
 	router.patch("/me", requireAuth, requireUser, controller.update);
+	router.get(
+		"/me/invitations",
+		requireAuth,
+		requireUser,
+		controller.listPendingInvitations,
+	);
 	router.post(
 		"/me/invitations/accept",
 		requireAuth,

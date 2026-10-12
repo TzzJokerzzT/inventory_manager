@@ -7,6 +7,7 @@ import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
 import { LeaveCompanyUseCase } from "./application/use-cases/leave-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { ListMembersUseCase } from "./application/use-cases/list-members.js";
+import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
@@ -101,6 +102,10 @@ const app = buildApp({
 	inviteMember: new InviteMemberUseCase({ membershipRepository }),
 	leaveCompany: new LeaveCompanyUseCase({ membershipRepository }),
 	listMembers: new ListMembersUseCase({ membershipRepository }),
+	listPendingInvitations: new ListPendingInvitationsUseCase({
+		companyRepository,
+		membershipRepository,
+	}),
 	revokeMember: new RevokeMembershipUseCase({ membershipRepository }),
 	listCompanies: new ListCompaniesUseCase({ companyRepository }),
 	loginWithCredentials: new LoginWithCredentialsUseCase({

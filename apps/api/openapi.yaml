@@ -724,6 +724,51 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /me/invitations:
+    get:
+      tags: [me]
+      summary: List the caller's pending company invitations
+      description: |
+        Returns every membership addressed to the caller's own email and still
+        in the `INVITED` state, each with the company that invited them. It is
+        the read the web client needs to show a pending invitation instead of
+        calling the accept endpoint blindly.
+
+        The subject is the resolved user, so the request names no email and can
+        never read another account's invitations. The criterion is the same the
+        accept endpoint applies, so there is only one definition of "pending
+        invitation".
+
+        Having nothing pending is the normal case: the answer is an empty array
+        with a `200`, never a `404`. The `INVITED` status is pinned by the
+        query, so it is not repeated in the payload.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: |
+            The caller's pending invitations. Empty when there are none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PendingInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /me/invitations/accept:
     post:
       tags: [me]
@@ -866,6 +911,32 @@ components:
         role:
           type: string
           enum: [OWNER, ADMIN, MEMBER]
+        company:
+          $ref: "#/components/schemas/Company"
+
+    PendingInvitation:
+      type: object
+      required: [membershipId, companyId, role, invitedAt, company]
+      description: |
+        A still-pending invitation. It carries no `status` because the read
+        pins the membership to `INVITED`; the field would repeat the query.
+      properties:
+        membershipId:
+          type: string
+          format: uuid
+          description: The membership id, useful as a stable key in the UI.
+        companyId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+        invitedAt:
+          type: string
+          format: date-time
+          description: |
+            When the invitation was created, i.e. the membership's
+            `createdAt`.
         company:
           $ref: "#/components/schemas/Company"
 

@@ -188,6 +188,7 @@ function buildRoutesForEnumeration(): Router {
 			get: noop,
 			update: noop,
 			acceptInvitations: noop,
+			listPendingInvitations: noop,
 		},
 		auth: {
 			login: noop,
@@ -229,6 +230,7 @@ function createTestApp() {
 		refreshSession: {} as never,
 		updateUserFullName: {} as never,
 		acceptInvitations: {} as never,
+		listPendingInvitations: {} as never,
 		mediaUploadSigner: {} as never,
 		requireAuth: noop,
 		requireUser: noop,

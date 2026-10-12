@@ -138,4 +138,43 @@ describe("PrismaCompanyRepository", () => {
 		// The raw row carried extra columns; the domain entity exposes none of them.
 		expect(JSON.parse(JSON.stringify(result[0]))).not.toHaveProperty("taxId");
 	});
+
+	it("findByIds resolves every requested company in one query and maps rows into entities", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([
+			{
+				id: "c1",
+				name: "First",
+				createdAt: new Date("2026-01-01T00:00:00.000Z"),
+			},
+			{
+				id: "c2",
+				name: "Second",
+				createdAt: new Date("2026-01-02T00:00:00.000Z"),
+			},
+		]);
+
+		const repository = new PrismaCompanyRepository({ prisma: delegate });
+
+		const result = await repository.findByIds(["c1", "c2"]);
+
+		expect(findMany).toHaveBeenCalledTimes(1);
+		expect(findMany).toHaveBeenCalledWith({
+			where: { id: { in: ["c1", "c2"] } },
+		});
+		expect(result).toHaveLength(2);
+		expect(result[0]).toBeInstanceOf(Company);
+		expect(result[0]).toMatchObject({ id: "c1", name: "First" });
+		expect(result[1]).toMatchObject({ id: "c2", name: "Second" });
+	});
+
+	it("findByIds never queries for an empty id list", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		const repository = new PrismaCompanyRepository({ prisma: delegate });
+
+		const result = await repository.findByIds([]);
+
+		expect(result).toEqual([]);
+		expect(findMany).not.toHaveBeenCalled();
+	});
 });

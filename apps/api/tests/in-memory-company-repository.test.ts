@@ -47,4 +47,39 @@ describe("InMemoryCompanyRepository", () => {
 		expect(companies[0].id).toBe(own.id);
 		expect(companies[0].name).toBe("Acme");
 	});
+
+	it("findByIds returns only the requested companies as domain entities", async () => {
+		const repository = new InMemoryCompanyRepository();
+		const acme = Company.create({ id: "company-a", name: "Acme" });
+		const globex = Company.create({ id: "company-b", name: "Globex" });
+
+		await repository.createOwnedBy(acme, {
+			userId: "user-1",
+			email: "owner@example.com",
+		});
+		await repository.createOwnedBy(globex, {
+			userId: "user-2",
+			email: "other@example.com",
+		});
+
+		const companies = await repository.findByIds(["company-a"]);
+
+		expect(companies).toHaveLength(1);
+		expect(companies[0]).toBeInstanceOf(Company);
+		expect(companies[0].id).toBe("company-a");
+	});
+
+	it("findByIds ignores unknown ids and answers an empty list for no ids", async () => {
+		const repository = new InMemoryCompanyRepository();
+		await repository.createOwnedBy(
+			Company.create({ id: "company-a", name: "Acme" }),
+			{
+				userId: "user-1",
+				email: "owner@example.com",
+			},
+		);
+
+		await expect(repository.findByIds(["company-ghost"])).resolves.toEqual([]);
+		await expect(repository.findByIds([])).resolves.toEqual([]);
+	});
 });

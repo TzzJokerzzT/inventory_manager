@@ -3,6 +3,7 @@ import { StatusCodes } from "http-status-codes";
 import { parse } from "valibot";
 import type { AcceptInvitationsUseCase } from "../../../application/use-cases/accept-invitations.js";
 import type { GetCurrentUserUseCase } from "../../../application/use-cases/get-current-user.js";
+import type { ListPendingInvitationsUseCase } from "../../../application/use-cases/list-pending-invitations.js";
 import type { UpdateUserFullNameUseCase } from "../../../application/use-cases/update-user-full-name.js";
 import type { User } from "../../../domain/entities/user.js";
 import { updateMeSchema } from "../validators/me-validator.js";
@@ -11,12 +12,14 @@ export interface MeControllerDependencies {
 	getCurrentUser: GetCurrentUserUseCase;
 	updateUserFullName: UpdateUserFullNameUseCase;
 	acceptInvitations: AcceptInvitationsUseCase;
+	listPendingInvitations: ListPendingInvitationsUseCase;
 }
 
 export interface MeController {
 	get: RequestHandler;
 	update: RequestHandler;
 	acceptInvitations: RequestHandler;
+	listPendingInvitations: RequestHandler;
 }
 
 /**
@@ -52,6 +55,10 @@ function resolvedUser(request: Request): User {
  * `POST /me/invitations/accept` is a write on the caller's own memberships, not
  * on the identity: it takes no body and answers with the memberships that
  * became ACTIVE, so it never has to build the `/me` view.
+ *
+ * `GET /me/invitations` is its read counterpart: it answers the caller's still
+ * pending invitations with their companies, again without building the `/me`
+ * view.
  */
 export function createMeController(
 	dependencies: MeControllerDependencies,
@@ -100,6 +107,21 @@ export function createMeController(
 				const memberships = await dependencies.acceptInvitations.execute(user);
 
 				response.status(StatusCodes.OK).json(memberships);
+			} catch (error) {
+				next(error);
+			}
+		},
+		listPendingInvitations: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// The read is scoped by the resolved user's own email, so the request
+				// carries no subject. An empty array is a 200: nothing pending is the
+				// normal case, not a 404.
+				const invitations =
+					await dependencies.listPendingInvitations.execute(user);
+
+				response.status(StatusCodes.OK).json(invitations);
 			} catch (error) {
 				next(error);
 			}

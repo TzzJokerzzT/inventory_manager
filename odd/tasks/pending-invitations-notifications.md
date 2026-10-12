@@ -194,6 +194,8 @@ Se **compartió el tipo** en vez de duplicarlo: `InviterSummary` pasó a llamars
 ## Fuera de alcance
 
 - Email (Fase 4, MI-13) y sus webhooks de entrega/lectura.
+- **Push (Web Push): decidido para las alertas de stock de Fase 3, no para invitaciones.** El motivo es estructural, no de prioridad: una suscripción de push vive en el navegador del destinatario, así que **sólo se le puede hacer push a alguien que ya entró a la app y dio permiso**. Un invitado suele no haber entrado nunca — y el flujo "asignar a alguien que no tiene cuenta" (§5.8) lo hace imposible por definición. Para alcanzar a esa persona el canal es **email**, no push. Costo si algún día se hace: $0 en dinero (el push es estándar y los servicios de los navegadores lo retransmiten), pero service worker + claves VAPID + tabla de suscripciones (otra migración) + enviador + UX de permiso + purga de suscripciones muertas.
+- **Evento del invitado en la app** ("te invitaron a Acme"): **no tomado en esta decisión**. Queda como candidato chico — reusa entidad, lectura y bloque — con un límite que hay que declarar: la notificación se ancla a un `user_id`, así que sólo alcanza a invitados que **ya tienen cuenta**.
 - Tiempo real (SSE/WebSocket): `docs/stack.md:156` lo deja fuera del MVP.
 - Campanita global en el shell y contador de no leídas: se reconsidera con las notificaciones de stock bajo.
 - Notificar por revocación/cambio de rol: el modelo queda listo (`type` + `payload`), pero la UI se hace cuando exista el caso.

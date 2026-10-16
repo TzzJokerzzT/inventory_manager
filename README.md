@@ -8,6 +8,7 @@ Monorepo gestionado con **Turborepo**, con dos aplicaciones **independientes**: 
 frontend y una API REST para el backend. No hay código compartido entre ellas.
 
 > **Documentación relacionada**
+>
 > - [`docs/Project.md`](docs/Project.md) — requerimientos funcionales y no funcionales, entidades, roadmap y fases
 > - [`docs/stack.md`](docs/stack.md) — stack tecnológico decidido, con observaciones y pendientes
 > - [`design/`](design/) — design system y mockups (OpenPencil, `.fig` + previews `.png`)
@@ -27,7 +28,7 @@ clientes y notificaciones de stock bajo) y **la gestión de miembros** de una em
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
-|------------|--------|
+| ------------ | -------- |
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
 | `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 10 operaciones en `openapi.yaml` |
@@ -111,7 +112,7 @@ MI-47); la matriz de autorización ya está modelada en el backend.
 Detalle completo y observaciones en **[`docs/stack.md`](docs/stack.md)**.
 
 | Capa | Decisión |
-|------|----------|
+| ------ | ---------- |
 | **Monorepo** | Turborepo + **Bun** como gestor de paquetes |
 | **Frontend** | SPA con **React + Next.js + TypeScript** · arquitectura **Vertical Slice** |
 | **Backend** | API REST con **Node + Express + TypeScript** · arquitectura **Clean Architecture** |
@@ -231,7 +232,7 @@ propio más estricto). Las rutas de empresa exigen además una membership `ACTIV
 siguiente).
 
 | Operación | Token | Errores que importan | Qué hace |
-|-----------|-------|----------------------|----------|
+| ----------- | ------- | ---------------------- | ---------- |
 | `GET /health` | no | 429 | Sonda de vida |
 | `POST /auth/login` | no | 400, 401, 403 (`email_not_verified`), 429, 500, 503 | Intercambia email/contraseña por un access token; el refresh viaja en cookie `httpOnly` |
 | `POST /auth/register` | no | 400, 429, 500, 503 | Crea la cuenta; la respuesta no revela si el email ya existía |
@@ -310,8 +311,8 @@ Levanta las aplicaciones con la TUI de Turborepo (requiere las variables de ento
 
 | App | URL |
 |-----|-----|
-| `apps/web` | http://localhost:3000 |
-| `apps/api` | http://localhost:3001 (`GET /health`) · `/docs` (Swagger UI) |
+| `apps/web` | <http://localhost:3000> |
+| `apps/api` | <http://localhost:3001> (`GET /health`) · `/docs` (Swagger UI) |
 
 Para levantar una sola app:
 
@@ -324,7 +325,7 @@ bun run dev --filter=web
 Todos desde la raíz del monorepo:
 
 | Comando | Qué hace |
-|---------|----------|
+| --------- | ---------- |
 | `bun run dev` | Desarrollo de las apps (Turborepo TUI) |
 | `bun run build` | Build de producción de las apps |
 | `bun run lint` | Lint de todo el repo con Biome (`biome check .`) |
@@ -465,7 +466,7 @@ el cliente de Prisma exige `DATABASE_URL`; en `production`, `env.ts` además val
 una.
 
 | Variable | Para qué |
-|----------|----------|
+| ---------- | ---------- |
 | `PORT` | Puerto de la API (opcional; por defecto 3001) |
 | `WEB_ORIGIN` | Origen del navegador autorizado a llamar a la API **con credenciales** (la cookie del refresh). Obligatoria en producción; en desarrollo cae a `http://localhost:3000` |
 | `DATABASE_URL` | Conexión a Postgres **vía pooler de Supabase** (puerto 6543, `?pgbouncer=true`) — la usa el cliente de runtime |
@@ -508,11 +509,11 @@ producto en sí**, no la infraestructura.
 El modelo de acceso ya está en `schema.prisma` y la matriz de autorización en
 `apps/api/src/domain/policies/authorization.ts`, pero los endpoints todavía no existen:
 
-- [ ] **Asignar un miembro con rol** — **MI-45** (ADMIN/OWNER asignan; OWNER asigna ADMIN/OWNER).
-- [ ] **Aceptar una asignación** — **MI-46** (incluye decidir qué hacer con más de una invitación
+- [x] **Asignar un miembro con rol** — **MI-45** (ADMIN/OWNER asignan; OWNER asigna ADMIN/OWNER).
+- [x] **Aceptar una asignación** — **MI-46** (incluye decidir qué hacer con más de una invitación
       pendiente al mismo email).
-- [ ] **Cambiar el rol de un miembro (promover/rebajar)** — **MI-47**.
-- [ ] **Invariante del último OWNER** — **MI-49**: una empresa nunca puede quedar sin OWNER (la regla
+- [x] **Cambiar el rol de un miembro (promover/rebajar)** — **MI-47**.
+- [x] **Invariante del último OWNER** — **MI-49**: una empresa nunca puede quedar sin OWNER (la regla
       ya está en `can()`, falta el endpoint que la use).
 
 ### Core de inventario (Fase 2 y 3)

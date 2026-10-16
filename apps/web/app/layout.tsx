@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import localFont from "next/font/local";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { Provider } from "@/src/providers/providers";
 import "./globals.css";
@@ -34,12 +33,7 @@ export default function RootLayout({
 			className={cn("font-sans", inter.variable)}
 		>
 			<body className={`${geistSans.variable} ${geistMono.variable}`}>
-				<Provider>
-					<div className="fixed right-4 top-4 z-50">
-						<ThemeToggle />
-					</div>
-					{children}
-				</Provider>
+				<Provider>{children}</Provider>
 			</body>
 		</html>
 	);

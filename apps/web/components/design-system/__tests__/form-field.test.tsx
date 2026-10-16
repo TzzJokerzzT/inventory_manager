@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { SelectField, TextField } from "../form-field";
 
 describe("TextField", () => {
@@ -49,8 +49,25 @@ describe("TextField", () => {
 });
 
 describe("SelectField", () => {
-	it("associates the label with the native select and carries the 48px height", () => {
-		render(
+	const categories = [
+		{ value: "electronica", label: "Electrónica" },
+		{ value: "hogar", label: "Hogar" },
+	];
+
+	/**
+	 * El `Select` de Base UI confirma la selección con el gesto de puntero
+	 * completo: ni un `click` suelto ni un `pointerDown` solo alcanzan.
+	 */
+	function chooseOption(fieldLabel: string, optionLabel: string) {
+		fireEvent.click(screen.getByLabelText(fieldLabel));
+		const option = screen.getByRole("option", { name: optionLabel });
+		fireEvent.pointerDown(option);
+		fireEvent.pointerUp(option);
+		fireEvent.click(option);
+	}
+
+	it("associates the label with the trigger and carries the 48px height", () => {
+		const { container } = render(
 			<SelectField
 				label="Categoría"
 				name="categoria"
@@ -58,9 +75,53 @@ describe("SelectField", () => {
 			/>,
 		);
 
-		const select = screen.getByLabelText("Categoría") as HTMLSelectElement;
-		expect(select.name).toBe("categoria");
-		expect(select.className).toContain("h-12");
-		expect(screen.getByRole("combobox")).toBeTruthy();
+		// El primitivo de Base UI es un botón con rol combobox, no un <select>
+		// nativo; el nombre viaja al formulario por el input oculto.
+		const trigger = screen.getByLabelText("Categoría");
+		expect(trigger).toBe(screen.getByRole("combobox"));
+		expect(trigger.className).toContain("h-12");
+		expect(container.querySelector('input[name="categoria"]')).toBeTruthy();
+	});
+
+	it("offers every option once the trigger is opened", () => {
+		render(
+			<SelectField label="Categoría" name="categoria" options={categories} />,
+		);
+
+		fireEvent.click(screen.getByLabelText("Categoría"));
+
+		expect(
+			screen.getAllByRole("option").map((option) => option.textContent),
+		).toEqual(["Electrónica", "Hogar"]);
+	});
+
+	it("submits the chosen raw value through the named hidden input", () => {
+		const { container } = render(
+			<SelectField label="Categoría" name="categoria" options={categories} />,
+		);
+
+		chooseOption("Categoría", "Hogar");
+
+		expect(
+			(container.querySelector('input[name="categoria"]') as HTMLInputElement)
+				.value,
+		).toBe("hogar");
+	});
+
+	it("reports the raw value, not the label, through onValueChange", () => {
+		const onValueChange = jest.fn();
+		render(
+			<SelectField
+				label="Categoría"
+				name="categoria"
+				value="electronica"
+				onValueChange={onValueChange}
+				options={categories}
+			/>,
+		);
+
+		chooseOption("Categoría", "Hogar");
+
+		expect(onValueChange.mock.calls[0][0]).toBe("hogar");
 	});
 });

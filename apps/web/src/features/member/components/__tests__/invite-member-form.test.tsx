@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
+import { ROLE_LABELS } from "@/src/utils/constants";
 import { useInviteMember } from "../../api/use-invite-member";
 import { InviteMemberForm } from "../invite-member-form";
 
@@ -32,6 +33,19 @@ function fillEmail(value: string) {
 	});
 }
 
+/**
+ * El campo de rol es un `Select` de Base UI: hay que abrir el trigger y
+ * completar el gesto de puntero sobre la opción. El primitivo no confirma la
+ * selección con un `click` suelto, y `pointerDown` solo tampoco alcanza.
+ */
+function chooseRole(label: string) {
+	fireEvent.click(screen.getByLabelText("Rol"));
+	const option = screen.getByRole("option", { name: label });
+	fireEvent.pointerDown(option);
+	fireEvent.pointerUp(option);
+	fireEvent.click(option);
+}
+
 describe("InviteMemberForm", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -54,11 +68,11 @@ describe("InviteMemberForm", () => {
 	it("only offers the roles the caller may hand out", () => {
 		render(<InviteMemberForm companyId="c1" invitableRoles={["MEMBER"]} />);
 
-		const options = Array.from(
-			(screen.getByLabelText("Rol") as HTMLSelectElement).options,
-		).map((option) => option.value);
+		fireEvent.click(screen.getByLabelText("Rol"));
 
-		expect(options).toEqual(["MEMBER"]);
+		expect(
+			screen.getAllByRole("option").map((option) => option.textContent),
+		).toEqual([ROLE_LABELS.MEMBER]);
 	});
 
 	it("reports an empty email locally, without calling the API", () => {
@@ -94,9 +108,7 @@ describe("InviteMemberForm", () => {
 			/>,
 		);
 		fillEmail("  nueva@empresa.com  ");
-		fireEvent.change(screen.getByLabelText("Rol"), {
-			target: { value: "ADMIN" },
-		});
+		chooseRole(ROLE_LABELS.ADMIN);
 
 		submit();
 

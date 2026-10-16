@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import type { PendingInvitation } from "@/lib/api/schemas";
-import { formatDate } from "@/src/features/dashboard/mock";
+import { formatDate } from "@/src/utils/mockData";
 import { usePendingInvitations } from "../../api/use-pending-invitations";
 import { AcceptInvitationsAction } from "../accept-invitations-action";
 import { PendingInvitationsSection } from "../pending-invitations-section";

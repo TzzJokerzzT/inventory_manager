@@ -16,19 +16,7 @@ export function UserSkeleton() {
 			aria-label="Cargando perfil"
 			className="flex flex-col gap-6"
 		>
-			{/* Encabezado: es texto estático, se muestra real para evitar saltos */}
-			<header className="flex items-center justify-between">
-				<div>
-					<h1 className="text-2xl font-bold text-text-primary">Clientes</h1>
-					<p className="mt-1 text-sm text-text-secondary">
-						Ver la información relacionada a su usuario.
-					</p>
-				</div>
-			</header>
-
-			<div className="w-full border border-sidebar-border" />
-
-			<div className="flex h-[calc(100vh-15rem)] items-center justify-center gap-3">
+			<div className="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-[minmax(0,42rem)_minmax(0,1fr)] *:min-w-0">
 				<div className="flex w-full max-w-2xl flex-col gap-8 rounded-md border border-border bg-surface p-8">
 					{/* Avatar + nombre + correo */}
 					<div className="flex items-center gap-4">

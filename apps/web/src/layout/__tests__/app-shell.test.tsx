@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { usePathname } from "next/navigation";
 import { useLogout } from "@/src/features/auth/logout/use-logout";
 import { AppShell } from "../app-shell";
 
 jest.mock("next/navigation", () => ({
 	useRouter: jest.fn(),
+	usePathname: jest.fn(),
 }));
 
 jest.mock("@/src/features/auth/logout/use-logout", () => ({
@@ -15,6 +17,7 @@ jest.mock("@/src/features/company/components/company-switcher", () => ({
 }));
 
 const useLogoutMock = useLogout as jest.MockedFunction<typeof useLogout>;
+const usePathnameMock = usePathname as jest.MockedFunction<typeof usePathname>;
 const logout = jest.fn();
 
 /*
@@ -34,6 +37,7 @@ describe("AppShell", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		useLogoutMock.mockReturnValue(logout);
+		usePathnameMock.mockReturnValue("/dashboard");
 	});
 
 	it("renders a real link for every route that exists", () => {

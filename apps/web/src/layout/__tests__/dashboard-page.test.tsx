@@ -7,6 +7,7 @@ import { useSessionStore } from "@/src/store/session-store/session-store";
 
 jest.mock("next/navigation", () => ({
 	useRouter: jest.fn(),
+	usePathname: jest.fn(() => "/dashboard"),
 }));
 
 jest.mock("@/src/features/company/api/use-companies", () => ({

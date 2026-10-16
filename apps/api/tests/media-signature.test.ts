@@ -76,7 +76,9 @@ describe("POST /companies/:companyId/media/signature", () => {
 		// The real Cloudinary SDK's signing function is injected as a fake, so
 		// this test never calls the real account. The fake records what the
 		// adapter asked it to sign and returns a fixed signature.
-		const sign = jest.fn<Sign>().mockReturnValue("fixed-signature");
+		const sign = jest
+			.fn<ReturnType<Sign>, Parameters<Sign>>()
+			.mockReturnValue("fixed-signature");
 		const mediaUploadSigner = new CloudinaryUploadSigner({
 			cloudName: "demo-cloud",
 			apiKey: "123456789012345",
@@ -99,6 +101,19 @@ describe("POST /companies/:companyId/media/signature", () => {
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
 			}),
+			// The media slice never reaches these; the explicit `{} as never`
+			// records that the wiring is intentionally inert rather than forgotten.
+			acceptInvitations: {} as never,
+			changeMemberRole: {} as never,
+			getCurrentUser: {} as never,
+			inviteMember: {} as never,
+			leaveCompany: {} as never,
+			listMembers: {} as never,
+			listNotifications: {} as never,
+			listPendingInvitations: {} as never,
+			markNotificationsRead: {} as never,
+			revokeMember: {} as never,
+			updateUserFullName: {} as never,
 			mediaUploadSigner,
 			authCookieOptions: {
 				httpOnly: true,

@@ -1,28 +1,16 @@
 "use client";
 
-import {
-	type Column,
-	DataTable,
-	SelectField,
-	TextareaField,
-	TextField,
-} from "@/components/design-system";
+import { motion } from "motion/react";
+import { useState } from "react";
+import { DataTable } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { LazyMotionTag } from "@/src/shared/components/Animation";
-import {
-	type movementRow,
-	movementTableRows,
-	products,
-} from "../dashboard/mock";
-
-const movementColumns: Column<movementRow>[] = [
-	{ key: "date", header: "Fecha" },
-	{ key: "type", header: "Tipo" },
-	{ key: "product", header: "Producto" },
-	{ key: "quantity", header: "Cantidad" },
-	{ key: "user", header: "Usuario" },
-];
+import { ViewHeader } from "@/src/shared/components/ViewHeader";
+import { movementColumns } from "@/src/utils/Columns";
+import { movementTableRows, products } from "@/src/utils/mockData";
+import { MovementEntryStockForm } from "./movement-stock-entry-form";
+import { MovementOutStockForm } from "./movement-stock-out-form";
 
 const productsOptions = products.map((product) => ({
 	value: product.sku,
@@ -30,95 +18,85 @@ const productsOptions = products.map((product) => ({
 }));
 
 export function Movement() {
+	const [isEntry, setIsEntry] = useState<boolean>(true);
+
 	return (
 		<LazyMotionTag
 			tag="div"
 			initial={{ opacity: 0, y: 20 }}
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.5 }}
-			className="flex flex-col gap-6"
+			className="flex min-w-0 flex-col gap-4 sm:gap-6"
 		>
-			<header className="flex items-center justify-between">
-				<div>
-					<h1 className="text-2xl font-bold text-text-primary">
-						Movimientos de inventario
-					</h1>
-					<p className="mt-1 text-sm text-text-secondary">
-						Registrá entradas y salidas; el stock se actualiza automáticamente.
-					</p>
-				</div>
-			</header>
+			<ViewHeader
+				title="Movimientos de inventario"
+				subTitle="Registrá entradas y salidas; el stock se actualiza automáticamente."
+			/>
 
 			<section
 				aria-label="Stock"
-				className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+				className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:items-start"
 			>
-				<div className="col-span-full">
-					<ButtonGroup>
-						<Button variant="outline" className="h-10">
+				<div className="xl:col-span-full">
+					<ButtonGroup className="w-full sm:w-auto">
+						<Button
+							onClick={() => setIsEntry(true)}
+							variant={isEntry ? "default" : "outline"}
+							className="h-10 flex-1 sm:flex-none"
+						>
 							Entrada de stock
 						</Button>
-						<Button variant="outline" className="h-10">
+						<Button
+							onClick={() => setIsEntry(false)}
+							variant={!isEntry ? "default" : "outline"}
+							className="h-10 flex-1 sm:flex-none"
+						>
 							Salida de stock
 						</Button>
 					</ButtonGroup>
 				</div>
-				<form className="grid w-full p-4 max-w-3xl min-w-0 grid-cols-1 gap-4 bg-surface border rounded-xl sm:grid-cols-2">
-					<SelectField
-						label="Productos"
-						options={productsOptions}
-						name="productSearch"
-						placeholder="Selecciona una o varias categorias"
-						autoComplete="text"
-						className="sm:col-span-full"
-					/>
 
-					<TextField
-						label="Cantidad *"
-						type="number"
-						name="productSearch"
-						placeholder="20"
-					/>
+				{isEntry ? (
+					<motion.div
+						key="entrada"
+						initial={{ opacity: 0, x: 10 }}
+						animate={{ opacity: 1, x: 0 }}
+						transition={{ duration: 0.5 }}
+					>
+						<div className="flex flex-col gap-3">
+							<h1 className="text-2xl font-bold text-text-primary">
+								Entrada de productos
+							</h1>
+							<MovementEntryStockForm options={productsOptions} />
+						</div>
+					</motion.div>
+				) : (
+					<motion.div
+						key="salida"
+						initial={{ opacity: 0, x: 10 }}
+						animate={{ opacity: 1, x: 0 }}
+						transition={{ duration: 0.5 }}
+					>
+						<div className="flex flex-col gap-3">
+							<h1 className="text-2xl font-bold text-text-primary">
+								Salida de productos
+							</h1>
+							<MovementOutStockForm options={productsOptions} />
+						</div>
+					</motion.div>
+				)}
 
-					<TextField
-						label="Motivo"
-						type="text"
-						name="productSearch"
-						placeholder="Compra a proveedor"
-						autoComplete="text"
-					/>
-
-					<TextField
-						label="Proveedor o cliente (opcional)"
-						type="text"
-						name="productSearch"
-						placeholder="Sin asociar"
-						autoComplete="text"
-						className="sm:col-span-full"
-					/>
-
-					<TextareaField
-						label="Nota"
-						name="productSearch"
-						placeholder="Observaciones del movimiento..."
-						autoComplete="text"
-						className="sm:col-span-full"
-						size="h-20"
-					/>
-
-					<div className="col-span-full flex justify-end gap-4">
-						<Button className="h-10 w-30" variant="outline">
-							Cancelar
-						</Button>
-						<Button className="h-10 w-30">Crear</Button>
+				{/* La tabla scrollea horizontalmente en pantallas chicas en vez de
+				    desbordar la página. */}
+				<div className="min-w-0 overflow-x-auto rounded-xl">
+					<div className="min-w-[36rem]">
+						<DataTable
+							columns={movementColumns}
+							rows={movementTableRows}
+							getRowKey={(row) => row.product}
+						/>
 					</div>
-				</form>
-
-				<DataTable
-					columns={movementColumns}
-					rows={movementTableRows}
-					getRowKey={(row) => row.product}
-				/>
+				</div>
 			</section>
 		</LazyMotionTag>
 	);

@@ -25,6 +25,18 @@ export function companyRoutes(controller: CompanyController): Router {
 	// `requireCompanyContext`: a non-member can never sign an upload in the
 	// company's name.
 	companyScoped.post("/media/signature", controller.mediaSignature);
+	// Member management routes. They inherit `requireCompanyContext`, so only
+	// users with an ACTIVE membership can reach them. The role-based
+	// authorization (who can invite whom) is enforced by the use cases.
+	companyScoped.post("/members", controller.inviteMember);
+	companyScoped.get("/members", controller.listMembers);
+	// `/members/me` is declared BEFORE `/members/:membershipId` on purpose:
+	// Express matches in registration order, so the other way round "me" would be
+	// captured as a membership id. Leaving is the only member action that does
+	// not name a membership, because it never needs one.
+	companyScoped.delete("/members/me", controller.leaveCompany);
+	companyScoped.patch("/members/:membershipId", controller.changeMemberRole);
+	companyScoped.delete("/members/:membershipId", controller.revokeMember);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

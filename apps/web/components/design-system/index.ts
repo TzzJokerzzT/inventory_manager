@@ -4,7 +4,7 @@ export { Checkbox } from "./checkbox";
 export type { Column, DataTableProps } from "./data-table";
 export { DataTable } from "./data-table";
 export { DropzoneField } from "./dropzone";
-export { SelectField, TextField } from "./form-field";
+export { AutoComplete, SelectField, TextField } from "./form-field";
 export { KpiCard } from "./kpi-card";
 export type { StockStatus } from "./stock-badge";
 export { StockBadge, stockStatus } from "./stock-badge";

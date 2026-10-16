@@ -77,4 +77,12 @@ export class InMemoryCompanyRepository implements CompanyRepository {
 	listMemberships(): InMemoryMembership[] {
 		return Array.from(this.memberships.values());
 	}
+
+	async findByIds(ids: string[]): Promise<Company[]> {
+		const wanted = new Set(ids);
+
+		return Array.from(this.companies.values()).filter((company) =>
+			wanted.has(company.id),
+		);
+	}
 }

@@ -23,4 +23,15 @@ export interface CompanyRepository {
 
 	/** Lists the companies the given user belongs to. */
 	findAllForUser(userId: string): Promise<Company[]>;
+
+	/**
+	 * Resolves the companies with the given ids.
+	 *
+	 * It is a batch read on purpose: the caller has already read N rows (the
+	 * caller's pending invitations) and joining their companies one id at a
+	 * time would be N+1. The result is not required to be complete or ordered
+	 * -- an id with no company is simply absent -- so the caller joins in
+	 * memory and drops whatever the read did not return.
+	 */
+	findByIds(ids: string[]): Promise<Company[]>;
 }

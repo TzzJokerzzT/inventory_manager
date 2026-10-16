@@ -35,9 +35,9 @@ export function DataTable<T>({
 	return (
 		<div
 			data-slot="data-table"
-			className="overflow-hidden rounded-md border border-border bg-surface"
+			className="w-full max-w-full overflow-x-auto rounded-md border border-border bg-surface"
 		>
-			<table className="w-full border-collapse">
+			<table className="w-full min-w-[36rem] border-collapse">
 				<thead>
 					<tr className="bg-surface-muted">
 						{columns.map((column) => (
@@ -45,7 +45,7 @@ export function DataTable<T>({
 								key={column.key}
 								scope="col"
 								className={cn(
-									"h-13 border-b border-border px-4 align-middle text-xs font-medium uppercase text-text-muted",
+									"h-13 whitespace-nowrap border-b border-border px-4 align-middle text-xs font-medium uppercase text-text-muted",
 									cellAlign(column.align),
 									column.className,
 								)}
@@ -75,7 +75,7 @@ export function DataTable<T>({
 									<td
 										key={column.key}
 										className={cn(
-											"h-13 px-4 align-middle text-sm text-text-primary",
+											"h-13 whitespace-nowrap px-4 align-middle text-sm text-text-primary",
 											cellAlign(column.align),
 											column.className,
 										)}

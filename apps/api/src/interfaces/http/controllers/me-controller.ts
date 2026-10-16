@@ -1,0 +1,170 @@
+import type { Request, RequestHandler } from "express";
+import { StatusCodes } from "http-status-codes";
+import { parse } from "valibot";
+import type { AcceptInvitationsUseCase } from "../../../application/use-cases/accept-invitations.js";
+import type { GetCurrentUserUseCase } from "../../../application/use-cases/get-current-user.js";
+import type { ListNotificationsUseCase } from "../../../application/use-cases/list-notifications.js";
+import type { ListPendingInvitationsUseCase } from "../../../application/use-cases/list-pending-invitations.js";
+import type { MarkNotificationsReadUseCase } from "../../../application/use-cases/mark-notifications-read.js";
+import type { UpdateUserFullNameUseCase } from "../../../application/use-cases/update-user-full-name.js";
+import type { User } from "../../../domain/entities/user.js";
+import { updateMeSchema } from "../validators/me-validator.js";
+
+export interface MeControllerDependencies {
+	getCurrentUser: GetCurrentUserUseCase;
+	updateUserFullName: UpdateUserFullNameUseCase;
+	acceptInvitations: AcceptInvitationsUseCase;
+	listPendingInvitations: ListPendingInvitationsUseCase;
+	listNotifications: ListNotificationsUseCase;
+	markNotificationsRead: MarkNotificationsReadUseCase;
+}
+
+export interface MeController {
+	get: RequestHandler;
+	update: RequestHandler;
+	acceptInvitations: RequestHandler;
+	listPendingInvitations: RequestHandler;
+	listNotifications: RequestHandler;
+	markNotificationsRead: RequestHandler;
+}
+
+/**
+ * The resolved user the `/me` route is guaranteed to have: `requireUser` runs
+ * before this controller, so a missing user is a programming error and not
+ * something to work around by inventing one.
+ */
+function resolvedUser(request: Request): User {
+	const user = request.user;
+	if (user === undefined) {
+		throw new Error(
+			"requireUser must run before the me controller; the route wiring guarantees a resolved user",
+		);
+	}
+	return user;
+}
+
+/**
+ * HTTP adapter for the `/me` endpoints.
+ *
+ * It only reads the resolved user and delegates the work to the use cases: the
+ * controller never assembles data or touches a repository. The use case groups
+ * the public identity under `user`; the wire contract is flat (no `{ data }`
+ * wrapper, no `user` envelope, like the rest of the API), so the controller
+ * spreads that view to the top level and adds the memberships. The use case
+ * receives the resolved `User` entity, not an id, so it can emit `email` and
+ * `createdAt` without a second user lookup.
+ *
+ * `PATCH /me` answers with the same representation as `GET /me`, so both
+ * handlers share the view assembly and only differ in the entity they pass to
+ * it (see the `update` handler for why it must be the updated one).
+ *
+ * `POST /me/invitations/accept` is a write on the caller's own memberships, not
+ * on the identity: it takes no body and answers with the memberships that
+ * became ACTIVE, so it never has to build the `/me` view.
+ *
+ * `GET /me/invitations` is its read counterpart: it answers the caller's still
+ * pending invitations with their companies, again without building the `/me`
+ * view.
+ *
+ * `GET /me/notifications` and `POST /me/notifications/read` are the event
+ * side, and they sit on the same pair for the same reason: the inviter is not
+ * acting on a company here, they are reading their own news. Both are scoped
+ * by the resolved user, so no id from the request is ever trusted.
+ */
+export function createMeController(
+	dependencies: MeControllerDependencies,
+): MeController {
+	return {
+		get: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+				const { user: view, memberships } =
+					await dependencies.getCurrentUser.execute(user);
+				response.status(StatusCodes.OK).json({ ...view, memberships });
+			} catch (error) {
+				next(error);
+			}
+		},
+		update: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+				const input = parse(updateMeSchema, request.body);
+
+				const updated = await dependencies.updateUserFullName.execute(
+					user,
+					input.fullName,
+				);
+
+				// Answer from the UPDATED entity, never the resolved one: `requireUser`
+				// read `request.user` before this write, so rebuilding the view from it
+				// would return the previous name in a 200. That is exactly why the use
+				// case hands the entity back instead of returning void.
+				const { user: view, memberships } =
+					await dependencies.getCurrentUser.execute(updated);
+
+				response.status(StatusCodes.OK).json({ ...view, memberships });
+			} catch (error) {
+				next(error);
+			}
+		},
+		acceptInvitations: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// The email comes from the resolved user, never from the request, so a
+				// caller can only ever accept invitations addressed to their own
+				// account. An empty array is a 200: having nothing pending is the
+				// normal case, not an error.
+				const memberships = await dependencies.acceptInvitations.execute(user);
+
+				response.status(StatusCodes.OK).json(memberships);
+			} catch (error) {
+				next(error);
+			}
+		},
+		listPendingInvitations: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// The read is scoped by the resolved user's own email, so the request
+				// carries no subject. An empty array is a 200: nothing pending is the
+				// normal case, not a 404.
+				const invitations =
+					await dependencies.listPendingInvitations.execute(user);
+
+				response.status(StatusCodes.OK).json(invitations);
+			} catch (error) {
+				next(error);
+			}
+		},
+		listNotifications: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// The read is scoped to the resolved user's id, so the request names no
+				// subject and can never read another account's events. An empty array is
+				// a 200: no news is the normal case, not a 404.
+				const notifications =
+					await dependencies.listNotifications.execute(user);
+
+				response.status(StatusCodes.OK).json(notifications);
+			} catch (error) {
+				next(error);
+			}
+		},
+		markNotificationsRead: async (request, response, next) => {
+			try {
+				const user = resolvedUser(request);
+
+				// One action for the whole list, so the UI has one button. It is
+				// idempotent -- marking again is a no-op -- and answers 204 because there
+				// is no representation to return.
+				await dependencies.markNotificationsRead.execute(user);
+
+				response.status(StatusCodes.NO_CONTENT).send();
+			} catch (error) {
+				next(error);
+			}
+		},
+	};
+}

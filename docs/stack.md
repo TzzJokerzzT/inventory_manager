@@ -199,10 +199,19 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
   produce `db:generate` (que también corre `postinstall`).
 - Extensiones (`pg_trgm`) y `CHECK` constraints **no se modelan en el schema**: llegan por
   migraciones editadas a mano (ver §3.2).
-- Comandos: `db:generate` · `db:migrate` (desarrollo local) · `db:deploy` (CI/producción) ·
+- Comandos: `db:generate` · `db:migrate` (desarrollo local) · `db:deploy` (aplicar migraciones) ·
   `db:status` · `db:studio`.
-- **Producción:** las migraciones corren en el pipeline (`db:deploy`), **nunca** en el runtime de la
-  función.
+- **Producción — `TODO(migrations)`:** **hoy nada aplica las migraciones a la base real.** El job
+  `migrations` de CI corre `db:deploy` contra un Postgres **efímero** (`postgres:17` como service
+  container, nunca el proyecto de Supabase), el `build` del API es sólo `tsc -p tsconfig.json` y no
+  hay `vercel.json`, así que **ningún** paso del deploy ejecuta `db:deploy` contra producción.
+  Mientras siga así, aplicar una migración es un **paso manual obligatorio**:
+  `cd apps/api && bun run db:deploy`.
+- **Por qué esto muerde:** una migración sin aplicar no rompe los tests. El modelo está en el schema,
+  el cliente Prisma lo conoce y la suite pasa, porque los tests usan dobles in-memory y **nunca**
+  tocan la base. El síntoma aparece sólo en producción: la tabla no existe y cada query sobre ella
+  responde 500 (pasó con `notifications`).
+- **Nunca** en el runtime de la función.
 - **`prisma migrate reset` nunca es la respuesta** sobre la base compartida de Supabase: la vacía y
   la recrea.
 - `prisma migrate diff --from-migrations` requiere además `datasource.shadowDatabaseUrl` en

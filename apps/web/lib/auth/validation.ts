@@ -1,9 +1,12 @@
 import {
+	type BaseIssue,
+	type BaseSchema,
 	check,
 	email,
-	type GenericSchema,
+	forward,
 	minLength,
 	object,
+	partialCheck,
 	pipe,
 	safeParse,
 	string,
@@ -13,10 +16,9 @@ export type LoginValues = { email: string; password: string };
 export type LoginErrors = { email?: string; password?: string };
 
 export type RegisterValues = {
-	name: string;
 	email: string;
-	companyName: string;
 	password: string;
+	confirmPassword: string;
 };
 export type RegisterErrors = Partial<Record<keyof RegisterValues, string>>;
 
@@ -28,24 +30,40 @@ const REQUIRED_EMAIL = "Ingresá tu correo electrónico.";
 const INVALID_EMAIL = "Ingresá un correo electrónico válido.";
 const REQUIRED_PASSWORD = "Ingresá tu contraseña.";
 const SHORT_PASSWORD = "Ingresá una contraseña de al menos 8 caracteres.";
+const CONFIRM_PASSWORD = "Las contraseñas no coinciden.";
+
+const PASSWORD_MIN_LENGTH = 8;
 
 /**
- * The emptiness test is a `check` on the trimmed value rather than a `trim()`
- * step, because trimming the password itself would change what gets sent: a
- * password may legitimately contain spaces. Length, on the other hand, is
- * measured on the raw value.
+ * The password rule, declared once so the login and register schemas cannot
+ * drift apart. The emptiness test is a `check` on the trimmed value rather
+ * than a `trim()` step, because trimming the password itself would change
+ * what gets sent: a password may legitimately contain spaces. Length, on the
+ * other hand, is measured on the raw value.
  */
+const passwordSchema = pipe(
+	string(),
+	check((value) => value.trim() !== "", REQUIRED_PASSWORD),
+	minLength(PASSWORD_MIN_LENGTH, SHORT_PASSWORD),
+);
+
+/**
+ * Whether a password already satisfies its own rule. It reads that rule from
+ * `passwordSchema` instead of restating it, so there is a single source of
+ * truth: the confirmation check uses it to stay quiet while the password is
+ * still failing, so a short password is reported as short, not as a mismatch.
+ */
+function isPasswordValid(value: string): boolean {
+	return safeParse(passwordSchema, value).success;
+}
+
 const loginSchema = object({
 	email: pipe(
 		string(),
 		check((value) => value.trim() !== "", REQUIRED_EMAIL),
 		email(INVALID_EMAIL),
 	),
-	password: pipe(
-		string(),
-		check((value) => value.trim() !== "", REQUIRED_PASSWORD),
-		minLength(8, SHORT_PASSWORD),
-	),
+	password: passwordSchema,
 });
 
 /**
@@ -60,39 +78,37 @@ export function validateLogin(values: LoginValues): LoginErrors {
 }
 
 /**
- * Register form messages, with the same contract as the login ones: the form
- * renders them as-is.
+ * `POST /auth/register` takes only email and password, so those are the only
+ * fields validated here, plus the confirmation, which never leaves the client.
+ * The password floor matches the API's own rule, so the client never lets
+ * through something the server rejects. If the form later asks for name and
+ * company (see MI-44), they get added here along with their messages.
  */
-const REQUIRED_NAME = "Ingresá tu nombre y apellido.";
-const REQUIRED_COMPANY = "Ingresá el nombre de tu empresa.";
-
-/**
- * The register form asks for more than the API accepts today: `POST /auth/register`
- * takes only email and password. Name and company are validated anyway because the
- * form needs them and the company is created by the bootstrap MI-44 owns; a field
- * that looks required should behave as required. The password floor matches the
- * API's own rule, so the client never lets through something the server rejects.
- */
-const registerSchema = object({
-	name: pipe(
-		string(),
-		check((value) => value.trim() !== "", REQUIRED_NAME),
+const registerSchema = pipe(
+	object({
+		email: pipe(
+			string(),
+			check((value) => value.trim() !== "", REQUIRED_EMAIL),
+			email(INVALID_EMAIL),
+		),
+		password: passwordSchema,
+		// The confirmation is a client-side check only: `POST /auth/register`
+		// never receives it. Being blank counts as "does not match", so it has a
+		// single message instead of repeating the password's required one.
+		confirmPassword: string(),
+	}),
+	forward(
+		partialCheck(
+			[["password"], ["confirmPassword"]],
+			(input) =>
+				input.confirmPassword.trim() !== "" &&
+				(input.password === input.confirmPassword ||
+					!isPasswordValid(input.password)),
+			CONFIRM_PASSWORD,
+		),
+		["confirmPassword"],
 	),
-	email: pipe(
-		string(),
-		check((value) => value.trim() !== "", REQUIRED_EMAIL),
-		email(INVALID_EMAIL),
-	),
-	companyName: pipe(
-		string(),
-		check((value) => value.trim() !== "", REQUIRED_COMPANY),
-	),
-	password: pipe(
-		string(),
-		check((value) => value.trim() !== "", REQUIRED_PASSWORD),
-		minLength(8, SHORT_PASSWORD),
-	),
-});
+);
 
 /**
  * Validates the register form and returns the messages per field, in the same
@@ -107,7 +123,7 @@ export function validateRegister(values: RegisterValues): RegisterErrors {
  * of the checks in each schema decides which one a person sees.
  */
 function validate(
-	schema: GenericSchema<Record<string, unknown>>,
+	schema: BaseSchema<unknown, unknown, BaseIssue<unknown>>,
 	values: Record<string, unknown>,
 ): Record<string, string> {
 	const result = safeParse(schema, values);

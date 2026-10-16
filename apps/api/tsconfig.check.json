@@ -1,0 +1,16 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		// The build config restricts `types` to node, which is right for `src`
+		// and wrong for the suites: without this, every `describe`/`it`/`expect`
+		// and `jest.fn()` in `tests/` would be an unresolved name.
+		"types": ["node", "jest"],
+		// `rootDir` is `./src` so the build emits a clean `dist/`; the suites
+		// live outside it. Since this config never emits, widening the root is
+		// enough and keeps the build layout untouched.
+		"rootDir": ".",
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "tests/**/*.ts", "prisma.config.ts"],
+	"exclude": ["node_modules", "dist"]
+}

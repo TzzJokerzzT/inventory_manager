@@ -1,3 +1,13 @@
+// TODO(migrations): nothing applies migrations to the deployed database. CI runs
+// `db:deploy` against an ephemeral Postgres only (see .github/workflows/ci.yml),
+// and the API's build is just `tsc`, so a new model declared here reaches
+// production as a missing table: the Prisma client knows it, the suites pass
+// (they use in-memory doubles), and every query on it answers 500. Until a
+// deploy step runs `prisma migrate deploy` (see docs/stack.md §3.3), applying a
+// migration is a manual, required step:
+//
+//   cd apps/api && bun run db:deploy
+
 generator client {
 	provider = "prisma-client"
 	output   = "../src/infrastructure/database/generated/prisma"
@@ -61,6 +71,7 @@ model User {
 	memberships        Membership[]    @relation("MembershipUser")
 	invitedMemberships Membership[]    @relation("InvitedBy")
 	movements          StockMovement[]
+	notifications      Notification[]
 
 	@@map("users")
 }
@@ -147,6 +158,28 @@ model Customer {
 
 	@@index([companyId, deletedAt])
 	@@map("customers")
+}
+
+// A notification is an *event* ("X accepted your invitation"), deliberately
+// separate from `memberships`, which is *state* (a pending/active/revoked
+// relation). `dedupe_key` carries the UNIQUE index that makes the write
+// idempotent: a replayed accept must never record the event twice. `read_at`
+// stays nullable, and NULL means unread. Rows are never hard-deleted by a
+// scheduled job: the only deletion is the opportunistic 90-day purge the
+// adapter runs when it writes a new notification.
+model Notification {
+	id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+	userId    String    @map("user_id") @db.Uuid
+	type      String
+	payload   Json      @default("{}")
+	dedupeKey String    @unique @map("dedupe_key")
+	readAt    DateTime? @map("read_at") @db.Timestamptz(3)
+	createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+	user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+	@@index([userId, createdAt(sort: Desc)])
+	@@map("notifications")
 }
 
 model StockMovement {

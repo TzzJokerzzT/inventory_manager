@@ -91,4 +91,19 @@ export class PrismaCompanyRepository implements CompanyRepository {
 			Company.create({ id: row.id, name: row.name, createdAt: row.createdAt }),
 		);
 	}
+
+	async findByIds(ids: string[]): Promise<Company[]> {
+		// The guard keeps an empty read from turning into a query with `in: []`.
+		if (ids.length === 0) {
+			return [];
+		}
+
+		const rows = await this.prisma.company.findMany({
+			where: { id: { in: ids } },
+		});
+
+		return rows.map((row) =>
+			Company.create({ id: row.id, name: row.name, createdAt: row.createdAt }),
+		);
+	}
 }

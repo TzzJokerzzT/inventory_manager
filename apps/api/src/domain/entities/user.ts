@@ -4,12 +4,14 @@ export interface UserProps {
 	id: string;
 	auth0Sub: string;
 	email: string;
+	fullName: string | null;
 	createdAt: Date;
 }
 
 export interface CreateUserProps {
 	auth0Sub: string;
 	email: string;
+	fullName?: string | null;
 	id?: string;
 	createdAt?: Date;
 }
@@ -25,9 +27,35 @@ export interface CreateUserProps {
  * database enforces `email = lower(email)` with a CHECK, so an entity that
  * lowercases on construction makes it impossible to hand a non-lowercase
  * email to any adapter that persists it.
+ *
+ * The `fullName` normalisation (`null`, `""` and whitespace-only all mean "no
+ * name") lives here for the same reason: it is a representation invariant, so
+ * every adapter that writes a name -- the Prisma one and the test double --
+ * routes through {@link User.normalizeFullName} instead of re-implementing the
+ * rule and drifting. The HTTP layer deliberately does NOT own it: there `""`
+ * is a valid "clear the name" input, not a validation failure.
  */
 export class User {
 	private constructor(private readonly props: UserProps) {}
+
+	/**
+	 * The single normalisation point for a display name: surrounding whitespace
+	 * is dropped and an empty or whitespace-only value collapses to `null`
+	 * ("no name set"), so the three equivalent inputs cannot produce two
+	 * different stored values.
+	 *
+	 * A length cap is deliberately absent: `maxLength(120)` is an input rule
+	 * owned by the HTTP validator and answered with 400. Enforcing it here would
+	 * surface as a 422 from the domain error path instead of the contract's 400.
+	 */
+	static normalizeFullName(value: string | null): string | null {
+		if (value === null) {
+			return null;
+		}
+
+		const trimmed = value.trim();
+		return trimmed.length === 0 ? null : trimmed;
+	}
 
 	static create(input: CreateUserProps): User {
 		const auth0Sub = input.auth0Sub.trim();
@@ -47,6 +75,7 @@ export class User {
 			id: input.id ?? globalThis.crypto.randomUUID(),
 			auth0Sub,
 			email,
+			fullName: User.normalizeFullName(input.fullName ?? null),
 			createdAt: input.createdAt ?? new Date(),
 		});
 	}
@@ -63,15 +92,26 @@ export class User {
 		return this.props.email;
 	}
 
+	get fullName(): string | null {
+		return this.props.fullName;
+	}
+
 	get createdAt(): Date {
 		return this.props.createdAt;
 	}
 
-	toJSON(): { id: string; auth0Sub: string; email: string; createdAt: string } {
+	toJSON(): {
+		id: string;
+		auth0Sub: string;
+		email: string;
+		fullName: string | null;
+		createdAt: string;
+	} {
 		return {
 			id: this.id,
 			auth0Sub: this.auth0Sub,
 			email: this.email,
+			fullName: this.fullName,
 			createdAt: this.createdAt.toISOString(),
 		};
 	}

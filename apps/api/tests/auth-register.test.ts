@@ -11,13 +11,8 @@ import { ListCompaniesUseCase } from "../src/application/use-cases/list-companie
 import { LoginWithCredentialsUseCase } from "../src/application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "../src/application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "../src/application/use-cases/register-user.js";
-import { User } from "../src/domain/entities/user.js";
 import { IdentityProviderUnavailableError } from "../src/domain/errors/identity-provider-unavailable-error.js";
 import { SignUpRejectedError } from "../src/domain/errors/sign-up-rejected-error.js";
-import type {
-	UserIdentity,
-	UserRepository,
-} from "../src/domain/repositories/user-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import {
@@ -25,6 +20,7 @@ import {
 	REFRESH_TOKEN_MAX_AGE_MS,
 } from "../src/interfaces/http/controllers/auth-controller.js";
 import { AUTH_REGISTER_RATE_LIMIT } from "../src/interfaces/http/middlewares/rate-limit.js";
+import { createFakeUserRepository } from "./support/fake-user-repository.js";
 
 const EMAIL = "someone@example.com";
 const PASSWORD = "SUPERSECRET-PASSWORD-123";
@@ -64,16 +60,6 @@ class FakeIdentityProvider implements IdentityProvider {
 	}
 }
 
-class FakeUserRepository implements UserRepository {
-	async upsertFromIdentity(identity: UserIdentity): Promise<User> {
-		return User.create(identity);
-	}
-
-	async findByAuth0Sub(_auth0Sub: string): Promise<User | null> {
-		return null;
-	}
-}
-
 const passthroughAuth: RequestHandler = (_request, _response, next) => {
 	next();
 };
@@ -88,7 +74,7 @@ const defaultCookieOptions: AuthCookieOptions = {
 
 function createTestApp(provider: IdentityProvider) {
 	const companyRepository = new InMemoryCompanyRepository();
-	const userRepository = new FakeUserRepository();
+	const userRepository = createFakeUserRepository();
 
 	return buildApp({
 		createCompany: new CreateCompanyUseCase({ companyRepository }),
@@ -102,6 +88,20 @@ function createTestApp(provider: IdentityProvider) {
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
 		requireCompanyContext: passthroughAuth,
+		// The register slice never reaches these; the explicit `{} as never`
+		// records that the wiring is intentionally inert rather than forgotten.
+		acceptInvitations: {} as never,
+		changeMemberRole: {} as never,
+		getCurrentUser: {} as never,
+		inviteMember: {} as never,
+		leaveCompany: {} as never,
+		listMembers: {} as never,
+		listNotifications: {} as never,
+		listPendingInvitations: {} as never,
+		markNotificationsRead: {} as never,
+		mediaUploadSigner: {} as never,
+		revokeMember: {} as never,
+		updateUserFullName: {} as never,
 		authCookieOptions: defaultCookieOptions,
 		corsOrigin: "http://localhost:3000",
 	});

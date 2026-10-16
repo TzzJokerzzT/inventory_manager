@@ -20,6 +20,15 @@ type Sign = (
 	apiSecret: string,
 ) => string;
 
+/**
+ * `@types/jest` declares the sign function's argument tuple as a second type
+ * parameter, so the one-argument `jest.fn<Sign>()` from `@jest/globals` is not
+ * an accepted overload here. This keeps the mock typed to `Sign`.
+ */
+function fakeSign() {
+	return jest.fn<ReturnType<Sign>, Parameters<Sign>>();
+}
+
 function buildSigner(sign: Sign): MediaUploadSigner {
 	return new CloudinaryUploadSigner({
 		...CONFIG,
@@ -30,7 +39,7 @@ function buildSigner(sign: Sign): MediaUploadSigner {
 
 describe("CloudinaryUploadSigner", () => {
 	it("signs the server-decided parameters and never the caller's inputs", () => {
-		const sign = jest.fn<Sign>().mockReturnValue("fixed-signature");
+		const sign = fakeSign().mockReturnValue("fixed-signature");
 		const signer = buildSigner(sign);
 
 		signer.createUploadSignature({ companyId: COMPANY_ID });
@@ -47,7 +56,7 @@ describe("CloudinaryUploadSigner", () => {
 	});
 
 	it("returns every parameter the browser needs to upload directly", () => {
-		const sign = jest.fn<Sign>().mockReturnValue("fixed-signature");
+		const sign = fakeSign().mockReturnValue("fixed-signature");
 		const signer = buildSigner(sign);
 
 		const result = signer.createUploadSignature({ companyId: COMPANY_ID });
@@ -64,7 +73,7 @@ describe("CloudinaryUploadSigner", () => {
 	});
 
 	it("derives the folder from the company id, which is the only caller input", () => {
-		const sign = jest.fn<Sign>().mockReturnValue("fixed-signature");
+		const sign = fakeSign().mockReturnValue("fixed-signature");
 		const signer = buildSigner(sign);
 
 		const result = signer.createUploadSignature({
@@ -79,9 +88,7 @@ describe("CloudinaryUploadSigner", () => {
 	});
 
 	it("keeps the allowed formats and the size limit server-side constants", () => {
-		const signer = buildSigner(
-			jest.fn<Sign>().mockReturnValue("fixed-signature"),
-		);
+		const signer = buildSigner(fakeSign().mockReturnValue("fixed-signature"));
 
 		const result = signer.createUploadSignature({ companyId: COMPANY_ID });
 
@@ -92,7 +99,7 @@ describe("CloudinaryUploadSigner", () => {
 	});
 
 	it("returns a copy of the allowed formats, so a caller cannot widen later signatures", () => {
-		const sign = jest.fn<Sign>().mockReturnValue("fixed-signature");
+		const sign = fakeSign().mockReturnValue("fixed-signature");
 		const signer = buildSigner(sign);
 
 		const first = signer.createUploadSignature({ companyId: COMPANY_ID });

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
+import { QueryProvider } from "@/src/providers/query-provider";
 import { useCreateCompany } from "../api/use-create-company";
 import { NoCompaniesState } from "../components/no-companies-state";
 
@@ -29,6 +30,15 @@ function fillName(value: string) {
 	});
 }
 
+/**
+ * The card now also hosts the accept-invitation action, whose mutation needs a
+ * query client even though it never fires on render. `useCreateCompany` stays
+ * mocked from `../api/use-create-company`, so no request leaves the test.
+ */
+function renderState() {
+	return render(<NoCompaniesState />, { wrapper: QueryProvider });
+}
+
 describe("NoCompaniesState", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -36,7 +46,7 @@ describe("NoCompaniesState", () => {
 	});
 
 	it("shows the bootstrap option and the assignment alternative", () => {
-		render(<NoCompaniesState />);
+		renderState();
 
 		expect(
 			screen.getByRole("heading", {
@@ -50,10 +60,13 @@ describe("NoCompaniesState", () => {
 		expect(
 			screen.getByText("Si alguien te asigna a una empresa, la vas a ver acá."),
 		).toBeTruthy();
+		expect(
+			screen.getByRole("button", { name: "Aceptar invitación pendiente" }),
+		).toBeTruthy();
 	});
 
 	it("sends the trimmed company name when submitted", () => {
-		render(<NoCompaniesState />);
+		renderState();
 		fillName("  Mi Empresa  ");
 
 		fireEvent.click(screen.getByRole("button", { name: "Crear mi empresa" }));
@@ -62,7 +75,7 @@ describe("NoCompaniesState", () => {
 	});
 
 	it("keeps the submit blocked while the name is empty", () => {
-		render(<NoCompaniesState />);
+		renderState();
 
 		expect(
 			screen.getByRole("button", { name: "Crear mi empresa" }),
@@ -75,14 +88,14 @@ describe("NoCompaniesState", () => {
 			isError: true,
 			error: new ApiError("Ese nombre ya está en uso", 409),
 		});
-		render(<NoCompaniesState />);
+		renderState();
 
 		expect(screen.getByText("Ese nombre ya está en uso")).toBeTruthy();
 	});
 
 	it("shows a busy state and blocks the field while in flight", () => {
 		mockCreate({ isPending: true });
-		render(<NoCompaniesState />);
+		renderState();
 
 		expect(screen.getByRole("button", { name: "Creando..." })).toBeTruthy();
 		expect(screen.getByLabelText("Nombre de la empresa")).toHaveProperty(

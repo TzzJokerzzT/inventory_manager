@@ -11,13 +11,9 @@ import { ListCompaniesUseCase } from "../src/application/use-cases/list-companie
 import { LoginWithCredentialsUseCase } from "../src/application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "../src/application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "../src/application/use-cases/register-user.js";
-import { User } from "../src/domain/entities/user.js";
 import { IdentityProviderUnavailableError } from "../src/domain/errors/identity-provider-unavailable-error.js";
 import { InvalidCredentialsError } from "../src/domain/errors/invalid-credentials-error.js";
-import type {
-	UserIdentity,
-	UserRepository,
-} from "../src/domain/repositories/user-repository.js";
+import type { UserRepository } from "../src/domain/repositories/user-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import {
@@ -26,6 +22,8 @@ import {
 	REFRESH_TOKEN_MAX_AGE_MS,
 } from "../src/interfaces/http/controllers/auth-controller.js";
 import { AUTH_LOGIN_RATE_LIMIT } from "../src/interfaces/http/middlewares/rate-limit.js";
+import { createFakeUserRepository } from "./support/fake-user-repository.js";
+import { responseCookies } from "./support/response-cookies.js";
 
 const EMAIL = "someone@example.com";
 const PASSWORD = "SUPERSECRET-PASSWORD-123";
@@ -87,24 +85,6 @@ class FakeIdentityProvider implements IdentityProvider {
 	}
 }
 
-/**
- * Records what the login use case asked to persist, so the gate tests can
- * assert both the values (from `/userinfo`, not the login input) and the
- * absence of a call when the email is unverified.
- */
-class FakeUserRepository implements UserRepository {
-	upsertCalls: UserIdentity[] = [];
-
-	async upsertFromIdentity(identity: UserIdentity): Promise<User> {
-		this.upsertCalls.push(identity);
-		return User.create(identity);
-	}
-
-	async findByAuth0Sub(_auth0Sub: string): Promise<User | null> {
-		return null;
-	}
-}
-
 function providerThrowing(error: Error): FakeIdentityProvider {
 	const provider = new FakeIdentityProvider();
 	provider.result = error;
@@ -130,7 +110,7 @@ function createTestApp(options: {
 	cookieOptions?: Partial<AuthCookieOptions>;
 }) {
 	const companyRepository = new InMemoryCompanyRepository();
-	const userRepository = options.userRepository ?? new FakeUserRepository();
+	const userRepository = options.userRepository ?? createFakeUserRepository();
 
 	return buildApp({
 		createCompany: new CreateCompanyUseCase({ companyRepository }),
@@ -148,6 +128,20 @@ function createTestApp(options: {
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
 		requireCompanyContext: passthroughAuth,
+		// The auth slices never reach these; the explicit `{} as never` records
+		// that the wiring is intentionally inert rather than forgotten.
+		acceptInvitations: {} as never,
+		changeMemberRole: {} as never,
+		getCurrentUser: {} as never,
+		inviteMember: {} as never,
+		leaveCompany: {} as never,
+		listMembers: {} as never,
+		listNotifications: {} as never,
+		listPendingInvitations: {} as never,
+		markNotificationsRead: {} as never,
+		mediaUploadSigner: {} as never,
+		revokeMember: {} as never,
+		updateUserFullName: {} as never,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: TEST_WEB_ORIGIN,
 	});
@@ -193,7 +187,7 @@ describe("LoginWithCredentialsUseCase", () => {
 		const provider = new FakeIdentityProvider();
 		const useCase = new LoginWithCredentialsUseCase({
 			identityProvider: provider,
-			userRepository: new FakeUserRepository(),
+			userRepository: createFakeUserRepository(),
 		});
 
 		await useCase.execute({
@@ -221,10 +215,10 @@ describe("POST /auth/login", () => {
 			expiresIn: EXPIRES_IN,
 		});
 
-		const cookies = response.headers["set-cookie"] as string[] | undefined;
+		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
 		expect(cookies).toHaveLength(1);
-		const cookie = cookies[0];
+		const cookie = cookies?.[0];
 		expect(cookie).toContain("HttpOnly");
 		expect(cookie).toContain("Path=/auth");
 		expect(cookie).toContain(`${REFRESH_TOKEN_COOKIE_NAME}=${REFRESH_TOKEN}`);
@@ -243,9 +237,9 @@ describe("POST /auth/login", () => {
 			.send({ email: EMAIL, password: PASSWORD });
 
 		expect(response.status).toBe(200);
-		const cookies = response.headers["set-cookie"] as string[] | undefined;
+		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
-		expect(cookies[0]).toContain("Secure");
+		expect(cookies?.[0]).toContain("Secure");
 	});
 
 	it("returns 401 for invalid credentials", async () => {
@@ -377,7 +371,7 @@ describe("POST /auth/login email_verified gate", () => {
 			email: IDENTITY_EMAIL,
 			emailVerified: false,
 		};
-		const userRepository = new FakeUserRepository();
+		const userRepository = createFakeUserRepository();
 
 		const response = await request(createTestApp({ provider, userRepository }))
 			.post("/auth/login")
@@ -395,7 +389,7 @@ describe("POST /auth/login email_verified gate", () => {
 
 	it("upserts the row from the /userinfo identity and returns tokens for a verified email", async () => {
 		const provider = new FakeIdentityProvider();
-		const userRepository = new FakeUserRepository();
+		const userRepository = createFakeUserRepository();
 
 		const response = await request(createTestApp({ provider, userRepository }))
 			.post("/auth/login")
@@ -419,9 +413,9 @@ describe("POST /auth/login email_verified gate", () => {
 			email: IDENTITY_EMAIL,
 		});
 
-		const cookies = response.headers["set-cookie"] as string[] | undefined;
+		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
-		expect(cookies[0]).toContain(
+		expect(cookies?.[0]).toContain(
 			`${REFRESH_TOKEN_COOKIE_NAME}=${REFRESH_TOKEN}`,
 		);
 	});
@@ -429,7 +423,7 @@ describe("POST /auth/login email_verified gate", () => {
 	it("returns 503 when /userinfo fails after a successful credential exchange", async () => {
 		const provider = new FakeIdentityProvider();
 		provider.identity = new IdentityProviderUnavailableError();
-		const userRepository = new FakeUserRepository();
+		const userRepository = createFakeUserRepository();
 
 		const response = await request(createTestApp({ provider, userRepository }))
 			.post("/auth/login")

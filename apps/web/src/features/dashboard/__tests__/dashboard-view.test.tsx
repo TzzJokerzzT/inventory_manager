@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { useCompanies } from "@/src/features/company/api/use-companies";
 import { useCompanyStore } from "@/src/features/company/store/company-store";
-import { Dashboard } from "../components/dashboard";
-import { dashboardKpis, stockTableRows } from "../mock";
+import { dashboardKpis, stockTableRows } from "@/src/utils/mockData";
+import { Dashboard } from "../components/Dashboard";
 
 jest.mock("@/src/features/company/api/use-companies", () => ({
 	useCompanies: jest.fn(),
@@ -74,6 +74,8 @@ describe("DashboardView", () => {
 	it("shows the real active company from the mocked query", () => {
 		render(<Dashboard />);
 
-		expect(screen.getByText("Primera")).toBeTruthy();
+		// La empresa activa es el dato real del encabezado; el mock solo cubre
+		// KPIs, alertas y tabla, así que el nombre viene de la query mockeada.
+		expect(screen.getByText("Empresa activa: Primera")).toBeTruthy();
 	});
 });

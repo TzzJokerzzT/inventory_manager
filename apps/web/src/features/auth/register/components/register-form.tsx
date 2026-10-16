@@ -19,22 +19,29 @@ import { FALLBACK_ERROR } from "../utils/constants";
 
 export function RegisterForm() {
 	const [values, setValues] = useState<RegisterValues>({
-		name: "",
 		email: "",
-		companyName: "",
 		password: "",
+		confirmPassword: "",
 	});
-	const [errors, setErrors] = useState<RegisterErrors>({});
+	const [touched, setTouched] = useState<
+		Partial<Record<keyof RegisterValues, boolean>>
+	>({});
 	// Errors only show after a submit attempt, so nothing appears while the
 	// person is still filling the form for the first time.
 	const [attempted, setAttempted] = useState(false);
-	const nameRef = useRef<HTMLInputElement>(null);
 	const emailRef = useRef<HTMLInputElement>(null);
-	const companyRef = useRef<HTMLInputElement>(null);
 	const passwordRef = useRef<HTMLInputElement>(null);
+	const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
 	const register = useRegister();
 	const { error, reset, mutate, isError, isPending, isSuccess } = register;
+	const allErrors = validateRegister(values);
+	const errors: RegisterErrors = {};
+	for (const field of Object.keys(allErrors) as (keyof RegisterValues)[]) {
+		if (attempted || touched[field]) {
+			errors[field] = allErrors[field];
+		}
+	}
 
 	const apiError =
 		error instanceof ApiError
@@ -55,32 +62,23 @@ export function RegisterForm() {
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		const nextErrors = validateRegister(values);
+		setAttempted(true);
 
-		if (Object.keys(nextErrors).length > 0) {
-			setErrors(nextErrors);
-			setAttempted(true);
-			focusFirstError(nextErrors);
+		// `allErrors` is derived on render from the same `values`, so validating
+		// again here would only repeat the work.
+		if (Object.keys(allErrors).length > 0) {
+			focusFirstError(allErrors);
 			return;
 		}
 
-		setErrors({});
-		setAttempted(true);
-
-		// Only what the API accepts today. The name and the company stay in the
-		// form because the design asks for them, and the company is created by
-		// the bootstrap MI-44 owns: until that exists, they are not sent
-		// anywhere, and that is a known gap rather than an oversight.
 		mutate(
 			{ email: values.email.trim(), password: values.password },
 			{
 				onSuccess: () => {
-					setValues({
-						name: "",
-						email: "",
-						companyName: "",
-						password: "",
-					});
+					setValues({ email: "", password: "", confirmPassword: "" });
+					// Sin esto, al vaciar los campos aparecerían todos los errores.
+					setAttempted(false);
+					setTouched({});
 				},
 			},
 		);
@@ -88,13 +86,12 @@ export function RegisterForm() {
 
 	function focusFirstError(nextErrors: RegisterErrors) {
 		const refs = {
-			name: nameRef,
 			email: emailRef,
-			companyName: companyRef,
 			password: passwordRef,
+			confirmPassword: confirmPasswordRef,
 		} as const;
 
-		for (const field of ["name", "email", "companyName", "password"] as const) {
+		for (const field of ["email", "password", "confirmPassword"] as const) {
 			if (nextErrors[field]) {
 				refs[field].current?.focus();
 				return;
@@ -103,11 +100,11 @@ export function RegisterForm() {
 	}
 
 	function handleChange(field: keyof RegisterValues, value: string) {
-		const nextValues = { ...values, [field]: value };
-		setValues(nextValues);
-		if (attempted) {
-			setErrors(validateRegister(nextValues));
-		}
+		setValues((prev) => ({ ...prev, [field]: value }));
+	}
+
+	function handleBlur(field: keyof RegisterValues) {
+		setTouched((prev) => ({ ...prev, [field]: true }));
 	}
 
 	return (
@@ -130,18 +127,6 @@ export function RegisterForm() {
 
 				<div className="flex flex-col gap-4">
 					<TextField
-						ref={nameRef}
-						label="Nombre y apellido"
-						type="text"
-						name="name"
-						placeholder="Carlos Mario Garcia Cabellero"
-						autoComplete="name"
-						value={values.name}
-						onChange={(event) => handleChange("name", event.target.value)}
-						error={errors.name}
-						disabled={isPending}
-					/>
-					<TextField
 						ref={emailRef}
 						label="Correo electrónico"
 						type="email"
@@ -150,22 +135,10 @@ export function RegisterForm() {
 						autoComplete="email"
 						value={values.email}
 						onChange={(event) => handleChange("email", event.target.value)}
+						onBlur={() => handleBlur("email")}
 						error={errors.email}
 						disabled={isPending}
-					/>
-					<TextField
-						ref={companyRef}
-						label="Nombre de la empresa"
-						type="text"
-						name="companyName"
-						placeholder="Empresa comercializadora S.A.S"
-						autoComplete="organization"
-						value={values.companyName}
-						onChange={(event) =>
-							handleChange("companyName", event.target.value)
-						}
-						error={errors.companyName}
-						disabled={isPending}
+						required
 					/>
 					<TextField
 						ref={passwordRef}
@@ -179,8 +152,26 @@ export function RegisterForm() {
 						minLength={8}
 						value={values.password}
 						onChange={(event) => handleChange("password", event.target.value)}
+						onBlur={() => handleBlur("password")}
 						error={errors.password}
 						disabled={isPending}
+						required
+					/>
+					<TextField
+						ref={confirmPasswordRef}
+						label="Confirme la contraseña"
+						type="password"
+						name="confirmPassword"
+						placeholder="*************"
+						autoComplete="new-password"
+						value={values.confirmPassword}
+						onChange={(event) =>
+							handleChange("confirmPassword", event.target.value)
+						}
+						onBlur={() => handleBlur("confirmPassword")}
+						error={errors.confirmPassword}
+						disabled={isPending}
+						required
 					/>
 				</div>
 

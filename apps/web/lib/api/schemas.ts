@@ -1,4 +1,12 @@
-import { array, number, object, safeParse, string } from "valibot";
+import {
+	array,
+	nullable,
+	number,
+	object,
+	picklist,
+	safeParse,
+	string,
+} from "valibot";
 import { ApiError } from "./client";
 import type { components } from "./openapi";
 
@@ -77,6 +85,227 @@ export function parseCompaniesResponse(data: unknown): CompaniesResponse {
  */
 export function parseCompany(data: unknown): Company {
 	const result = safeParse(companySchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One membership exactly as `GET`/`PATCH /me` serialize it: the company the
+ * caller belongs to plus the role they hold in it.
+ */
+export const meMembershipSchema = object({
+	companyId: string(),
+	// A closed list, not a free string: the UI decides what to offer from the
+	// role, so an unknown role has to fail here instead of reaching a view.
+	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
+	company: companySchema,
+});
+
+/** One membership with its company, derived from the OpenAPI contract. */
+export type MeMembership = components["schemas"]["MeMembership"];
+
+/**
+ * Shape of the caller's own identity as `GET`/`PATCH /me` serialize it:
+ * `{ id, email, fullName, createdAt, memberships }`, with `fullName` nullable
+ * because a user created by Auth0 starts without a display name.
+ */
+export const meResponseSchema = object({
+	id: string(),
+	email: string(),
+	fullName: nullable(string()),
+	createdAt: string(),
+	memberships: array(meMembershipSchema),
+});
+
+/** `GET /me` and `PATCH /me` response, derived from the OpenAPI contract. */
+export type MeResponse = components["schemas"]["MeResponse"];
+
+/**
+ * Validates the `/me` response at the boundary.
+ *
+ * Same contract as {@link parseLoginResponse}: a shape change fails as an
+ * {@link ApiError} with a readable message, and the identity section feeds the
+ * `fullName` gate that decides between the profile form and the company card.
+ */
+export function parseMeResponse(data: unknown): MeResponse {
+	const result = safeParse(meResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One membership exactly as the memberships endpoints serialize it.
+ *
+ * `userId` and `acceptedAt` are nullable because an unaccepted invitation has
+ * no user yet; `role` and `status` are closed lists, not free strings, so an
+ * unknown value fails here instead of reaching the permission selector (which
+ * decides what the UI offers from those two values).
+ */
+export const membershipSchema = object({
+	id: string(),
+	userId: nullable(string()),
+	invitedEmail: string(),
+	companyId: string(),
+	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
+	status: picklist(["INVITED", "ACTIVE", "REVOKED"]),
+	invitedBy: string(),
+	acceptedAt: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+});
+
+/** One membership of a company, derived from the OpenAPI contract. */
+export type Membership = components["schemas"]["Membership"];
+
+/**
+ * Shape of the endpoints that answer a list of memberships:
+ * `GET /companies/{companyId}/members` and `POST /me/invitations/accept`.
+ */
+export const membershipsResponseSchema = array(membershipSchema);
+
+/** A list of memberships, derived from the OpenAPI contract. */
+export type MembershipsResponse = components["schemas"]["Membership"][];
+
+/**
+ * Validates a membership list at the boundary (roster and accepted invitations).
+ *
+ * Same contract as {@link parseCompaniesResponse}: a backend that changes shape
+ * fails as an {@link ApiError} with a readable message instead of exploding
+ * inside the roster, and an unknown `role`/`status` never reaches the
+ * permission selector.
+ */
+export function parseMembershipsResponse(data: unknown): MembershipsResponse {
+	const result = safeParse(membershipsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single membership, for the endpoints that answer one (invite,
+ * role change and revoke).
+ *
+ * It exists so those responses go through the same boundary as the listed ones:
+ * a cast here would let a shape change reach the roster unnoticed.
+ */
+export function parseMembership(data: unknown): Membership {
+	const result = safeParse(membershipSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * A user as another member sees them — the inviter of a pending invitation or
+ * the actor of a notification event — exactly as the API serializes it:
+ * `{ id, fullName, email }`. One shape for both, matching the single
+ * `UserSummary` in the contract, so the two cannot drift. `fullName` is
+ * nullable because a user created by Auth0 starts without a display name; the
+ * email is then the identifier the UI falls back to.
+ */
+export const userSummarySchema = object({
+	id: string(),
+	fullName: nullable(string()),
+	email: string(),
+});
+
+/** One user summary, derived from the OpenAPI contract. */
+export type UserSummary = components["schemas"]["UserSummary"];
+
+/**
+ * One pending invitation exactly as the API serializes it: the membership, the
+ * role offered, when it was sent, the company and the inviter.
+ *
+ * `inviter` is nullable on purpose: a missing inviter must never hide the
+ * invitation, so the boundary accepts `null` and the section falls back to a
+ * neutral label instead of the parser rejecting the whole list.
+ */
+export const pendingInvitationSchema = object({
+	membershipId: string(),
+	companyId: string(),
+	role: picklist(["OWNER", "ADMIN", "MEMBER"]),
+	invitedAt: string(),
+	company: companySchema,
+	inviter: nullable(userSummarySchema),
+});
+
+/** One pending invitation, derived from the OpenAPI contract. */
+export type PendingInvitation = components["schemas"]["PendingInvitation"];
+
+/** Shape of `GET /me/invitations`: the caller's own pending invitations. */
+export const pendingInvitationsResponseSchema = array(pendingInvitationSchema);
+
+/** `GET /me/invitations` response, derived from the OpenAPI contract. */
+export type PendingInvitationsResponse =
+	components["schemas"]["PendingInvitation"][];
+
+/**
+ * Validates the pending invitations response at the boundary.
+ *
+ * Same contract as {@link parseCompaniesResponse}: a shape change fails as an
+ * {@link ApiError} with a readable message instead of exploding inside the
+ * profile section, and an unknown `role` never reaches the role label.
+ */
+export function parsePendingInvitations(
+	data: unknown,
+): PendingInvitationsResponse {
+	const result = safeParse(pendingInvitationsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One notification event exactly as `GET /me/notifications` serializes it:
+ * `{ id, type, createdAt, readAt, company, actor }`.
+ *
+ * `type` is a free string, not a picklist: the contract allows new event kinds
+ * later, and the UI degrades unknown ones to neutral copy instead of failing
+ * the whole list at the boundary. `readAt` is null while unread; `company` and
+ * `actor` are null when they could not be resolved — the actor is also absent
+ * on rows written before it was recorded — and a missing one never hides the
+ * event, because the event is the fact.
+ */
+export const meNotificationSchema = object({
+	id: string(),
+	type: string(),
+	createdAt: string(),
+	readAt: nullable(string()),
+	company: nullable(companySchema),
+	actor: nullable(userSummarySchema),
+});
+
+/** One notification event, derived from the OpenAPI contract. */
+export type MeNotification = components["schemas"]["MeNotification"];
+
+/** Shape of `GET /me/notifications`: the caller's own events, newest first. */
+export const notificationsResponseSchema = array(meNotificationSchema);
+
+/** `GET /me/notifications` response, derived from the OpenAPI contract. */
+export type NotificationsResponse = components["schemas"]["MeNotification"][];
+
+/**
+ * Validates the notifications response at the boundary.
+ *
+ * Same contract as {@link parsePendingInvitations}: a shape change fails as an
+ * {@link ApiError} with a readable message instead of exploding inside the
+ * profile section, and an unknown `type` is accepted on purpose so a new event
+ * kind reaches the UI instead of breaking the read.
+ */
+export function parseNotifications(data: unknown): NotificationsResponse {
+	const result = safeParse(notificationsResponseSchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

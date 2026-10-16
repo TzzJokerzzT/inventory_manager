@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import { Alert, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
+import { AcceptInvitationsAction } from "../../member/components/accept-invitations-action";
 import { useCreateCompany } from "../api/use-create-company";
 
 const FALLBACK_ERROR = "No pudimos crear tu empresa. Probá de nuevo.";
@@ -84,6 +85,8 @@ export function NoCompaniesState() {
 				<p className="text-sm text-text-muted">
 					Si alguien te asigna a una empresa, la vas a ver acá.
 				</p>
+
+				<AcceptInvitationsAction />
 			</section>
 		</main>
 	);

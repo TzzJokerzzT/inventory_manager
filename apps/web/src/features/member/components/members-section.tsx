@@ -1,6 +1,5 @@
 "use client";
 
-import { SpinnerMotion } from "@/components/ui/spinner";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { useMe } from "@/src/features/user/api/use-me";
 import { ErrorMessage } from "@/src/shared/components/ErrorMessage";
@@ -15,6 +14,7 @@ import {
 import { InviteMemberForm } from "./invite-member-form";
 import { LeaveCompanyAction } from "./leave-company-action";
 import { MemberRosterTable } from "./member-roster-table";
+import { MembersListSkeleton } from "./member-skeleton";
 
 /**
  * Company members section, mounted inside `/dashboard/user`.
@@ -65,9 +65,7 @@ export function MembersSection() {
 					Seleccioná una empresa para ver sus miembros.
 				</p>
 			) : members.isPending ? (
-				<div className="flex justify-center py-6">
-					<SpinnerMotion size={28} />
-				</div>
+				<MembersListSkeleton />
 			) : members.isError ? (
 				<ErrorMessage
 					message="No pudimos cargar los miembros de la empresa."

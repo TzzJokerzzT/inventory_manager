@@ -104,9 +104,9 @@ export function InviteMemberForm({
 					label="Rol"
 					name="inviteRole"
 					value={role}
-					onChange={(event) => {
-						if (isMemberRole(event.target.value)) {
-							setRole(event.target.value);
+					onValueChange={(value) => {
+						if (value && isMemberRole(value)) {
+							setRole(value);
 						}
 					}}
 					options={invitableRoles.map((value) => ({

@@ -1,8 +1,8 @@
 "use client";
 
 import type { PendingInvitation } from "@/lib/api/schemas";
-import { formatDate } from "@/src/features/dashboard/mock";
 import { ROLE_LABELS } from "@/src/utils/constants";
+import { formatDate } from "@/src/utils/mockData";
 import { usePendingInvitations } from "../api/use-pending-invitations";
 import { AcceptInvitationsAction } from "./accept-invitations-action";
 

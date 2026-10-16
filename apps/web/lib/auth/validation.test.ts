@@ -1,5 +1,4 @@
-import { describe, expect, it } from "bun:test";
-import { validateLogin } from "./validation";
+import { validateLogin, validateRegister } from "./validation";
 
 describe("validateLogin", () => {
 	it("requires both email and password", () => {
@@ -43,5 +42,53 @@ describe("validateLogin", () => {
 				password: "password123",
 			}),
 		).toEqual({});
+	});
+});
+
+describe("validateRegister", () => {
+	const valid = {
+		email: "ana@empresa.com",
+		password: "password123",
+		confirmPassword: "password123",
+	};
+
+	it("requires every field", () => {
+		expect(
+			validateRegister({ email: "", password: "", confirmPassword: "" }),
+		).toEqual({
+			email: "Ingresá tu correo electrónico.",
+			password: "Ingresá tu contraseña.",
+			confirmPassword: "Las contraseñas no coinciden.",
+		});
+	});
+
+	it("treats whitespace-only values as required", () => {
+		expect(
+			validateRegister({
+				email: "\t ",
+				password: "\t ",
+				confirmPassword: "\t ",
+			}),
+		).toEqual({
+			email: "Ingresá tu correo electrónico.",
+			password: "Ingresá tu contraseña.",
+			confirmPassword: "Las contraseñas no coinciden.",
+		});
+	});
+
+	it("rejects an invalid email", () => {
+		expect(validateRegister({ ...valid, email: "ana@empresa" })).toEqual({
+			email: "Ingresá un correo electrónico válido.",
+		});
+	});
+
+	it("rejects a password shorter than the API accepts", () => {
+		expect(validateRegister({ ...valid, password: "corta" })).toEqual({
+			password: "Ingresá una contraseña de al menos 8 caracteres.",
+		});
+	});
+
+	it("returns no errors for a fully valid form", () => {
+		expect(validateRegister(valid)).toEqual({});
 	});
 });

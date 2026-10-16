@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - production
+      - development
+
+permissions:
+  contents: read
+
+# One in-flight run per ref: a new push cancels the superseded run of the
+# same branch (or the same PR, whose ref is refs/pull/<n>/merge).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Disable husky hooks in CI: the verify job already runs lint, type check and
+# the test suite itself, so a hook here would only duplicate that work (and
+# could fire on a `git commit` inside a job).
+env:
+  HUSKY: "0"
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Biome CI (lint + format, read-only)
+        run: bunx biome ci .
+
+      - name: Type check
+        run: bun run check-types
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # Ephemeral, throwaway database: never the real Supabase project. The
+      # credentials below are non-secret placeholders for a container that
+      # only lives for the duration of this job, so the workflow needs no
+      # repository secrets and works on a fork.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Point both URLs at the container. The Prisma CLI (migrate) reads
+      # DIRECT_URL via apps/api/prisma.config.ts; DATABASE_URL is what the
+      # runtime client reads, set here for completeness.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The first migration runs `CREATE EXTENSION IF NOT EXISTS pg_trgm;`.
+      # The postgres:17 image ships contrib extensions (pg_trgm included), so
+      # a bare empty database can run the whole migration chain from scratch.
+      # This is the only way CI catches a broken migration: it applies every
+      # migration to a brand-new database, exactly as production does.
+      - name: Apply migrations from scratch
+        working-directory: apps/api
+        run: bun run db:deploy
+
+      - name: Report migration state
+        working-directory: apps/api
+        run: bun run db:status

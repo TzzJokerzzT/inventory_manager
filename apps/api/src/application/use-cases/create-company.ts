@@ -1,5 +1,8 @@
 import { Company } from "../../domain/entities/company.js";
-import type { CompanyRepository } from "../../domain/repositories/company-repository.js";
+import type {
+	CompanyOwner,
+	CompanyRepository,
+} from "../../domain/repositories/company-repository.js";
 
 export interface CreateCompanyInput {
 	name: string;
@@ -16,8 +19,11 @@ export class CreateCompanyUseCase {
 		this.companyRepository = dependencies.companyRepository;
 	}
 
-	async execute(input: CreateCompanyInput): Promise<Company> {
+	async execute(
+		input: CreateCompanyInput,
+		owner: CompanyOwner,
+	): Promise<Company> {
 		const company = Company.create({ name: input.name });
-		return this.companyRepository.create(company);
+		return this.companyRepository.createOwnedBy(company, owner);
 	}
 }

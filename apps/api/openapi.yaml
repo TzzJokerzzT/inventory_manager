@@ -1,0 +1,1323 @@
+openapi: 3.0.3
+info:
+  title: Inventory Manager API
+  version: 0.1.0
+  description: |
+    HTTP contract between the web client and the API.
+
+    The backend owns this document: it is the single source of truth for the
+    request and response shapes and for the error codes each route can
+    produce. A contract that only describes the happy path does not prevent
+    the duplication it exists to prevent, so the error responses below are
+    part of the contract, not decoration.
+
+servers:
+  - url: /
+
+tags:
+  - name: health
+  - name: auth
+  - name: companies
+  - name: me
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: The API is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange email and password for an access token
+      description: |
+        On success the refresh token is set in an httpOnly cookie and only the
+        access token (plus its lifetime) is returned in the body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Credentials accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: |
+            Invalid credentials. A wrong password and a non-existent account
+            are indistinguishable on purpose.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |
+            The credentials are correct but the email is not verified. The
+            machine-readable `code` is `email_not_verified`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/IdentityProviderUnavailable"
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new account
+      description: |
+        The response is identical whether the account was created or the
+        sign-up was rejected (for example a duplicate email): the API must not
+        reveal which one it was.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: |
+            Account created, or the sign-up was rejected without revealing
+            which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/IdentityProviderUnavailable"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange the refresh cookie for a fresh token pair
+      description: |
+        The refresh token is read from the httpOnly cookie, never from the
+        body. On success the cookie is rotated when the provider issues a new
+        refresh token.
+      responses:
+        "200":
+          description: Refresh token accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: |
+            The refresh cookie is missing or the provider rejected it. The
+            message is uniform so a missing cookie and an expired token are
+            indistinguishable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimitedStrict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          $ref: "#/components/responses/IdentityProviderUnavailable"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Clear the refresh-token cookie
+      description: |
+        Deliberately not behind authentication: an expired access token must
+        not block signing out. No provider revocation is performed.
+      responses:
+        "204":
+          description: The refresh cookie is cleared; no body is returned.
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies:
+    post:
+      tags: [companies]
+      summary: Create a company
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompanyRequest"
+      responses:
+        "201":
+          description: Company created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Company"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    get:
+      tags: [companies]
+      summary: List the caller's companies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The companies the caller belongs to.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Company"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/context:
+    get:
+      tags: [companies]
+      summary: Resolve the caller's membership context in a company
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The company and the caller's role in it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyContextResponse"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`). A non-existent company and a
+            non-member are answered identically so company ids cannot be
+            enumerated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/media/signature:
+    post:
+      tags: [companies]
+      summary: Sign upload parameters for a direct-to-storage upload
+      description: |
+        The request body is ignored: every upload parameter is decided by the
+        server from the company id, so the signed contract is always the
+        server's, never the caller's.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Signed upload parameters for the storage provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaUploadSignature"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`). A non-existent company and a
+            non-member are answered identically so company ids cannot be
+            enumerated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/members:
+    get:
+      tags: [companies]
+      summary: List the company's membership roster
+      description: |
+        Returns the company's memberships: `ACTIVE` and `INVITED` rows. A
+        `REVOKED` row is never returned -- it is not part of the roster any
+        more -- and an unaccepted invitation is, with its `INVITED` status, so
+        the UI can show it as pending.
+
+        The roster is scoped to the company the caller has context for, which
+        is how "only the users of your own companies" is enforced. Every role
+        may list (`view_users`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The company's memberships.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Membership"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: [companies]
+      summary: Invite a user to the company
+      description: |
+        Creates an INVITED membership for the given email. The user will not
+        have access to the company until they accept the invitation.
+
+        Authorization rules (enforced by the use case):
+        - MEMBER cannot invite anyone
+        - ADMIN can invite MEMBER or ADMIN
+        - OWNER can invite MEMBER, ADMIN, or OWNER
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`),
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`), or the caller's role cannot assign
+            the target role (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The email already has an ACTIVE or INVITED membership in the
+            company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/members/me:
+    delete:
+      tags: [companies]
+      summary: Leave the company
+      description: |
+        Revokes the caller's own membership, which is resolved from the
+        authenticated user: the request names no membership, so it can only
+        ever remove the caller's own access.
+
+        Leaving is `status = REVOKED`, never a delete: the row stays so the
+        historical stock movements remain readable.
+
+        Anyone may leave except the **last active OWNER**, because a company
+        with no active OWNER is an unrecoverable state. That refusal is a 409
+        (`last_active_owner`), not a 403: it is about what the company would
+        become.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The caller's revoked membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The caller's membership vanished between the context check and the
+            write; the `code` is `membership_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The caller is the last active OWNER; the `code` is
+            `last_active_owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/members/{membershipId}:
+    patch:
+      tags: [companies]
+      summary: Change a membership's role
+      description: |
+        Authorization, per `docs/stack.md` §5.8:
+        - removing the old role and assigning the new one each need the
+          matching row: `assign_member` (ADMIN/OWNER), `assign_admin` (OWNER),
+          `assign_owner` (OWNER). So an ADMIN can promote a MEMBER but cannot
+          demote another ADMIN, because removing ADMIN is an OWNER action.
+        - nobody changes their own role (`change_own_role`), which is what
+          kills self-escalation.
+        - the company must keep at least one active OWNER; otherwise the answer
+          is 409 `last_active_owner`.
+
+        Setting the role the membership already has is a no-op that answers
+        200 with the membership unchanged.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRoleRequest"
+      responses:
+        "200":
+          description: The updated membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          description: |
+            The company id or membership id is not a UUID, or the role is not
+            one of OWNER, ADMIN, MEMBER.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), the caller
+            cannot assign or remove that role, or the target is the caller's
+            own membership (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The membership does not belong to this company, or is REVOKED or
+            gone; the `code` is `membership_not_found`. A membership of another
+            company and a nonexistent one are answered identically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The change would leave the company without an active OWNER; the
+            `code` is `last_active_owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: [companies]
+      summary: Revoke a membership
+      description: |
+        Revoking is `status = REVOKED`, never a delete (§5.8), so the
+        historical movements stay readable.
+
+        Removing someone else's role needs the same permission as assigning it:
+        an ADMIN can revoke a MEMBER but not another ADMIN. Revoking the
+        caller's own membership is treated as leaving and follows the `leave`
+        row instead; `/members/me` is the explicit route for that.
+
+        The company must keep at least one active OWNER: revoking the last one
+        is 409 `last_active_owner`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "The revoked membership, with `status: REVOKED`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "400":
+          description: The company id or membership id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), or the
+            caller cannot remove that role (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The membership does not belong to this company, or is already
+            REVOKED; the `code` is `membership_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The revocation would leave the company without an active OWNER; the
+            `code` is `last_active_owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /me:
+    get:
+      tags: [me]
+      summary: Resolve the authenticated user and their memberships
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's public identity and each membership with its company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    patch:
+      tags: [me]
+      summary: Set or clear the authenticated user's display name
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMeRequest"
+      responses:
+        "200":
+          description: |
+            The caller's public identity (with the new `fullName`) and each
+            membership with its company. The representation is identical to
+            `GET /me` so the client can replace its state from either route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /me/invitations:
+    get:
+      tags: [me]
+      summary: List the caller's pending company invitations
+      description: |
+        Returns every membership addressed to the caller's own email and still
+        in the `INVITED` state, each with the company that invited them. It is
+        the read the web client needs to show a pending invitation instead of
+        calling the accept endpoint blindly.
+
+        The subject is the resolved user, so the request names no email and can
+        never read another account's invitations. The criterion is the same the
+        accept endpoint applies, so there is only one definition of "pending
+        invitation".
+
+        Having nothing pending is the normal case: the answer is an empty array
+        with a `200`, never a `404`. The `INVITED` status is pinned by the
+        query, so it is not repeated in the payload.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: |
+            The caller's pending invitations. Empty when there are none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PendingInvitation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /me/invitations/accept:
+    post:
+      tags: [me]
+      summary: Accept the caller's pending company invitations
+      description: |
+        Turns every membership addressed to the caller's own email and still in
+        the `INVITED` state into an `ACTIVE` one. The subject is the resolved
+        user, so the request carries no body and can never name another email.
+
+        It is idempotent: calling it again after everything is accepted returns
+        an empty array with the same `200`. Having nothing pending is the normal
+        case, not an error, which is why there is no `404`.
+
+        A membership that stopped being `INVITED` before the write (a
+        revocation, or a concurrent acceptance) is skipped rather than revived.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: |
+            The memberships that became ACTIVE. Empty when nothing was pending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Membership"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /me/notifications:
+    get:
+      tags: [me]
+      summary: List the caller's notifications
+      description: |
+        Returns the caller's notification events, newest first, each with the
+        company the event happened in (or `null` when it could not be
+        resolved). A notification is an event ("X accepted your invitation"),
+        not a pending invitation: the latter is state and is read from
+        `GET /me/invitations`.
+
+        The subject is the resolved user, so the request names no id and can
+        never read another account's notifications. No news is the normal
+        case: the answer is an empty array with a `200`, never a `404`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: |
+            The caller's notifications, newest first. Empty when there are
+            none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MeNotification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /me/notifications/read:
+    post:
+      tags: [me]
+      summary: Mark all the caller's notifications as read
+      description: |
+        Marks every unread notification of the caller as read. It is one
+        action for the whole list, so the UI needs a single button, and it is
+        idempotent: marking again changes nothing. The subject is the resolved
+        user, so a request can never mark another account's notifications.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: The caller's unread notifications were marked read.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user; the `code` is
+            `user_not_provisioned`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, uptime]
+      properties:
+        status:
+          type: string
+          example: ok
+        uptime:
+          type: number
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 256
+
+    TokenResponse:
+      type: object
+      required: [accessToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: number
+          description: Access-token lifetime in seconds.
+
+    RegisterResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    Company:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    CompanyContextResponse:
+      type: object
+      required: [company, role]
+      properties:
+        company:
+          $ref: "#/components/schemas/Company"
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+
+    MeMembership:
+      type: object
+      required: [companyId, role, company]
+      properties:
+        companyId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+        company:
+          $ref: "#/components/schemas/Company"
+
+    UserSummary:
+      type: object
+      required: [id, fullName, email]
+      description: |
+        A user as another member sees them: the inviter of a pending invitation
+        or the actor of a notification event. One shape for both, so they
+        cannot drift apart. `fullName` is nullable because a user created by
+        Auth0 starts without a display name; the email is then the identifier
+        the UI falls back to. It is deliberately minimal -- no roles, no
+        memberships -- so it stays context, not a second profile.
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+
+    PendingInvitation:
+      type: object
+      required: [membershipId, companyId, role, invitedAt, company, inviter]
+      description: |
+        A still-pending invitation. It carries no `status` because the read
+        pins the membership to `INVITED`; the field would repeat the query.
+      properties:
+        membershipId:
+          type: string
+          format: uuid
+          description: The membership id, useful as a stable key in the UI.
+        companyId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+        invitedAt:
+          type: string
+          format: date-time
+          description: |
+            When the invitation was created, i.e. the membership's
+            `createdAt`.
+        company:
+          $ref: "#/components/schemas/Company"
+        inviter:
+          description: |
+            Who sent the invitation, or `null` when their user row could not
+            be resolved. A missing inviter never hides the invitation: the
+            invitation is the fact, the inviter is context, and the UI falls
+            back to a neutral label.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+
+    MeNotification:
+      type: object
+      required: [id, type, createdAt, readAt, company, actor]
+      description: |
+        A notification event (e.g. an invitation was accepted). It is not a
+        pending invitation: that is state, read from `GET /me/invitations`.
+        `readAt` is null while unread. `company` is null when the event's
+        company could not be resolved and `actor` is null when the person who
+        triggered it could not be resolved (including rows written before the
+        actor was recorded); the event is the fact, the rest is context.
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: The event kind, e.g. `membership.accepted`.
+          example: membership.accepted
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        company:
+          description: |
+            The company the event happened in, or `null` when it could not be
+            resolved. A missing company never hides the notification.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Company"
+        actor:
+          description: |
+            Who triggered the event, or `null` when it could not be resolved.
+            A missing actor never hides the notification: the UI falls back to
+            a neutral label.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+
+    MeResponse:
+      type: object
+      required: [id, email, fullName, createdAt, memberships]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+        memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeMembership"
+
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: The role the membership will have after the change.
+
+    InviteMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+          description: The email of the user to invite. Will be lowercased before persistence.
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+          description: The role the user will have once they accept.
+
+    Membership:
+      type: object
+      required: [id, userId, invitedEmail, companyId, role, status, invitedBy, acceptedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null until the user accepts the invitation.
+        invitedEmail:
+          type: string
+          format: email
+          description: Lowercased email of the invited user.
+        companyId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [OWNER, ADMIN, MEMBER]
+        status:
+          type: string
+          enum: [INVITED, ACTIVE, REVOKED]
+        invitedBy:
+          type: string
+          format: uuid
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UpdateMeRequest:
+      type: object
+      required: [fullName]
+      properties:
+        fullName:
+          type: string
+          nullable: true
+          maxLength: 120
+          description: |
+            The new display name, or `null`/`""`/whitespace-only to clear it.
+            The server trims the value before applying the 120-character cap,
+            so send an already-trimmed value of at most 120 characters: this
+            schema's `maxLength` measures the raw string and is deliberately
+            stricter than the server. The body never carries a user id: the
+            subject is always the bearer token's user.
+
+    MediaUploadSignature:
+      type: object
+      required:
+        [cloudName, apiKey, timestamp, signature, folder, allowedFormats, maxFileSizeBytes]
+      properties:
+        cloudName:
+          type: string
+        apiKey:
+          type: string
+        timestamp:
+          type: integer
+        signature:
+          type: string
+        folder:
+          type: string
+        allowedFormats:
+          type: array
+          items:
+            type: string
+        maxFileSizeBytes:
+          type: integer
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+
+    ValidationError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, issues]
+          properties:
+            message:
+              type: string
+            issues:
+              type: array
+              items:
+                type: string
+
+    MalformedJsonError:
+      description: |
+        The JSON body could not be parsed. The body parser rejects it before it
+        reaches validation, so the response carries only `message` and never
+        `issues`. `additionalProperties: false` keeps this shape disjoint from
+        `ValidationError`, so the `BadRequest` `oneOf` stays unambiguous.
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [message]
+          additionalProperties: false
+          properties:
+            message:
+              type: string
+
+    CodedError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, code]
+          properties:
+            message:
+              type: string
+            code:
+              type: string
+
+  responses:
+    BadRequest:
+      description: |
+        The request body is malformed or fails validation. The response shape
+        depends on which failure happened:
+        - a syntactically invalid JSON body is rejected by the body parser
+          before it reaches validation and is answered as `{error: {message}}`
+          with no `issues`;
+        - a body that parses but fails the request schema is answered as
+          `{error: {message, issues}}`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ValidationError"
+              - $ref: "#/components/schemas/MalformedJsonError"
+
+    Unauthorized:
+      description: The bearer token is missing, invalid or expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    IdentityProviderUnavailable:
+      description: The identity provider could not be reached.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalServerError:
+      description: |
+        An unexpected server error. The message is fixed and generic so
+        internal details never leak to the client.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    RateLimited:
+      description: |
+        Too many requests from this client. The global limiter applies to every
+        route. `express-rate-limit` answers with a plain string, which Express
+        sends as `text/html`.
+      content:
+        text/html:
+          schema:
+            type: string
+            example: Too many requests, please try again later.
+
+    RateLimitedStrict:
+      description: |
+        Too many requests from this client. This endpoint has a stricter
+        dedicated limiter in addition to the global one. `express-rate-limit`
+        answers with a plain string, which Express sends as `text/html`.
+      content:
+        text/html:
+          schema:
+            type: string
+            example: Too many requests, please try again later.

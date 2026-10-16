@@ -1,11 +1,8 @@
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { designTokens } from "../tokens";
 
-const cssPath = fileURLToPath(
-	new URL("../../../app/globals.css", import.meta.url),
-);
+const cssPath = join(__dirname, "../../../app/globals.css");
 const css = readFileSync(cssPath, "utf-8");
 
 function extractRootBlock(): string {

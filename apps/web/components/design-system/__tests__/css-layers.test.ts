@@ -1,10 +1,7 @@
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const cssPath = fileURLToPath(
-	new URL("../../../app/globals.css", import.meta.url),
-);
+const cssPath = join(__dirname, "../../../app/globals.css");
 const css = readFileSync(cssPath, "utf-8");
 
 // Removes `/* ... */` comments so they cannot hide a declaration or fake a
@@ -71,7 +68,9 @@ function topLevelBlocks(source: string): Block[] {
 // `@layer` block is a violation: unlayered rules sit outside `@layer`, so they
 // override Tailwind's layered utilities (padding/margin/color resets beat
 // `p-4`, `px-2.5`, `text-primary`, etc.). At-rule bodies are recursed so an
-// unlayered `@media { * { ... } }` is still caught.
+// unlayered `@media { * { ... } }` is still caught. `@keyframes` is the one
+// body that is not recursed: it holds keyframe selectors (`from`, `to`, `50%`),
+// which are not style rules and can never override a utility.
 function findUnlayeredViolations(
 	source: string,
 	insideLayer = false,
@@ -80,6 +79,9 @@ function findUnlayeredViolations(
 	for (const { selector, body } of topLevelBlocks(source)) {
 		const normalized = selector.replace(/\s+/g, " ").trim();
 		if (normalized.startsWith("@")) {
+			if (/^@keyframes\b/.test(normalized)) {
+				continue;
+			}
 			const isLayer = /^@layer\b/.test(normalized);
 			violations.push(...findUnlayeredViolations(body, insideLayer || isLayer));
 		} else if (!insideLayer && !isTokenOnlyBlock(body)) {
@@ -113,5 +115,12 @@ describe("unlayered selectors inside at-rules", () => {
 			"@media (max-width: 600px) { * { padding: 0; } }",
 		);
 		expect(found).toContain("*");
+	});
+
+	it("ignores keyframe selectors, which are not style rules", () => {
+		const found = findUnlayeredViolations(
+			"@theme { @keyframes select-in { from { opacity: 0; } to { opacity: 1; } } }",
+		);
+		expect(found).toEqual([]);
 	});
 });

@@ -1,9 +1,7 @@
-import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const designSystemDir = fileURLToPath(new URL("../", import.meta.url));
+const designSystemDir = join(__dirname, "../");
 
 /*
  * Deliberate exceptions to the 4px spacing grid (see alert.tsx):

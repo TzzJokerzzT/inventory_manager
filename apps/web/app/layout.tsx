@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
-import "./globals.css";
 import { Inter } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
+import localFont from "next/font/local";
 import { cn } from "@/lib/utils";
+import { Provider } from "@/src/providers/providers";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -34,12 +33,7 @@ export default function RootLayout({
 			className={cn("font-sans", inter.variable)}
 		>
 			<body className={`${geistSans.variable} ${geistMono.variable}`}>
-				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-					<div className="fixed right-4 top-4 z-50">
-						<ThemeToggle />
-					</div>
-					{children}
-				</ThemeProvider>
+				<Provider>{children}</Provider>
 			</body>
 		</html>
 	);

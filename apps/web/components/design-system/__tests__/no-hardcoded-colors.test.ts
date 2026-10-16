@@ -1,18 +1,10 @@
-import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const designSystemDir = fileURLToPath(new URL("../", import.meta.url));
-const buttonPath = fileURLToPath(
-	new URL("../../ui/button.tsx", import.meta.url),
-);
-const pagePath = fileURLToPath(
-	new URL("../../../app/design-system/page.tsx", import.meta.url),
-);
-const loginPagePath = fileURLToPath(
-	new URL("../../../app/login/page.tsx", import.meta.url),
-);
+const designSystemDir = join(__dirname, "../");
+const buttonPath = join(__dirname, "../../ui/button.tsx");
+const pagePath = join(__dirname, "../../../app/design-system/page.tsx");
+const loginPagePath = join(__dirname, "../../../app/login/page.tsx");
 
 const bannedPatterns: Array<{ name: string; pattern: RegExp }> = [
 	{ name: "hex colour", pattern: /#(?:[0-9a-f]{3}|[0-9a-f]{6})\b/i },

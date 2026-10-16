@@ -1,0 +1,2 @@
+# Enforce the Conventional Commits convention this repository already follows.
+bunx commitlint --edit "$1"

@@ -12,7 +12,7 @@ export class ListCompaniesUseCase {
 		this.companyRepository = dependencies.companyRepository;
 	}
 
-	async execute(): Promise<Company[]> {
-		return this.companyRepository.findAll();
+	async execute(userId: string): Promise<Company[]> {
+		return this.companyRepository.findAllForUser(userId);
 	}
 }

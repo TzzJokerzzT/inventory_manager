@@ -1,0 +1,4 @@
+# Expensive gates: type check and the full test suite run only before a push,
+# where the ~10s cost is worth paying. CI runs the same gates, so this hook is
+# disabled there with HUSKY=0.
+bun run check-types && bun run test

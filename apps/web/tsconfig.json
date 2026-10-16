@@ -8,6 +8,10 @@
     ],
     "allowJs": true,
     "skipLibCheck": true,
+    "types": [
+      "node",
+      "jest"
+    ],
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -37,6 +41,8 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "cypress",
+    "cypress.config.ts"
   ]
 }

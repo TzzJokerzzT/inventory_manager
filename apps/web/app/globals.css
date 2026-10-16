@@ -111,6 +111,33 @@
 	--radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@theme {
+	--animate-select-in: select-in 200ms ease-out;
+	--animate-select-out: select-out 150ms ease-in forwards;
+
+	@keyframes select-in {
+		from {
+			opacity: 0;
+			transform: scale(0.95) translateY(-4px);
+		}
+		to {
+			opacity: 1;
+			transform: scale(1) translateY(0);
+		}
+	}
+
+	@keyframes select-out {
+		from {
+			opacity: 1;
+			transform: scale(1) translateY(0);
+		}
+		to {
+			opacity: 0;
+			transform: scale(0.95) translateY(-4px);
+		}
+	}
+}
+
 /*
  * Design-system tokens — light mode.
  * The shadcn/ui variables are overwritten so its components inherit the design

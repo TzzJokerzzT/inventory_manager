@@ -37,6 +37,16 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | PROD-05 | Validación de unicidad de SKU por empresa | Alta |
 | PROD-06 | Carga de imagen del producto (optimización incluida) | Media |
 
+> **Estado (MI-7, `odd/tasks/products.md`):** el alta, la edición y la baja lógica (PROD-01, PROD-02,
+> PROD-03) están implementadas, igual que la unicidad de SKU por empresa (PROD-05, con el SKU
+> normalizado a mayúsculas porque el índice `UNIQUE` de Postgres distingue grafía) y la foto
+> (PROD-06). PROD-04 se cumple **sólo por nombre y por SKU**: el **filtro por categoría no está
+> implementado** porque todavía no existe la feature de categorías (ni CRUD, ni endpoint, ni UI) y
+> `categoryId` no se expone en el contrato; entra cuando esa feature exista. PROD-06 se resuelve con
+> **subida directa firmada** a Cloudinary: el formulario pide la firma a
+> `POST /companies/{companyId}/media/signature`, sube el archivo y guarda únicamente el `secure_url`;
+> la optimización es la entrega de Cloudinary, no un paso de código propio.
+
 ### 4. Entradas y Salidas de Inventario
 
 | ID | Requerimiento | Prioridad |
@@ -164,7 +174,7 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 
 ### Fase 2 — Core de Inventario
 
-- [ ] CRUD de Productos (con SKU y foto)
+- [x] CRUD de Productos (con SKU y foto)
 - [ ] Dashboard con métricas básicas
 - [ ] Entradas y salidas de stock
 - [ ] Historial de movimientos

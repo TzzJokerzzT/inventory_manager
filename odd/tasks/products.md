@@ -124,14 +124,14 @@ pasando tras regenerar `apps/web/lib/api/openapi.d.ts`.
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | S8, S10 | parent | (incluido en C1) |
-| T2 | Backend: entity `Product`, puerto, errores y `manage_products` en la matriz | S1, S2, S3, S6 | worker | C1 |
-| T3 | Backend: casos de uso create/list/get/update/soft-delete | S1, S2, S3, S5, S6 | worker | C1 |
-| T4 | Backend: adaptadores Prisma e in-memory, controller, validador, rutas y error handler | S2, S4, S8 | worker | C2 |
-| T5 | Frontend: schemas, hooks de datos y subida a Cloudinary | S1, S7, S8 | worker | C3 |
-| T6 | Frontend: tabla, búsqueda, formulario alta/edición y baja | S1, S3, S7 | worker | C3 |
-| T7 | Verificación integral | S10 | parent | — |
-| T8 | Sincronizar README y `docs/Project.md` | S9 | parent | C4 |
+| T1 | Contrato OpenAPI + regenerar tipos web | S8, S10 | parent | `c3c5e5b` (C3) |
+| T2 | Backend: entity `Product`, puerto, errores y `manage_products` en la matriz | S1, S2, S3, S6 | worker | `a661fe4` (C1) |
+| T3 | Backend: casos de uso create/list/get/update/soft-delete | S1, S2, S3, S5, S6 | worker | `d20adae` (C2) |
+| T4 | Backend: adaptadores Prisma e in-memory, controller, validador, rutas y error handler | S2, S4, S8 | worker | `c3c5e5b` (C3) |
+| T5 | Frontend: schemas, hooks de datos y subida a Cloudinary | S1, S7, S8 | worker | `00f2634` (C4) |
+| T6 | Frontend: tabla, búsqueda, formulario alta/edición y baja | S1, S3, S7 | worker | `49cf9b7` (C5) |
+| T7 | Verificación integral | S10 | parent | `—` (verificación, sin commit) |
+| T8 | Sincronizar README y `docs/Project.md` | S9 | parent | C6 (pendiente al escribir esta tabla) |
 
 ## Log
 
@@ -154,3 +154,13 @@ distingue caso y la regla del proyecto es "único por empresa", no "único por e
 
 L7. Decisión del orquestador: las filas dadas de baja conservan el SKU reservado (`@@unique` incluye
 `deletedAt`), y eso se documenta y se testea en vez de esconderse con un borrado físico.
+
+L8. Cierre de la feature. Cinco commits de código en `feat/refactor/product-frontend-create-product`:
+`a661fe4` (entity, puerto de repositorio y la fila `manage_products`), `d20adae` (casos de uso y
+repositorio in-memory), `c3c5e5b` (endpoints sobre el adaptador Prisma), `00f2634`
+(data layer del frontend) y `49cf9b7` (lista, búsqueda y formulario). Verificación integral: API 48
+suites / 548 tests, web 74 suites / 500 tests, `check-types` limpio en las dos apps, `biome check .`
+limpio y el test de drift de OpenAPI en verde. Entrega: la feature viaja en cinco slices de review
+sobre esa rama; el push y el PR quedan como decisión del humano. Quedan en `/tmp` los directorios de
+scratch `/tmp/products-base-*` que creó el worker del backend: el `rm -rf` fue bloqueado por la
+política de seguridad, así que permanecen hasta que el humano los borre.

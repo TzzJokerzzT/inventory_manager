@@ -21,26 +21,31 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 funcionando. **El flujo de autenticación completo ya está implementado** (registro, login mediado
 por la API con el gate de email verificado, refresh, logout, bootstrap de sesión y manejo del 401),
 **las empresas ya funcionan** (alta con la membership de dueño en una sola transacción, listado
-filtrado por membership y endpoint de contexto con sus reglas de autorización) y **la firma de
-subidas de media por empresa ya está cableada**, junto con el shell de la aplicación, la vista del
-dashboard y el design system. Quedan pendientes **los módulos de negocio** (productos, movimientos,
-clientes y notificaciones de stock bajo) y **la gestión de miembros** de una empresa.
+filtrado por membership y endpoint de contexto con sus reglas de autorización), **la gestión de
+miembros está implementada** (invitación, listado, cambio de rol, revocación, salida, aceptación de
+invitaciones y notificaciones), **la firma de subidas de media por empresa ya está cableada** y
+**el catálogo de productos es el primer módulo de negocio terminado** (CRUD por empresa con SKU único,
+búsqueda, baja lógica y foto subida con firma), junto con el shell de la aplicación, la vista del
+dashboard y el design system. Quedan pendientes **movimientos de stock, clientes, notificaciones de
+stock bajo y la recuperación de contraseña**.
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
 | ------------ | -------- |
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 10 operaciones en `openapi.yaml` |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 25 operaciones en `openapi.yaml` |
 | **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
 | **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
 | Typecheck | ✅ `apps/web` y `apps/api` limpios (`tsc --noEmit`) |
 | **Autenticación** | ✅ registro, login (gate de email verificado), refresh, logout y bootstrap de sesión contra Auth0 |
 | **Empresas** | ✅ alta con membership `OWNER` en una transacción, listado por membership y `GET /companies/{id}/context` |
+| **Miembros** | ✅ invitación, listado, cambio de rol, revocación y salida por empresa, más invitaciones y notificaciones en `/me` |
+| **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica y foto firmada a Cloudinary |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), vista del dashboard y páginas de login/registro/sin-empresas |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas y el catálogo de productos (lista, alta y edición) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -65,9 +70,28 @@ no existe.**
 
 **Empresas.** Alta de empresa con la membership de dueño (`OWNER`) creada en la misma transacción;
 listado de las empresas del usuario (solo memberships `ACTIVE`); endpoint de contexto que resuelve
-la empresa y el rol del usuario; y switch de empresa en la barra superior. Productos, clientes y
-movimientos están solo en el esquema de datos —no hay endpoints ni pantallas todavía—, así que el
-aislamiento por empresa aplica hoy a lo que está construido (empresas y media).
+la empresa y el rol del usuario; y switch de empresa en la barra superior. Clientes y movimientos
+están solo en el esquema de datos —no hay endpoints de negocio ni pantallas todavía—, así que el
+aislamiento por empresa aplica hoy a lo que está construido (empresas, media, miembros y productos).
+
+**Miembros de la empresa.** Invitación por email, listado de miembros, cambio de rol, revocación y
+salida de la empresa, más el listado y la aceptación de invitaciones y las notificaciones del
+usuario (`/me/invitations`, `/me/notifications`). La matriz de autorización decide quién asigna cada
+rol —un `OWNER` puede asignar `ADMIN` u `OWNER`, un `ADMIN` asigna `MEMBER`—, nadie cambia su propio
+rol y el último `OWNER` activo no puede salir de la empresa.
+
+**Productos.** Catálogo por empresa en `/dashboard/products`: listado con búsqueda por nombre **o**
+SKU (subcadena, sin distinguir mayúsculas), alta, edición parcial y baja lógica (`204`). El SKU se
+normaliza a mayúsculas y es **único por empresa incluidas las filas dadas de baja**: un producto
+eliminado sigue reservando su SKU, así que recrearlo responde `409 sku_already_exists`. El precio
+viaja como **string decimal** (`"1500.00"`) porque la columna es `Decimal(12,2)` y un número JSON
+perdería precisión. La foto se sube **directo a Cloudinary** con la firma de
+`POST /companies/{id}/media/signature` y sólo se guarda el `secure_url`. Escribir (crear, editar o
+dar de baja) exige `manage_products`, que la matriz resuelve como `ADMIN` u `OWNER`; un `MEMBER` lee
+el catálogo y recibe `403 insufficient_role` si intenta escribir. `stockQuantity` es del servidor
+(sólo lo mueven las entradas y salidas de MI-8) y `lowStockThreshold` sigue en el default de la base;
+`categoryId` no se expone porque todavía no existe la feature de categorías, así que el filtro por
+categoría de PROD-04 **no** está implementado.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
@@ -87,9 +111,6 @@ indicadores y la tabla son mock declarado.
 **Dashboard con datos reales.** Reemplazar los datos de muestra por los indicadores reales
 (MI-6/MI-9).
 
-**Gestión de productos.** Alta, edición y baja lógica con nombre, descripción, precio, foto y
-**código SKU único dentro de cada empresa** (MI-7; vistas MI-21 y MI-25).
-
 **Entradas y salidas de inventario.** Registro de entradas y salidas con actualización automática
 del stock, historial por producto y motivo; **una salida nunca puede superar el stock disponible**
 (MI-8; vista MI-26).
@@ -99,9 +120,6 @@ movimientos de salida (MI-11; vista MI-24).
 
 **Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
 listado de reposición (MI-12).
-
-**Gestión de miembros.** Invitar, asignar roles y dar de baja miembros de una empresa (MI-45/MI-46/
-MI-47); la matriz de autorización ya está modelada en el backend.
 
 **Recuperación de contraseña.** Flujo de reset (MI-16); hoy no existe.
 
@@ -165,6 +183,8 @@ apps/web/
 │   └── features/                 # ← una carpeta por funcionalidad
 │       ├── auth/                 # login, registro, logout y sesión (refresh/bootstrap)
 │       ├── company/              # empresas, switch y contexto activo
+│       ├── member/               # invitaciones, roster de miembros y salida de la empresa
+│       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
 │       ├── dashboard/            # vista del dashboard (datos de muestra)
 │       └── shell/                # el shell de la aplicación
 └── public/
@@ -184,13 +204,14 @@ Las dependencias apuntan **hacia adentro**: el dominio no conoce Express, ni Pri
 apps/api/
 ├── src/
 │   ├── domain/                   # ← el centro, sin dependencias externas
-│   │   ├── entities/             # Company, Membership, User
+│   │   ├── entities/             # Company, Membership, Product, User
 │   │   ├── errors/               # errores de dominio (EmailNotVerified, …)
 │   │   ├── policies/             # matriz de autorización
 │   │   └── repositories/         # interfaces (puertos), no implementaciones
 │   ├── application/              # casos de uso
 │   │   ├── ports/                # IdentityProvider, MediaUploadSigner
-│   │   └── use-cases/            # create-company, list-companies, login, register, refresh
+│   │   └── use-cases/            # create-company, list-companies, login, register, refresh,
+│   │                             # productos (create/list/get/update/delete)
 │   ├── infrastructure/           # implementaciones de los puertos
 │   │   ├── database/             # Prisma: repositorios y mapeos
 │   │   ├── auth0/                # validación del JWT de Auth0 (JWKS)
@@ -215,8 +236,8 @@ rompió.
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
 comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
-(`apps/api/openapi.yaml`), la fuente de verdad de los 10 endpoints: métodos, seguridad y códigos de
-error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
+(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (25 operaciones): métodos, seguridad
+y códigos de error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
 **genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
 `lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
 
@@ -226,10 +247,12 @@ caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build
 
 ### Endpoints de la API
 
-Las 10 operaciones registradas en el contrato. «Token» = cabecera `Authorization: Bearer <JWT>`;
-el `429` es el rate limit (el global aplica a todas las rutas, y login/register/refresh suman uno
-propio más estricto). Las rutas de empresa exigen además una membership `ACTIVE` (ver la sección
-siguiente).
+Las operaciones de autenticación, empresas, media y productos del contrato. «Token» = cabecera
+`Authorization: Bearer <JWT>`; el `429` es el rate limit (el global aplica a todas las rutas, y
+login/register/refresh suman uno propio más estricto). Las rutas de empresa exigen además una
+membership `ACTIVE` (ver la sección siguiente). Las operaciones de miembros, invitaciones y
+notificaciones también están en el contrato (`apps/api/openapi.yaml`, 25 operaciones en total) y se
+sirven en `/docs`.
 
 | Operación | Token | Errores que importan | Qué hace |
 | ----------- | ------- | ---------------------- | ---------- |
@@ -244,11 +267,16 @@ siguiente).
 | `PATCH /me` | sí | 400, 401, 403 (`user_not_provisioned`), 429, 500 | Fija o borra el `fullName` del usuario autenticado (`null`, `""` o solo espacios lo borran; el tope es 120 caracteres tras trim) y responde la misma representación que `GET /me` |
 | `GET /companies/{companyId}/context` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Resuelve la empresa y el rol del usuario |
 | `POST /companies/{companyId}/media/signature` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Firma los parámetros de subida directa |
+| `GET /companies/{companyId}/products?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los productos no dados de baja, ordenados por nombre y luego por id; `search` compara por subcadena contra nombre o SKU |
+| `POST /companies/{companyId}/products` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 409 (`sku_already_exists`), 429, 500 | Da de alta un producto (el SKU se normaliza a mayúsculas) y responde `201` |
+| `GET /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 429, 500 | Lee un producto; uno de otra empresa y uno dado de baja responden el mismo 404 |
+| `PATCH /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 409 (`sku_already_exists`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` limpia `description` o `photoUrl` |
+| `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
 
 ### Aislamiento por empresa (el punto crítico)
 
 No se usa **Row Level Security** de Supabase, así que **el aislamiento entre empresas depende por
-completo del código de la aplicación**. Hoy hay dos piezas que lo materializan:
+completo del código de la aplicación**. Hoy hay tres piezas que lo materializan:
 
 - **En el repositorio**, el listado filtra por memberships `ACTIVE` (`findAllForUser`) y el alta
   crea la empresa y la membership del dueño en **una sola transacción** (`createOwnedBy`).
@@ -256,11 +284,15 @@ completo del código de la aplicación**. Hoy hay dos piezas que lo materializan
   `ACTIVE` en la empresa del path (`/companies/:companyId/*`) y resuelve su rol. Un no-miembro y una
   empresa inexistente responden el mismo 403 (`company_access_forbidden`) para que los ids no se
   puedan enumerar.
+- **En cada consulta de producto**, el `companyId` viaja en el `WHERE` y nunca en un filtro posterior
+  sobre lo ya leído, y el repositorio excluye las filas con `deletedAt`: un producto de otra empresa
+  y uno inexistente responden el mismo `404 product_not_found`.
 
-El límite honesto: esto cubre lo que está construido (empresas, contexto y firma de media). Los
-recursos por empresa que todavía no existen (productos, movimientos, clientes) **deberán colgarse del
-mismo sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo el mayor
-riesgo de seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer su test.
+El límite honesto: esto cubre lo que está construido (empresas, contexto, firma de media, miembros y
+productos). Los recursos por empresa que todavía no existen (movimientos, clientes) **deberán
+colgarse del mismo sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo
+el mayor riesgo de seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer
+su test.
 
 ---
 
@@ -504,22 +536,9 @@ El setup de la Fase 1 está cerrado: Git, CI, Prisma + Supabase, Auth0, Cloudina
 Husky, el `.env.example` de la raíz y el contrato OpenAPI ya están en el repo. Lo que queda es **el
 producto en sí**, no la infraestructura.
 
-### Gestión de miembros (multi-usuario)
-
-El modelo de acceso ya está en `schema.prisma` y la matriz de autorización en
-`apps/api/src/domain/policies/authorization.ts`, pero los endpoints todavía no existen:
-
-- [x] **Asignar un miembro con rol** — **MI-45** (ADMIN/OWNER asignan; OWNER asigna ADMIN/OWNER).
-- [x] **Aceptar una asignación** — **MI-46** (incluye decidir qué hacer con más de una invitación
-      pendiente al mismo email).
-- [x] **Cambiar el rol de un miembro (promover/rebajar)** — **MI-47**.
-- [x] **Invariante del último OWNER** — **MI-49**: una empresa nunca puede quedar sin OWNER (la regla
-      ya está en `can()`, falta el endpoint que la use).
-
 ### Core de inventario (Fase 2 y 3)
 
 - [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView`.
-- [ ] **CRUD de productos** — MI-7 (vistas MI-21 y MI-25).
 - [ ] **Entradas y salidas de stock** — MI-8 (vista MI-26).
 - [ ] **CRUD de clientes** — MI-11 (vista MI-24).
 - [ ] **Notificaciones de stock bajo** — MI-12.

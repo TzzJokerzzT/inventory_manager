@@ -1,0 +1,212 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ApiError } from "@/lib/api/client";
+import type { Product as ProductModel } from "@/lib/api/schemas";
+import { useActiveCompany } from "@/src/features/company/store/company-selectors";
+import { useMe } from "@/src/features/user/api/use-me";
+import { useDeleteProduct } from "../api/use-delete-product";
+import { useProducts } from "../api/use-products";
+import { Product } from "../product";
+
+jest.mock("@/src/features/company/store/company-selectors", () => ({
+	useActiveCompany: jest.fn(),
+}));
+
+jest.mock("@/src/features/user/api/use-me", () => ({
+	useMe: jest.fn(),
+}));
+
+jest.mock("../api/use-products", () => ({
+	useProducts: jest.fn(),
+}));
+
+jest.mock("../api/use-delete-product", () => ({
+	useDeleteProduct: jest.fn(),
+}));
+
+const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
+	typeof useActiveCompany
+>;
+const useMeMock = useMe as jest.MockedFunction<typeof useMe>;
+const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
+const useDeleteProductMock = useDeleteProduct as jest.MockedFunction<
+	typeof useDeleteProduct
+>;
+
+function product(overrides: Partial<ProductModel> = {}): ProductModel {
+	return {
+		id: "p1",
+		companyId: "c1",
+		name: "Café molido 500g",
+		description: "Molido medio",
+		sku: "CAF-500",
+		price: "1500.00",
+		photoUrl: null,
+		stockQuantity: 4,
+		lowStockThreshold: 0,
+		categoryId: null,
+		createdAt: "2026-10-20T12:00:00.000Z",
+		updatedAt: "2026-10-20T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+function stubMutation() {
+	return {
+		mutate: jest.fn(),
+		isPending: false,
+		isError: false,
+		error: undefined,
+	};
+}
+
+function setup({
+	role = "OWNER",
+	rows = [product()],
+	productsState = {},
+}: {
+	role?: "OWNER" | "ADMIN" | "MEMBER";
+	rows?: ProductModel[];
+	productsState?: Record<string, unknown>;
+} = {}) {
+	useActiveCompanyMock.mockReturnValue({
+		id: "c1",
+		name: "Empresa Uno",
+		createdAt: "2026-10-06T00:00:00.000Z",
+	});
+	useMeMock.mockReturnValue({
+		data: {
+			id: "user-1",
+			email: "ana@empresa.com",
+			fullName: "Ana Pérez",
+			createdAt: "2026-10-06T00:00:00.000Z",
+			memberships: [
+				{
+					companyId: "c1",
+					role,
+					company: {
+						id: "c1",
+						name: "Empresa Uno",
+						createdAt: "2026-10-06T00:00:00.000Z",
+					},
+				},
+			],
+		},
+		isPending: false,
+		isError: false,
+		refetch: jest.fn(),
+	} as unknown as ReturnType<typeof useMe>);
+	useProductsMock.mockReturnValue({
+		data: rows,
+		isPending: false,
+		isError: false,
+		error: undefined,
+		refetch: jest.fn(),
+		...productsState,
+	} as unknown as ReturnType<typeof useProducts>);
+	useDeleteProductMock.mockReturnValue(
+		stubMutation() as unknown as ReturnType<typeof useDeleteProduct>,
+	);
+}
+
+describe("Product", () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+	});
+
+	it("lists the real catalogue of the active company", () => {
+		setup();
+
+		render(<Product />);
+
+		expect(useProductsMock).toHaveBeenCalledWith("c1", "");
+		expect(screen.getByRole("heading", { name: "Productos" })).toBeTruthy();
+		expect(screen.getByText("Café molido 500g")).toBeTruthy();
+		expect(screen.getByText("CAF-500")).toBeTruthy();
+		// Deterministic es-AR rendering of the decimal string.
+		expect(screen.getByText("$ 1.500,00")).toBeTruthy();
+		expect(screen.getByText("4")).toBeTruthy();
+	});
+
+	it("shows a thumbnail only when the product has a photo", () => {
+		const withPhoto = product({
+			photoUrl: "https://res.cloudinary.com/demo/image/upload/cafe.jpg",
+		});
+		setup({ rows: [withPhoto, product({ id: "p2", sku: "YER-1" })] });
+
+		const { container } = render(<Product />);
+
+		const images = container.querySelectorAll("img");
+		expect(images).toHaveLength(1);
+		expect(images[0].getAttribute("src")).toBe(
+			"https://res.cloudinary.com/demo/image/upload/cafe.jpg",
+		);
+	});
+
+	it("shows a meaningful empty state", () => {
+		setup({ rows: [] });
+
+		render(<Product />);
+
+		expect(screen.getByText(/Todavía no cargaste productos/)).toBeTruthy();
+	});
+
+	it("searches by name or SKU and refreshes the query after the debounce", async () => {
+		setup({ rows: [] });
+
+		render(<Product />);
+
+		fireEvent.change(screen.getByLabelText("Buscar productos"), {
+			target: { value: "café" },
+		});
+
+		await waitFor(() => {
+			expect(useProductsMock).toHaveBeenLastCalledWith("c1", "café");
+		});
+		expect(
+			screen.getByText(/No encontramos productos para «café»/),
+		).toBeTruthy();
+	});
+
+	it("shows the loading state while the catalogue is being read", () => {
+		setup({ productsState: { data: undefined, isPending: true } });
+
+		render(<Product />);
+
+		expect(screen.getByRole("status", { name: "Cargando" })).toBeTruthy();
+	});
+
+	it("shows an alert with the API message when the catalogue cannot be read", () => {
+		const error = new ApiError("No tenés acceso a esta empresa.", 403);
+		setup({
+			productsState: { data: undefined, isError: true, error },
+		});
+
+		render(<Product />);
+
+		expect(screen.getByText("No pudimos cargar los productos")).toBeTruthy();
+		expect(screen.getByText("No tenés acceso a esta empresa.")).toBeTruthy();
+	});
+
+	it("does not offer any write action to a MEMBER", () => {
+		setup({ role: "MEMBER", rows: [product()] });
+
+		render(<Product />);
+
+		expect(screen.queryByRole("link", { name: /Nuevo Producto/ })).toBeNull();
+		expect(screen.queryByRole("link", { name: "Editar" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Eliminar" })).toBeNull();
+		expect(screen.queryByRole("columnheader", { name: "Acciones" })).toBeNull();
+	});
+
+	it("offers the write actions to an ADMIN", () => {
+		setup({ role: "ADMIN", rows: [product()] });
+
+		render(<Product />);
+
+		expect(
+			screen.getByRole("link", { name: /Nuevo Producto/ }).getAttribute("href"),
+		).toBe("/dashboard/products/create");
+		expect(screen.getByRole("link", { name: "Editar" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Eliminar" })).toBeTruthy();
+	});
+});

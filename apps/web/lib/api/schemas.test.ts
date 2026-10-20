@@ -3,11 +3,14 @@ import {
 	parseCompaniesResponse,
 	parseCompany,
 	parseLoginResponse,
+	parseMediaUploadSignature,
 	parseMembership,
 	parseMembershipsResponse,
 	parseMeResponse,
 	parseNotifications,
 	parsePendingInvitations,
+	parseProduct,
+	parseProducts,
 } from "./schemas";
 
 describe("parseLoginResponse", () => {
@@ -443,6 +446,149 @@ describe("parsePendingInvitations", () => {
 
 		expect(() =>
 			parsePendingInvitations([pendingInvitation({ invitedAt: 123 })]),
+		).toThrow(/respuesta inesperada/);
+	});
+});
+
+function product(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "p1",
+		companyId: "c1",
+		name: "Café molido 500g",
+		description: "Molido medio",
+		sku: "CAF-500",
+		price: "1500.00",
+		photoUrl: null,
+		stockQuantity: 0,
+		lowStockThreshold: 0,
+		categoryId: null,
+		createdAt: "2026-10-20T12:00:00.000Z",
+		updatedAt: "2026-10-20T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+describe("parseProducts", () => {
+	it("returns the catalogue exactly as the API serializes it", () => {
+		const catalogue = [product()];
+
+		expect(parseProducts(catalogue)).toEqual(catalogue);
+	});
+
+	it("accepts an empty catalogue", () => {
+		expect(parseProducts([])).toEqual([]);
+	});
+
+	it("keeps the price as the decimal string the contract promises", () => {
+		const parsed = parseProducts([product({ price: "1500.00" })]);
+
+		expect(parsed[0].price).toBe("1500.00");
+	});
+
+	it("rejects a price sent as a JSON number", () => {
+		// The column is Decimal(12,2): a float in the contract would lose
+		// precision at the first rounding, so the boundary refuses it.
+		expect(() => parseProducts([product({ price: 1500 })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("accepts the nullable fields the contract allows to be null", () => {
+		const parsed = parseProducts([
+			product({ description: null, photoUrl: null, categoryId: null }),
+		]);
+
+		expect(parsed[0].description).toBeNull();
+		expect(parsed[0].photoUrl).toBeNull();
+		expect(parsed[0].categoryId).toBeNull();
+	});
+
+	it("keeps a photo url and a description when the product has them", () => {
+		const parsed = parseProducts([
+			product({
+				description: "Molido medio",
+				photoUrl: "https://res.cloudinary.com/demo/image/upload/cafe.jpg",
+				categoryId: "cat-1",
+			}),
+		]);
+
+		expect(parsed[0].photoUrl).toBe(
+			"https://res.cloudinary.com/demo/image/upload/cafe.jpg",
+		);
+		expect(parsed[0].categoryId).toBe("cat-1");
+	});
+
+	it("rejects a null where the contract requires a value", () => {
+		expect(() => parseProducts([product({ sku: null })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects stock counters that are not numbers", () => {
+		expect(() => parseProducts([product({ stockQuantity: "0" })])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProducts([product({ lowStockThreshold: "0" })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseProducts({ products: [] })).toThrow(ApiError);
+	});
+
+	it("rejects an entry whose fields are missing", () => {
+		expect(() => parseProducts([{ id: "p1", name: "Café" }])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+});
+
+describe("parseProduct", () => {
+	it("returns the product of a read, a creation or an update", () => {
+		const parsed = parseProduct(product());
+
+		expect(parsed.id).toBe("p1");
+		expect(parsed.sku).toBe("CAF-500");
+		expect(parsed.stockQuantity).toBe(0);
+	});
+
+	it("rejects a product whose shape changed", () => {
+		expect(() => parseProduct({ id: "p1" })).toThrow(ApiError);
+	});
+});
+
+function mediaSignature(overrides: Record<string, unknown> = {}) {
+	return {
+		cloudName: "demo-cloud",
+		apiKey: "123456789",
+		timestamp: 1760000000,
+		signature: "abc123deadbeef",
+		folder: "companies/c1/products",
+		allowedFormats: ["jpg", "png", "webp"],
+		maxFileSizeBytes: 5 * 1024 * 1024,
+		...overrides,
+	};
+}
+
+describe("parseMediaUploadSignature", () => {
+	it("returns the signed upload parameters", () => {
+		const signature = mediaSignature();
+
+		expect(parseMediaUploadSignature(signature)).toEqual(signature);
+	});
+
+	it("rejects a signature missing the upload limits", () => {
+		const { maxFileSizeBytes: _bytes, ...withoutLimit } = mediaSignature();
+
+		expect(() => parseMediaUploadSignature(withoutLimit)).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a signature whose formats are not a list of strings", () => {
+		expect(() =>
+			parseMediaUploadSignature(mediaSignature({ allowedFormats: "jpg" })),
 		).toThrow(/respuesta inesperada/);
 	});
 });

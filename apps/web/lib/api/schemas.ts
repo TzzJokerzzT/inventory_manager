@@ -312,3 +312,117 @@ export function parseNotifications(data: unknown): NotificationsResponse {
 
 	return result.output;
 }
+
+/**
+ * One product exactly as the products endpoints serialize it.
+ *
+ * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
+ * `Decimal(12,2)` and a float in the contract would lose precision at the first
+ * rounding, so the boundary fails a numeric price instead of silently rounding
+ * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
+ * counts; `description`, `photoUrl` and `categoryId` are nullable because a
+ * product can live without them.
+ */
+export const productSchema = object({
+	id: string(),
+	companyId: string(),
+	name: string(),
+	description: nullable(string()),
+	sku: string(),
+	price: string(),
+	photoUrl: nullable(string()),
+	stockQuantity: number(),
+	lowStockThreshold: number(),
+	categoryId: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+});
+
+/** One product, derived from the OpenAPI contract. */
+export type Product = components["schemas"]["Product"];
+
+/** Body of `POST /companies/{companyId}/products`, derived from the contract. */
+export type CreateProductRequest =
+	components["schemas"]["CreateProductRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/products/{productId}`, derived from the
+ * contract. Every field is optional on purpose: an absent field keeps its
+ * value, while an explicit `null` clears `description` or `photoUrl`.
+ */
+export type UpdateProductRequest =
+	components["schemas"]["UpdateProductRequest"];
+
+/** Shape of `GET /companies/{companyId}/products`: the company's catalogue. */
+export const productsResponseSchema = array(productSchema);
+
+/** `GET /companies/{companyId}/products` response, derived from the contract. */
+export type ProductsResponse = components["schemas"]["Product"][];
+
+/**
+ * Validates the catalogue at the boundary.
+ *
+ * Same contract as {@link parseCompaniesResponse}: a backend that changes shape
+ * fails as an {@link ApiError} with a readable message instead of exploding
+ * inside the table, and a numeric `price` never reaches the price formatter.
+ */
+export function parseProducts(data: unknown): ProductsResponse {
+	const result = safeParse(productsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single product: the detail read, the creation and the update.
+ *
+ * It exists so the product the form receives back goes through the same
+ * boundary as the listed ones: a cast here would let a shape change reach a
+ * view unnoticed.
+ */
+export function parseProduct(data: unknown): Product {
+	const result = safeParse(productSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * The upload contract `POST /companies/{companyId}/media/signature` returns:
+ * the Cloudinary coordinates plus the limits the server already signed into
+ * the signature. The browser validates the file against **these** values, not
+ * against its own constants, so a server-side change of formats or size limit
+ * moves the client with it.
+ */
+export const mediaUploadSignatureSchema = object({
+	cloudName: string(),
+	apiKey: string(),
+	timestamp: number(),
+	signature: string(),
+	folder: string(),
+	allowedFormats: array(string()),
+	maxFileSizeBytes: number(),
+});
+
+/** Signed upload parameters, derived from the OpenAPI contract. */
+export type MediaUploadSignature =
+	components["schemas"]["MediaUploadSignature"];
+
+/**
+ * Validates the signature before a byte is uploaded.
+ *
+ * A signature with a changed shape would otherwise produce a request the
+ * storage provider rejects with an opaque error, far from its cause.
+ */
+export function parseMediaUploadSignature(data: unknown): MediaUploadSignature {
+	const result = safeParse(mediaUploadSignatureSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}

@@ -21,6 +21,14 @@ import {
 	MEMBERSHIP_NOT_FOUND_CODE,
 	MembershipNotFoundError,
 } from "../../../domain/errors/membership-not-found-error.js";
+import {
+	PRODUCT_NOT_FOUND_CODE,
+	ProductNotFoundError,
+} from "../../../domain/errors/product-not-found-error.js";
+import {
+	SKU_ALREADY_EXISTS_CODE,
+	SkuAlreadyExistsError,
+} from "../../../domain/errors/sku-already-exists-error.js";
 import { UserNotProvisionedError } from "../../../domain/errors/user-not-provisioned-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
@@ -122,6 +130,25 @@ export const errorHandler: ErrorRequestHandler = (
 	if (error instanceof MembershipNotFoundError) {
 		response.status(StatusCodes.NOT_FOUND).json({
 			error: { message: error.message, code: MEMBERSHIP_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof ProductNotFoundError) {
+		// The same 404 a foreign id and an absent one get: the product is not in
+		// this company's catalogue, and which of the two it was is not something
+		// the caller needs to know (S4).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: PRODUCT_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof SkuAlreadyExistsError) {
+		// 409, not 400: the body is well formed, the company just already has
+		// that SKU -- deleted rows included, because they keep it reserved (S2).
+		response.status(StatusCodes.CONFLICT).json({
+			error: { message: error.message, code: SKU_ALREADY_EXISTS_CODE },
 		});
 		return;
 	}

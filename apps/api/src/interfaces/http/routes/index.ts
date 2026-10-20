@@ -2,6 +2,7 @@ import { type RequestHandler, Router } from "express";
 import type { AuthController } from "../controllers/auth-controller.js";
 import type { CompanyController } from "../controllers/company-controller.js";
 import type { MeController } from "../controllers/me-controller.js";
+import type { ProductController } from "../controllers/product-controller.js";
 import { authRoutes } from "./auth-routes.js";
 import { companyRoutes } from "./company-routes.js";
 import { healthRoutes } from "./health-routes.js";
@@ -9,6 +10,7 @@ import { meRoutes } from "./me-routes.js";
 
 export interface HttpRoutesDependencies {
 	company: CompanyController;
+	products: ProductController;
 	me: MeController;
 	auth: AuthController;
 	requireAuth: RequestHandler;
@@ -31,6 +33,6 @@ export function buildRoutes(dependencies: HttpRoutesDependencies): Router {
 		),
 	);
 	router.use("/companies", dependencies.requireAuth, dependencies.requireUser);
-	router.use(companyRoutes(dependencies.company));
+	router.use(companyRoutes(dependencies.company, dependencies.products));
 	return router;
 }

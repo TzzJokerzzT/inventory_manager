@@ -95,6 +95,7 @@ function createTestApp() {
 		mediaUploadSigner: {} as never,
 		revokeMember: {} as never,
 		updateUserFullName: {} as never,
+		products: {} as never,
 		authCookieOptions: defaultCookieOptions,
 		corsOrigin: "http://localhost:3000",
 	});

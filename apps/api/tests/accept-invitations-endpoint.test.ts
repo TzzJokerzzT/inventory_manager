@@ -127,6 +127,7 @@ describe("POST /me/invitations/accept", () => {
 			mediaUploadSigner: {
 				createUploadSignature: () => ({ signed: true }),
 			} as never,
+			products: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

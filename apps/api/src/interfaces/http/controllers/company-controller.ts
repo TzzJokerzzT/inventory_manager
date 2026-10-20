@@ -73,8 +73,12 @@ function resolvedUser(request: Request): User {
  * The resolved company context a company-scoped handler is guaranteed to have:
  * `requireCompanyContext` runs before it, so a missing context is a
  * programming error, not a forbidden access to manufacture.
+ *
+ * Exported because the product controller is mounted on the same
+ * `companyScoped` router and needs the exact same guarantee; a second copy of
+ * this accessor would be a second place to forget the check.
  */
-function resolvedCompanyContext(request: Request): CompanyContext {
+export function resolvedCompanyContext(request: Request): CompanyContext {
 	const context = request.companyContext;
 	if (context === undefined) {
 		throw new Error(

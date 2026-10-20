@@ -18,6 +18,7 @@ tags:
   - name: health
   - name: auth
   - name: companies
+  - name: products
   - name: me
 
 paths:
@@ -659,6 +660,325 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/products:
+    get:
+      tags: [products]
+      summary: List the company's products
+      description: |
+        Lists the products of the company the caller has context for. Products
+        with `deletedAt` set are never returned: a soft-deleted product is not
+        part of the catalogue any more.
+
+        The list is always scoped to the company, and the `companyId` goes into
+        the query rather than into a post-filter. The order is deterministic
+        (name, then id) so two reads of the same state answer the same array.
+
+        `search` matches the name or the SKU, case-insensitively, as a
+        substring. Filtering by category is not part of the contract yet: the
+        categories have no feature of their own; see `docs/Project.md` PROD-04
+        and the decision logged in `odd/tasks/products.md`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          required: false
+          description: Free text matched against the product name or its SKU.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: The company's products, ordered by name and then id.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+        "400":
+          description: The company id is not a UUID, or `search` is too long.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: [products]
+      summary: Create a product
+      description: |
+        Requires `manage_products`: an ADMIN or an OWNER of the company. A
+        MEMBER reads the catalogue but never writes it.
+
+        The SKU is normalized to uppercase (trimmed first) and must be unique
+        within the company. Uniqueness is checked against every row, including
+        the soft-deleted ones, because the database's unique index covers
+        them: deleting a product reserves its SKU.
+
+        `stockQuantity` is server-owned and is not accepted here: only stock
+        movements change it. `lowStockThreshold` keeps the database default
+        until the low-stock feature lands.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "201":
+          description: Product created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`), the
+            caller has no ACTIVE membership in the company
+            (`company_access_forbidden`), or their role cannot write products
+            (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The company already has a product (deleted or not) with that SKU;
+            the `code` is `sku_already_exists`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/products/{productId}:
+    get:
+      tags: [products]
+      summary: Read one product
+      description: |
+        Reads a product of the company the caller has context for. A product id
+        from another company and a nonexistent one answer the same 404, so the
+        endpoint cannot be used to probe other companies' product ids.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The product.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: The company id or the product id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist, belongs to another company, or was
+            soft-deleted; the `code` is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    patch:
+      tags: [products]
+      summary: Update a product
+      description: |
+        Requires `manage_products` (ADMIN or OWNER). The update is partial: an
+        absent field keeps its value, while an explicit `null` clears
+        `description` or `photoUrl`.
+
+        Changing the SKU re-checks uniqueness against every row of the company,
+        soft-deleted ones included; keeping the product's own SKU is not a
+        conflict. `stockQuantity` is never settable here.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductRequest"
+      responses:
+        "200":
+          description: The updated product.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`), the
+            caller has no ACTIVE membership in the company
+            (`company_access_forbidden`), or their role cannot write products
+            (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist, belongs to another company, or was
+            soft-deleted; the `code` is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            Another product of the company already has that SKU; the `code` is
+            `sku_already_exists`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: [products]
+      summary: Soft-delete a product
+      description: |
+        Requires `manage_products` (ADMIN or OWNER). The row is kept and stamped
+        with `deletedAt`: it disappears from the catalogue and from every read,
+        but its SKU stays reserved. Deleting an already-deleted product answers
+        404 -- it is not part of the catalogue any more.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Product soft-deleted. No body.
+        "400":
+          description: The company id or the product id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`), the
+            caller has no ACTIVE membership in the company
+            (`company_access_forbidden`), or their role cannot write products
+            (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist, belongs to another company, or is
+            already soft-deleted; the `code` is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /me:
     get:
       tags: [me]
@@ -1081,6 +1401,118 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/UserSummary"
+
+    Product:
+      type: object
+      required:
+        [id, companyId, name, description, sku, price, photoUrl, stockQuantity, lowStockThreshold, categoryId, createdAt, updatedAt]
+      description: |
+        A product as the API exposes it. `price` is a decimal string with two
+        decimals, not a JSON number: the column is `Decimal(12,2)` and a float
+        would lose precision at the first rounding.
+
+        `stockQuantity` is server-owned: only stock movements change it, never
+        a product write. `lowStockThreshold` keeps the database default until
+        the low-stock feature exposes it. `categoryId` is currently always
+        `null`: categories have no feature of their own yet.
+
+        A soft-deleted product is never returned by any operation, so it has no
+        `deletedAt` field in the contract.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        sku:
+          type: string
+          maxLength: 64
+          description: Stored and returned in uppercase, so uniqueness ignores case.
+        price:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          example: "1500.00"
+          description: Decimal string with exactly two decimals, e.g. `1500.00`.
+        photoUrl:
+          type: string
+          maxLength: 2048
+          nullable: true
+        stockQuantity:
+          type: integer
+          minimum: 0
+        lowStockThreshold:
+          type: integer
+          minimum: 0
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateProductRequest:
+      type: object
+      required: [name, sku, price]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Trimmed and stored in uppercase; unique within the company.
+        price:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          example: "1500.00"
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        photoUrl:
+          type: string
+          maxLength: 2048
+          nullable: true
+
+    UpdateProductRequest:
+      type: object
+      description: |
+        Partial update. An absent field keeps its current value; an explicit
+        `null` clears `description` or `photoUrl`.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        sku:
+          type: string
+          minLength: 1
+          maxLength: 64
+        price:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+        description:
+          type: string
+          maxLength: 1000
+          nullable: true
+        photoUrl:
+          type: string
+          maxLength: 2048
+          nullable: true
 
     MeResponse:
       type: object

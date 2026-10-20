@@ -120,6 +120,7 @@ describe("member management endpoints", () => {
 			listPendingInvitations: {} as never,
 			markNotificationsRead: {} as never,
 			mediaUploadSigner: {} as never,
+			products: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

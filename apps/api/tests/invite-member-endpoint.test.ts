@@ -116,6 +116,7 @@ describe("POST /companies/:companyId/members", () => {
 			revokeMember: {} as never,
 			updateUserFullName: {} as never,
 			mediaUploadSigner: {} as never,
+			products: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

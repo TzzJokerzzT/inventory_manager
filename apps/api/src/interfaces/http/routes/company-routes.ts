@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { CompanyController } from "../controllers/company-controller.js";
+import type { ProductController } from "../controllers/product-controller.js";
 
 /**
  * Company routes.
@@ -10,7 +11,10 @@ import type { CompanyController } from "../controllers/company-controller.js";
  * validated. MI-6/MI-7/MI-9 add their per-company routes to the same
  * `companyScoped` router instead of inventing a second path to the membership.
  */
-export function companyRoutes(controller: CompanyController): Router {
+export function companyRoutes(
+	controller: CompanyController,
+	products: ProductController,
+): Router {
 	const router = Router();
 	router.post("/companies", controller.create);
 	router.get("/companies", controller.list);
@@ -37,6 +41,15 @@ export function companyRoutes(controller: CompanyController): Router {
 	companyScoped.delete("/members/me", controller.leaveCompany);
 	companyScoped.patch("/members/:membershipId", controller.changeMemberRole);
 	companyScoped.delete("/members/:membershipId", controller.revokeMember);
+	// Product routes. They hang off the same protected sub-router, so they
+	// inherit `requireCompanyContext`: the company comes from the path and the
+	// membership, never from the body. Who may write is decided by the
+	// `manage_products` row of the matrix inside the use cases, not here.
+	companyScoped.get("/products", products.list);
+	companyScoped.post("/products", products.create);
+	companyScoped.get("/products/:productId", products.get);
+	companyScoped.patch("/products/:productId", products.update);
+	companyScoped.delete("/products/:productId", products.remove);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

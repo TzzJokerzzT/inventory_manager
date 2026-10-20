@@ -10,18 +10,23 @@ import type { MediaUploadSigner } from "../../application/ports/media-upload-sig
 import type { AcceptInvitationsUseCase } from "../../application/use-cases/accept-invitations.js";
 import type { ChangeMemberRoleUseCase } from "../../application/use-cases/change-member-role.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
+import type { CreateProductUseCase } from "../../application/use-cases/create-product.js";
+import type { DeleteProductUseCase } from "../../application/use-cases/delete-product.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
+import type { GetProductUseCase } from "../../application/use-cases/get-product.js";
 import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
 import type { LeaveCompanyUseCase } from "../../application/use-cases/leave-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
 import type { ListNotificationsUseCase } from "../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../application/use-cases/list-pending-invitations.js";
+import type { ListProductsUseCase } from "../../application/use-cases/list-products.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
+import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
 import type { UpdateUserFullNameUseCase } from "../../application/use-cases/update-user-full-name.js";
 import {
 	type AuthCookieOptions,
@@ -29,6 +34,7 @@ import {
 } from "./controllers/auth-controller.js";
 import { createCompanyController } from "./controllers/company-controller.js";
 import { createMeController } from "./controllers/me-controller.js";
+import { createProductController } from "./controllers/product-controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { notFoundHandler } from "./middlewares/not-found.js";
 import { apiRateLimiter } from "./middlewares/rate-limit.js";
@@ -79,6 +85,17 @@ export interface AppDependencies {
 	requireUser: RequestHandler;
 	requireCompanyContext: RequestHandler;
 	mediaUploadSigner: MediaUploadSigner;
+	/**
+	 * The product slice of MI-7. It is one field, not five, because the routes
+	 * that consume it are all mounted together on the company-scoped router.
+	 */
+	products: {
+		list: ListProductsUseCase;
+		create: CreateProductUseCase;
+		get: GetProductUseCase;
+		update: UpdateProductUseCase;
+		remove: DeleteProductUseCase;
+	};
 	authCookieOptions: AuthCookieOptions;
 	/**
 	 * Browser origin allowed to call the API. It has to be an explicit origin
@@ -117,6 +134,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 	app.use(
 		buildRoutes({
 			company: createCompanyController(dependencies),
+			products: createProductController(dependencies.products),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,
 				updateUserFullName: dependencies.updateUserFullName,

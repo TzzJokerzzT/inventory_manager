@@ -43,6 +43,15 @@ describe("can(role, action)", () => {
 		});
 	});
 
+	describe("product rows", () => {
+		it("lets only an ADMIN or an OWNER manage products", () => {
+			// S6: "OWNER y ADMIN escriben; MEMBER solo lee".
+			expect(can("OWNER", "manage_products")).toBe(true);
+			expect(can("ADMIN", "manage_products")).toBe(true);
+			expect(can("MEMBER", "manage_products")).toBe(false);
+		});
+	});
+
 	describe("bootstrap and visibility rows", () => {
 		it("lets any authenticated user create a company", () => {
 			expect(can("OWNER", "create_company")).toBe(true);

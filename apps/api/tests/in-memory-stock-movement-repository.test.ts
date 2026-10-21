@@ -145,6 +145,20 @@ describe("InMemoryStockMovementRepository.register", () => {
 		});
 	});
 
+	it("keeps the customer of a sale in the stored movement", async () => {
+		const { repository } = build();
+
+		const result = await repository.register(
+			movement({ type: "OUT", quantity: 4, customerId: "customer-1" }),
+		);
+
+		expect(result.kind === "registered" && result.movement.customerId).toBe(
+			"customer-1",
+		);
+		const [stored] = await repository.findByCompany(COMPANY, { limit: 50 });
+		expect(stored.customerId).toBe("customer-1");
+	});
+
 	it("records the movement it was given, with its own createdAt", async () => {
 		const { repository } = build();
 		const input = movement({ reason: "Compra", createdAt: T1 });

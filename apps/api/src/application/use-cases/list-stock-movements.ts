@@ -2,6 +2,7 @@ import type {
 	StockMovement,
 	StockMovementType,
 } from "../../domain/entities/stock-movement.js";
+import type { CustomerRepository } from "../../domain/repositories/customer-repository.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
 import type { StockMovementRepository } from "../../domain/repositories/stock-movement-repository.js";
 import type { UserRepository } from "../../domain/repositories/user-repository.js";
@@ -19,6 +20,12 @@ export interface MovementProduct {
 	sku: string;
 }
 
+/** The customer a sale is associated with, as the history shows it. */
+export interface MovementCustomer {
+	id: string;
+	name: string;
+}
+
 /** Who registered a movement, or `null` when the user row was not resolved. */
 export interface StockMovementActor {
 	id: string;
@@ -27,10 +34,11 @@ export interface StockMovementActor {
 }
 
 /**
- * One movement as the caller sees it: the stored fields plus the product and
- * the actor resolved by the API. `actor` is `null` when the user could not be
- * resolved -- a missing actor never hides the movement, the same rule the
- * notification read applies.
+ * One movement as the caller sees it: the stored fields plus the product, the
+ * actor and the customer resolved by the API. `actor` is `null` when the user
+ * could not be resolved -- a missing actor never hides the movement, the same
+ * rule the notification read applies. `customer` is `null` only when the
+ * movement carries no `customerId`.
  */
 export interface StockMovementView {
 	id: string;
@@ -40,6 +48,8 @@ export interface StockMovementView {
 	quantity: number;
 	reason: string | null;
 	createdAt: string;
+	customerId: string | null;
+	customer: MovementCustomer | null;
 	product: MovementProduct;
 	actor: StockMovementActor | null;
 }
@@ -50,12 +60,14 @@ export interface StockMovementView {
  *
  * The fields are picked explicitly instead of spreading `movement.toJSON()`:
  * the contract's `StockMovement` carries the actor as `actor`, never a bare
- * `userId`, and a spread would leak the raw column to the HTTP body.
+ * `userId`, and the customer as a resolved `customer` object, so a spread
+ * would leak the raw columns to the HTTP body.
  */
 export function toStockMovementView(
 	movement: StockMovement,
 	product: MovementProduct,
 	actor: StockMovementActor | null,
+	customer: MovementCustomer | null,
 ): StockMovementView {
 	return {
 		id: movement.id,
@@ -65,6 +77,9 @@ export function toStockMovementView(
 		quantity: movement.quantity,
 		reason: movement.reason,
 		createdAt: movement.createdAt.toISOString(),
+		customerId: movement.customerId,
+		customer:
+			customer === null ? null : { id: customer.id, name: customer.name },
 		product: { id: product.id, name: product.name, sku: product.sku },
 		actor:
 			actor === null
@@ -91,6 +106,7 @@ export interface ListStockMovementsDependencies {
 	stockMovementRepository: StockMovementRepository;
 	productRepository: ProductRepository;
 	userRepository: UserRepository;
+	customerRepository: CustomerRepository;
 }
 
 /**
@@ -100,25 +116,29 @@ export interface ListStockMovementsDependencies {
  * membership, and the history belongs to that company (S6). The scoping is the
  * `companyId` in the query, not a filter here.
  *
- * The whole read is three queries: the movements, one deduplicated batch of
- * products and one deduplicated batch of users. Joining the context per row
- * would be N+1, so the context is resolved once and joined in memory.
+ * The whole read is four queries: the movements, one deduplicated batch of
+ * products, one deduplicated batch of users and one deduplicated batch of
+ * customers. Joining the context per row would be N+1, so the context is
+ * resolved once and joined in memory.
  *
- * The product is resolved with `findByIds`, which includes the soft-deleted
- * rows: a movement of a product that was later deleted stays readable
- * (MOV-05). A movement that resolves no product means the store is
+ * The product and the customer are resolved with `findByIds`, which includes
+ * the soft-deleted rows: a movement of a product or of a customer that was
+ * later deleted stays readable (MOV-05). A movement that resolves no product,
+ * or that names a customer the store cannot resolve, means the store is
  * inconsistent -- the rows are never hard-deleted -- so this fails as an
- * unexpected error (a 500) instead of inventing a product.
+ * unexpected error (a 500) instead of inventing a row.
  */
 export class ListStockMovementsUseCase {
 	private readonly stockMovementRepository: StockMovementRepository;
 	private readonly productRepository: ProductRepository;
 	private readonly userRepository: UserRepository;
+	private readonly customerRepository: CustomerRepository;
 
 	constructor(dependencies: ListStockMovementsDependencies) {
 		this.stockMovementRepository = dependencies.stockMovementRepository;
 		this.productRepository = dependencies.productRepository;
 		this.userRepository = dependencies.userRepository;
+		this.customerRepository = dependencies.customerRepository;
 	}
 
 	async execute(
@@ -155,6 +175,26 @@ export class ListStockMovementsUseCase {
 		const actors = await this.userRepository.findByIds(actorIds);
 		const actorsById = new Map(actors.map((actor) => [actor.id, actor]));
 
+		// Only the movements that carry a customer need the lookup: an anonymous
+		// movement (or an entry) costs nothing here.
+		const customerIds = [
+			...new Set(
+				movements.flatMap((movement) =>
+					movement.customerId === null ? [] : [movement.customerId],
+				),
+			),
+		];
+		const customers =
+			customerIds.length === 0
+				? []
+				: await this.customerRepository.findByIds(
+						context.companyId,
+						customerIds,
+					);
+		const customersById = new Map(
+			customers.map((customer) => [customer.id, customer]),
+		);
+
 		return movements.map((movement) => {
 			const product = productsById.get(movement.productId);
 
@@ -164,10 +204,22 @@ export class ListStockMovementsUseCase {
 				);
 			}
 
+			const customer =
+				movement.customerId === null
+					? null
+					: customersById.get(movement.customerId);
+
+			if (customer === undefined) {
+				throw new Error(
+					`Stock movement ${movement.id} points at customer ${movement.customerId}, which does not exist`,
+				);
+			}
+
 			return toStockMovementView(
 				movement,
 				product,
 				actorsById.get(movement.userId) ?? null,
+				customer,
 			);
 		});
 	}

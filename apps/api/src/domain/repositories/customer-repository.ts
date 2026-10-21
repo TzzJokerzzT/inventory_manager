@@ -31,6 +31,21 @@ export interface CustomerRepository {
 	): Promise<Customer | null>;
 
 	/**
+	 * Resolves the customers of the company with the given ids in one batch
+	 * read.
+	 *
+	 * It is a **history** read, which is why it differs from
+	 * {@link findActiveById}: a stock movement of a customer that was later
+	 * soft-deleted must stay readable (MOV-05, CLI-04), so the `deletedAt`
+	 * filter is deliberately absent. The `companyId` stays in the WHERE clause,
+	 * so a deleted customer of another company never resolves. The result is
+	 * not required to be complete or ordered -- an id with no row is simply
+	 * absent -- so the caller joins in memory; for the movement history a
+	 * missing customer is an inconsistent store, never an invented row.
+	 */
+	findByIds(companyId: string, ids: string[]): Promise<Customer[]>;
+
+	/**
 	 * Lists the company's active customers, ordered by name and then id so two
 	 * reads of the same state answer the same array.
 	 *

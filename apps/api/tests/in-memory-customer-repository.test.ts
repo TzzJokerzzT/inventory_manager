@@ -76,6 +76,48 @@ describe("InMemoryCustomerRepository.findActiveById", () => {
 	});
 });
 
+describe("InMemoryCustomerRepository.findByIds", () => {
+	it("returns the company's customers for the given ids, soft-deleted ones included", async () => {
+		const active = customer();
+		const deleted = customer({ id: "customer-2", deletedAt: DELETED_AT });
+		const repository = repositoryWith([active, deleted]);
+
+		const found = await repository.findByIds(COMPANY, [
+			"customer-1",
+			"customer-2",
+		]);
+
+		expect(found.map((row) => row.id).sort()).toEqual([
+			"customer-1",
+			"customer-2",
+		]);
+	});
+
+	it("never returns another company's customer", async () => {
+		const repository = repositoryWith([
+			customer({ id: "customer-2", companyId: OTHER_COMPANY }),
+		]);
+
+		await expect(
+			repository.findByIds(COMPANY, ["customer-2"]),
+		).resolves.toEqual([]);
+	});
+
+	it("returns an empty list when asked for no ids", async () => {
+		const repository = repositoryWith([customer()]);
+
+		await expect(repository.findByIds(COMPANY, [])).resolves.toEqual([]);
+	});
+
+	it("omits the ids the company does not have", async () => {
+		const repository = repositoryWith([customer()]);
+
+		const found = await repository.findByIds(COMPANY, ["customer-1", "ghost"]);
+
+		expect(found.map((row) => row.id)).toEqual(["customer-1"]);
+	});
+});
+
 describe("InMemoryCustomerRepository.list", () => {
 	it("returns only the company's active customers, ordered by name then id", async () => {
 		const repository = repositoryWith([

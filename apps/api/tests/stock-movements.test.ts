@@ -1,10 +1,14 @@
 import { ListStockMovementsUseCase } from "../src/application/use-cases/list-stock-movements.js";
 import { RegisterStockMovementUseCase } from "../src/application/use-cases/register-stock-movement.js";
+import { Customer } from "../src/domain/entities/customer.js";
 import { Product } from "../src/domain/entities/product.js";
 import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { User } from "../src/domain/entities/user.js";
+import { CustomerNotFoundError } from "../src/domain/errors/customer-not-found-error.js";
+import { CustomerRequiresExitError } from "../src/domain/errors/customer-requires-exit-error.js";
 import { InsufficientStockError } from "../src/domain/errors/insufficient-stock-error.js";
 import { ProductNotFoundError } from "../src/domain/errors/product-not-found-error.js";
+import { InMemoryCustomerRepository } from "../src/infrastructure/database/in-memory-customer-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
 import { createFakeUserRepository } from "./support/fake-user-repository.js";
@@ -12,6 +16,7 @@ import { createFakeUserRepository } from "./support/fake-user-repository.js";
 const COMPANY = "company-1";
 const OTHER_COMPANY = "company-2";
 const PRODUCT = "product-1";
+const CUSTOMER = "customer-1";
 
 const T0 = new Date("2026-10-21T10:00:00.000Z");
 const T1 = new Date("2026-10-21T11:00:00.000Z");
@@ -38,32 +43,55 @@ const ACTOR = User.create({
 	fullName: "Ana",
 });
 
+function customer(
+	overrides: Partial<Parameters<typeof Customer.create>[0]> = {},
+) {
+	return Customer.create({
+		id: CUSTOMER,
+		companyId: COMPANY,
+		name: "Maria Gonzalez",
+		...overrides,
+	});
+}
+
 /**
  * The use cases under test with the two in-memory adapters sharing one store:
  * the ledger applies the stock change to the same rows the product repository
  * serves, which is what makes the assertions about the resulting stock real.
  */
-function build(options: { products?: Product[]; users?: User[] } = {}) {
+function build(
+	options: {
+		products?: Product[];
+		users?: User[];
+		customers?: Customer[];
+	} = {},
+) {
 	const store = new Map<string, Product>(
 		(options.products ?? [product()]).map((row) => [row.id, row]),
 	);
 	const productRepository = new InMemoryProductRepository([], store);
 	const stockMovementRepository = new InMemoryStockMovementRepository(store);
 	const userRepository = createFakeUserRepository(options.users ?? [ACTOR]);
+	const customerRepository = new InMemoryCustomerRepository(
+		options.customers ?? [],
+	);
 
 	return {
 		store,
 		productRepository,
 		stockMovementRepository,
 		userRepository,
+		customerRepository,
 		register: new RegisterStockMovementUseCase({
 			productRepository,
 			stockMovementRepository,
+			customerRepository,
 		}),
 		list: new ListStockMovementsUseCase({
 			stockMovementRepository,
 			productRepository,
 			userRepository,
+			customerRepository,
 		}),
 	};
 }
@@ -93,6 +121,8 @@ describe("RegisterStockMovementUseCase", () => {
 			quantity: 5,
 			reason: "Compra",
 			createdAt: expect.any(String),
+			customerId: null,
+			customer: null,
 			product: { id: PRODUCT, name: "Cafe molido 500g", sku: "CAF-500" },
 			actor: { id: ACTOR.id, fullName: "Ana", email: "ana@x.com" },
 		});
@@ -112,6 +142,102 @@ describe("RegisterStockMovementUseCase", () => {
 		expect(result.stockQuantity).toBe(6);
 		expect(result.movement.type).toBe("OUT");
 	});
+
+	it("keeps an anonymous OUT valid, with no customer", async () => {
+		const { register } = build();
+
+		const result = await register.execute(
+			{ productId: PRODUCT, type: "OUT", quantity: 1 },
+			context(),
+		);
+
+		expect(result.movement.customerId).toBeNull();
+		expect(result.movement.customer).toBeNull();
+	});
+
+	it("associates a customer with an OUT and resolves it in the view", async () => {
+		const { register, stockMovementRepository } = build({
+			customers: [customer()],
+		});
+
+		const result = await register.execute(
+			{
+				productId: PRODUCT,
+				type: "OUT",
+				quantity: 2,
+				customerId: CUSTOMER,
+			},
+			context(),
+		);
+
+		expect(result.movement.customerId).toBe(CUSTOMER);
+		expect(result.movement.customer).toEqual({
+			id: CUSTOMER,
+			name: "Maria Gonzalez",
+		});
+		const [stored] = await stockMovementRepository.findByCompany(COMPANY, {
+			limit: 50,
+		});
+		expect(stored.customerId).toBe(CUSTOMER);
+	});
+
+	it("refuses an IN with a customer and records no movement", async () => {
+		const { register, list, productRepository } = build({
+			customers: [customer()],
+		});
+
+		const failure = await register
+			.execute(
+				{
+					productId: PRODUCT,
+					type: "IN",
+					quantity: 1,
+					customerId: CUSTOMER,
+				},
+				context(),
+			)
+			.catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(CustomerRequiresExitError);
+		await expect(list.execute({}, { companyId: COMPANY })).resolves.toEqual([]);
+		await expect(
+			productRepository.findActiveById(COMPANY, PRODUCT),
+		).resolves.toMatchObject({ stockQuantity: 10 });
+	});
+
+	it.each([
+		["an absent customer", []],
+		["another company's customer", [customer({ companyId: OTHER_COMPANY })]],
+		[
+			"a soft-deleted customer",
+			[customer({ deletedAt: new Date("2026-10-22T12:00:00.000Z") })],
+		],
+	])(
+		"answers CustomerNotFoundError for %s and leaves the stock and the history untouched",
+		async (_label, customers) => {
+			const { register, list, productRepository } = build({ customers });
+
+			await expect(
+				register.execute(
+					{
+						productId: PRODUCT,
+						type: "OUT",
+						quantity: 1,
+						customerId: CUSTOMER,
+					},
+					context(),
+				),
+			).rejects.toThrow(CustomerNotFoundError);
+			await expect(list.execute({}, { companyId: COMPANY })).resolves.toEqual(
+				[],
+			);
+			// The customer is resolved before the atomic write, so the stock of a
+			// rejected exit never moves.
+			await expect(
+				productRepository.findActiveById(COMPANY, PRODUCT),
+			).resolves.toMatchObject({ stockQuantity: 10 });
+		},
+	);
 
 	it("takes the actor from the company context, never from the input", async () => {
 		const { register } = build();
@@ -226,9 +352,86 @@ describe("ListStockMovementsUseCase", () => {
 			quantity: 2,
 			reason: "Venta",
 			createdAt: T1.toISOString(),
+			customerId: null,
+			customer: null,
 			product: { id: PRODUCT, name: "Cafe molido 500g", sku: "CAF-500" },
 			actor: { id: ACTOR.id, fullName: "Ana", email: "ana@x.com" },
 		});
+	});
+
+	it("resolves the customer of an exit and lists it with the movement", async () => {
+		const { list, stockMovementRepository, customerRepository } = build({
+			customers: [customer()],
+		});
+		seedMovement(stockMovementRepository, {
+			id: "m-1",
+			type: "OUT",
+			customerId: CUSTOMER,
+			createdAt: T0,
+		});
+		seedMovement(stockMovementRepository, {
+			id: "m-2",
+			type: "OUT",
+			customerId: CUSTOMER,
+			createdAt: T1,
+		});
+		seedMovement(stockMovementRepository, { id: "m-3", createdAt: T2 });
+		const customerLookup = jest.spyOn(customerRepository, "findByIds");
+
+		const movements = await list.execute({}, { companyId: COMPANY });
+
+		// Newest first: the anonymous exit is the newest, the two sales below
+		// it.
+		expect(movements[0].customerId).toBeNull();
+		expect(movements[0].customer).toBeNull();
+		expect(movements[1].customerId).toBe(CUSTOMER);
+		expect(movements[1].customer).toEqual({
+			id: CUSTOMER,
+			name: "Maria Gonzalez",
+		});
+		// Deduplicated: three movements, one customer, one lookup.
+		expect(customerLookup).toHaveBeenCalledTimes(1);
+		expect(customerLookup.mock.calls[0]).toEqual([COMPANY, [CUSTOMER]]);
+	});
+
+	it("keeps the customer readable after it was soft-deleted", async () => {
+		const { list, stockMovementRepository, customerRepository } = build({
+			customers: [customer()],
+		});
+		seedMovement(stockMovementRepository, {
+			id: "m-1",
+			type: "OUT",
+			customerId: CUSTOMER,
+		});
+		await customerRepository.softDelete(
+			COMPANY,
+			CUSTOMER,
+			new Date("2026-10-22T12:00:00.000Z"),
+		);
+
+		const [movement] = await list.execute({}, { companyId: COMPANY });
+
+		expect(movement.customerId).toBe(CUSTOMER);
+		expect(movement.customer).toEqual({
+			id: CUSTOMER,
+			name: "Maria Gonzalez",
+		});
+	});
+
+	it("throws a plain error when a movement points at a customer the store lost", async () => {
+		const { list, stockMovementRepository } = build();
+		seedMovement(stockMovementRepository, {
+			id: "m-1",
+			type: "OUT",
+			customerId: "ghost",
+		});
+
+		await expect(list.execute({}, { companyId: COMPANY })).rejects.toThrow(
+			Error,
+		);
+		await expect(list.execute({}, { companyId: COMPANY })).rejects.not.toThrow(
+			CustomerNotFoundError,
+		);
 	});
 
 	it("filters by productId and by type", async () => {

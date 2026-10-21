@@ -76,6 +76,23 @@ describe("StockMovement.create", () => {
 		},
 	);
 
+	it("defaults customerId to null, so an anonymous movement is the default", () => {
+		expect(movement().customerId).toBeNull();
+	});
+
+	it("keeps the customerId of an exit, trimmed", () => {
+		expect(movement({ customerId: "  customer-1  " }).customerId).toBe(
+			"customer-1",
+		);
+	});
+
+	it.each([[""], ["   "], [null], [undefined]])(
+		"normalizes the customerId %p to null",
+		(customerId) => {
+			expect(movement({ customerId }).customerId).toBeNull();
+		},
+	);
+
 	it("trims the reason", () => {
 		expect(movement({ reason: "  Compra a proveedor  " }).reason).toBe(
 			"Compra a proveedor",
@@ -119,11 +136,14 @@ describe("StockMovement.toJSON", () => {
 			quantity: 10,
 			reason: "Compra",
 			userId: "user-1",
+			customerId: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
-		// The product and the actor are the view's business, not the entity's.
+		// The product, the actor and the resolved customer are the view's
+		// business, not the entity's.
 		expect(json).not.toHaveProperty("product");
 		expect(json).not.toHaveProperty("actor");
+		expect(json).not.toHaveProperty("customer");
 	});
 });
 
@@ -137,6 +157,7 @@ describe("StockMovement immutability", () => {
 			"quantity",
 			"reason",
 			"userId",
+			"customerId",
 			"createdAt",
 		]) {
 			const descriptor = Object.getOwnPropertyDescriptor(

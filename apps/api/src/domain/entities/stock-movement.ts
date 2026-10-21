@@ -16,6 +16,8 @@ export interface StockMovementProps {
 	quantity: number;
 	reason: string | null;
 	userId: string;
+	/** The customer of a sale, or `null` for an anonymous exit or any entry. */
+	customerId: string | null;
 	createdAt: Date;
 }
 
@@ -29,6 +31,11 @@ export interface CreateStockMovementProps {
 	/** Server-owned: the caller comes from the token, never from the body. */
 	userId: string;
 	reason?: string | null;
+	/**
+	 * The customer the sale is associated with. Only an `OUT` may carry one; the
+	 * use case enforces that rule, the entity only normalizes the id.
+	 */
+	customerId?: string | null;
 	id?: string;
 	/** Server-owned: movements are never backdated by a client. */
 	createdAt?: Date;
@@ -85,6 +92,22 @@ function normalizeReason(reason: string | null | undefined): string | null {
 }
 
 /**
+ * Normalizes an optional customer reference: absent and whitespace-only values
+ * are stored as `null`, so "no customer" has exactly one representation.
+ */
+function normalizeCustomerId(
+	customerId: string | null | undefined,
+): string | null {
+	if (customerId === null || customerId === undefined) {
+		return null;
+	}
+
+	const value = customerId.trim();
+
+	return value.length === 0 ? null : value;
+}
+
+/**
  * Stock movement entity: one immutable entry of the stock audit trail
  * (MOV-05).
  *
@@ -92,6 +115,8 @@ function normalizeReason(reason: string | null | undefined): string | null {
  * invalid movement is not representable: non-empty ids, a type in `IN|OUT`, a
  * quantity that is an integer in `1..1_000_000`, a trimmed reason of at most
  * 300 characters (empty means "no reason") and a server-owned `createdAt`.
+ * The optional `customerId` is trimmed and an empty one becomes `null`; whether
+ * a customer is allowed at all is the use case's rule (only exits).
  *
  * There is no mutator on purpose: a movement is never edited nor deleted, it
  * is the trace of what happened to the stock. No Express, Prisma or HTTP
@@ -109,6 +134,7 @@ export class StockMovement {
 			quantity: assertQuantity(input.quantity),
 			reason: normalizeReason(input.reason),
 			userId: assertIdentifier(input.userId, "user id"),
+			customerId: normalizeCustomerId(input.customerId),
 			createdAt: input.createdAt ?? new Date(),
 		});
 	}
@@ -141,14 +167,18 @@ export class StockMovement {
 		return this.props.userId;
 	}
 
+	get customerId(): string | null {
+		return this.props.customerId;
+	}
+
 	get createdAt(): Date {
 		return this.props.createdAt;
 	}
 
 	/**
-	 * The movement as stored. The product and the actor of the HTTP view are
-	 * *not* here: they are resolved separately, so the entity never carries a
-	 * second copy of rows it does not own.
+	 * The movement as stored. The product, the actor and the customer of the
+	 * HTTP view are *not* here: they are resolved separately, so the entity
+	 * never carries a second copy of rows it does not own.
 	 */
 	toJSON(): {
 		id: string;
@@ -158,6 +188,7 @@ export class StockMovement {
 		quantity: number;
 		reason: string | null;
 		userId: string;
+		customerId: string | null;
 		createdAt: string;
 	} {
 		return {
@@ -168,6 +199,7 @@ export class StockMovement {
 			quantity: this.quantity,
 			reason: this.reason,
 			userId: this.userId,
+			customerId: this.customerId,
 			createdAt: this.createdAt.toISOString(),
 		};
 	}

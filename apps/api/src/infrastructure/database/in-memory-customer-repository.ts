@@ -49,6 +49,18 @@ export class InMemoryCustomerRepository implements CustomerRepository {
 		return customer;
 	}
 
+	async findByIds(companyId: string, ids: string[]): Promise<Customer[]> {
+		// No `deletedAt` filter on purpose: this is the history read of the
+		// stock movements, so a movement of a deleted customer must stay
+		// readable (MOV-05). The company filter stays, so a deleted customer of
+		// another company never resolves.
+		const wanted = new Set(ids);
+
+		return Array.from(this.customers.values()).filter(
+			(row) => row.companyId === companyId && wanted.has(row.id),
+		);
+	}
+
 	async list(companyId: string, search?: string): Promise<Customer[]> {
 		const needle = search?.trim().toLowerCase();
 

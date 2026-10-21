@@ -18,6 +18,12 @@ jest.mock("@/src/features/company/components/company-switcher", () => ({
 	CompanySwitcher: () => <div>switcher-stub</div>,
 }));
 
+// Preference persistence has its own suite; the dashboard render test keeps the
+// guard's behavior isolated from the browser storage.
+jest.mock("@/src/features/company/store/use-company-preference", () => ({
+	useCompanyPreference: () => undefined,
+}));
+
 jest.mock("@/src/features/auth/logout/use-logout", () => ({
 	useLogout: jest.fn(() => () => {}),
 }));

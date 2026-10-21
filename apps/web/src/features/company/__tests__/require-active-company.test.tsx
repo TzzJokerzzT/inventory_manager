@@ -13,6 +13,12 @@ jest.mock("../api/use-companies", () => ({
 	useCompanies: jest.fn(),
 }));
 
+// The preference sync is a side effect covered by its own suite; these tests
+// are about the guard's routing states, so it is stubbed here.
+jest.mock("../store/use-company-preference", () => ({
+	useCompanyPreference: () => undefined,
+}));
+
 const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
 const useCompaniesMock = useCompanies as jest.MockedFunction<
 	typeof useCompanies

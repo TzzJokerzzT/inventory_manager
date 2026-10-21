@@ -8,6 +8,7 @@ import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import { useSessionStore } from "@/src/store/session-store/session-store";
 import { useCompanies } from "../api/use-companies";
+import { useCompanyPreference } from "../store/use-company-preference";
 
 /**
  * Wraps routes that need an active company.
@@ -30,6 +31,11 @@ export function RequireActiveCompany({ children }: { children: ReactNode }) {
 		error,
 		refetch,
 	} = useCompanies();
+
+	// Restores and persists the last company this user selected. It runs here,
+	// on the guard every dashboard route already goes through, so the selection
+	// survives a reload without any route having to remember it.
+	useCompanyPreference();
 
 	const unauthorized =
 		isError && error instanceof ApiError && error.status === 401;

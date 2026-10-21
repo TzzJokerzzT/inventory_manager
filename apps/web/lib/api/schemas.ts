@@ -4,6 +4,8 @@ import {
 	number,
 	object,
 	picklist,
+	pipe,
+	regex,
 	safeParse,
 	string,
 } from "valibot";
@@ -613,6 +615,56 @@ export function parseRegisterMovementResponse(
 	data: unknown,
 ): RegisterMovementResponse {
 	const result = safeParse(registerMovementResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One point of the movement trend: a **UTC day** and what entered and left the
+ * stock that day.
+ *
+ * `date` is validated against the `Format: date` the contract declares instead of
+ * accepting any string: the aggregate is per day, so a full timestamp or a local
+ * date is a shape change, not a value the chart could place on its axis. The
+ * counters are **numbers** because they are sums of quantities, not money.
+ */
+export const movementTrendPointSchema = object({
+	date: pipe(string(), regex(/^\d{4}-\d{2}-\d{2}$/)),
+	entries: number(),
+	exits: number(),
+});
+
+/** One day of the movement trend, derived from the OpenAPI contract. */
+export type MovementTrendPoint = components["schemas"]["MovementTrendPoint"];
+
+/**
+ * Shape of `GET /companies/{companyId}/reports/movements`: the window the server
+ * aggregated plus one point per day, **oldest first** and already zero-filled by
+ * the server for the days without movements. The client draws them in the order
+ * it receives them and never re-sorts or re-fills.
+ */
+export const movementTrendResponseSchema = object({
+	days: number(),
+	series: array(movementTrendPointSchema),
+});
+
+/** `GET /companies/{companyId}/reports/movements` response, derived from the contract. */
+export type MovementTrendResponse =
+	components["schemas"]["MovementTrendResponse"];
+
+/**
+ * Validates the trend report at the boundary.
+ *
+ * Same contract as {@link parseMovements}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * chart, and a missing series never turns into a period the server did not
+ * compute.
+ */
+export function parseMovementTrend(data: unknown): MovementTrendResponse {
+	const result = safeParse(movementTrendResponseSchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

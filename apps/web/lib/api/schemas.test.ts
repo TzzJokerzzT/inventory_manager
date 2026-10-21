@@ -10,6 +10,7 @@ import {
 	parseMembershipsResponse,
 	parseMeResponse,
 	parseMovements,
+	parseMovementTrend,
 	parseNotifications,
 	parsePendingInvitations,
 	parseProduct,
@@ -807,5 +808,86 @@ describe("parseCustomer", () => {
 
 	it("rejects a customer whose shape changed", () => {
 		expect(() => parseCustomer({ id: "cu1" })).toThrow(ApiError);
+	});
+});
+
+function trendPoint(overrides: Record<string, unknown> = {}) {
+	return { date: "2026-10-21", entries: 3, exits: 1, ...overrides };
+}
+
+function trendResponse(overrides: Record<string, unknown> = {}) {
+	return {
+		days: 30,
+		series: [
+			trendPoint({ date: "2026-10-20", entries: 0, exits: 0 }),
+			trendPoint(),
+		],
+		...overrides,
+	};
+}
+
+describe("parseMovementTrend", () => {
+	it("returns the window and the per-day series exactly as the API serializes them", () => {
+		const response = trendResponse();
+
+		expect(parseMovementTrend(response)).toEqual(response);
+	});
+
+	it("keeps the daily points in the order the API sent them, oldest first", () => {
+		const parsed = parseMovementTrend(trendResponse());
+
+		expect(parsed.series.map((point) => point.date)).toEqual([
+			"2026-10-20",
+			"2026-10-21",
+		]);
+	});
+
+	it("accepts an empty series", () => {
+		expect(parseMovementTrend({ days: 30, series: [] })).toEqual({
+			days: 30,
+			series: [],
+		});
+	});
+
+	it("rejects a non-object response", () => {
+		expect(() => parseMovementTrend([trendPoint()])).toThrow(ApiError);
+	});
+
+	it("rejects a response without its series", () => {
+		// El gráfico no puede inventar una serie vacía: si falta, el límite falla
+		// antes de que la vista dibuje un período que el servidor no calculó.
+		expect(() => parseMovementTrend({ days: 30 })).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a day that is not a YYYY-MM-DD date", () => {
+		expect(() =>
+			parseMovementTrend(
+				trendResponse({ series: [trendPoint({ date: "21-10-2026" })] }),
+			),
+		).toThrow(/respuesta inesperada/);
+
+		expect(() =>
+			parseMovementTrend(
+				trendResponse({
+					series: [trendPoint({ date: "2026-10-21T00:00:00.000Z" })],
+				}),
+			),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects counters that are not numbers", () => {
+		expect(() =>
+			parseMovementTrend(
+				trendResponse({ series: [trendPoint({ entries: "3" })] }),
+			),
+		).toThrow(/respuesta inesperada/);
+
+		expect(() =>
+			parseMovementTrend(
+				trendResponse({ series: [trendPoint({ exits: null })] }),
+			),
+		).toThrow(/respuesta inesperada/);
 	});
 });

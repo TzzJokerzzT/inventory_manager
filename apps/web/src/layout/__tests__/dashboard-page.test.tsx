@@ -3,6 +3,8 @@ import { useRouter } from "next/navigation";
 import DashboardLayout from "@/app/dashboard/layout";
 import DashboardPage from "@/app/dashboard/page";
 import { useCompanies } from "@/src/features/company/api/use-companies";
+import { useMovementTrend } from "@/src/features/dashboard/api/use-movement-trend";
+import { useProducts } from "@/src/features/product/api/use-products";
 import { useSessionStore } from "@/src/store/session-store/session-store";
 
 jest.mock("next/navigation", () => ({
@@ -28,9 +30,29 @@ jest.mock("@/src/features/auth/logout/use-logout", () => ({
 	useLogout: jest.fn(() => () => {}),
 }));
 
+// The dashboard now renders real-data charts, so these two reads are stubbed to
+// keep this a route/shell integration test: it must not depend on the API nor
+// on a QueryClient the route does not own.
+jest.mock("@/src/features/product/api/use-products", () => ({
+	useProducts: jest.fn(),
+}));
+
+jest.mock("@/src/features/dashboard/api/use-movement-trend", () => ({
+	...jest.requireActual("@/src/features/dashboard/api/use-movement-trend"),
+	useMovementTrend: jest.fn(),
+}));
+
+jest.mock("recharts", () =>
+	jest.requireActual("@/src/features/dashboard/testing/recharts-mock"),
+);
+
 const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
 const useCompaniesMock = useCompanies as jest.MockedFunction<
 	typeof useCompanies
+>;
+const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
+const useMovementTrendMock = useMovementTrend as jest.MockedFunction<
+	typeof useMovementTrend
 >;
 const replace = jest.fn();
 
@@ -66,6 +88,18 @@ describe("DashboardPage", () => {
 		useSessionStore.setState({ accessToken: undefined, resolved: true });
 		mockRouter();
 		mockCompanies();
+		useProductsMock.mockReturnValue({
+			data: [],
+			isPending: false,
+			isError: false,
+			error: undefined,
+		} as unknown as ReturnType<typeof useProducts>);
+		useMovementTrendMock.mockReturnValue({
+			data: { days: 30, series: [] },
+			isPending: false,
+			isError: false,
+			error: undefined,
+		} as unknown as ReturnType<typeof useMovementTrend>);
 	});
 
 	/**

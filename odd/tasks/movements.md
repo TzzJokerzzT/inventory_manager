@@ -87,13 +87,13 @@ S9. **Verificación.** Suites completas en verde (baseline actual: API 48 suites
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | S7, S9 | parent | C1 |
-| T2 | Backend: entity `StockMovement`, puerto, errores y `findByIds` de productos | S1-S5 | worker | C2 |
-| T3 | Backend: caso de uso `RegisterStockMovement` (transacción + guard) y `ListMovements` | S1-S5 | worker | C2 |
-| T4 | Backend: adaptadores Prisma e in-memory, controller, validador, rutas y error handler | S4, S6, S7 | worker | C3 |
-| T5 | Frontend: schemas, hooks y formulario/tabla reales | S7, S8 | worker | C4 |
-| T6 | Verificación integral | S9 | parent | — |
-| T7 | Sincronizar README y `docs/Project.md` | S9 | parent | C5 |
+| T1 | Contrato OpenAPI + regenerar tipos web | S7, S9 | parent | `a04b961` (C2) |
+| T2 | Backend: entity `StockMovement`, puerto, errores y `findByIds` de productos | S1-S5 | worker | `21ba518` (C1) |
+| T3 | Backend: caso de uso `RegisterStockMovement` (transacción + guard) y `ListMovements` | S1-S5 | worker | `21ba518` (C1) |
+| T4 | Backend: adaptadores Prisma e in-memory, controller, validador, rutas y error handler | S4, S6, S7 | worker | `a04b961` (C2) |
+| T5 | Frontend: schemas, hooks y formulario/tabla reales | S7, S8 | worker | `955a666` (C3) |
+| T6 | Verificación integral | S9 | parent | — (verificación, sin commit) |
+| T7 | Sincronizar README y `docs/Project.md` | S9 | parent | C4 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -111,3 +111,21 @@ movimiento es la traza de auditoría (MOV-05). El umbral de stock bajo (NOTIF-01
 
 L5. Decisión del orquestador: el listado resuelve producto y actor con lecturas batch (sin N+1) y
 devuelve `actor: null` si el usuario no se pudo resolver, replicando la regla de notificaciones.
+
+L6. Cierre de la feature. Tres commits de código:
+
+| Commit | Contenido |
+| --- | --- |
+| `21ba518` | `feat(api): add stock movement ledger with atomic stock updates` — entity, puertos, casos de uso, in-memory y tests |
+| `a04b961` | `feat(api): expose the stock movements endpoints` — adaptadores HTTP y Prisma, contrato OpenAPI y tipos del frontend |
+| `955a666` | `feat(web): wire the stock movements forms and history` — formularios, hooks y tabla del historial |
+
+Verificación (T6): API 53 suites / 649 tests y web 83 suites / 567 tests en verde, `check-types`
+limpio en las dos apps, `biome check .` limpio y el test de drift de OpenAPI en verde.
+
+Entrega: la feature quedó en tres slices sobre la rama `feat/refactor/product-frontend-create-product`;
+el push y el PR los decide el humano.
+
+Pendiente del humano: queda un archivo de scratch de la worker de frontend en
+`/tmp/movement-combobox-probe.test.tsx`, fuera del worktree; debe borrarlo el humano (esta tarea no
+borra archivos).

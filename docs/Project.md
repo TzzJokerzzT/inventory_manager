@@ -57,6 +57,19 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | MOV-04 | Actualización automática del stock disponible | Alta |
 | MOV-05 | Registro de usuario, fecha y motivo en cada movimiento | Media |
 
+> **Estado (MI-8, `odd/tasks/movements.md`):** MOV-01 a MOV-05 están implementados. El alta (`POST
+> /companies/{companyId}/movements`) registra una entrada (`IN`) o una salida (`OUT`) y responde `201`
+> con el movimiento y el `stockQuantity` del producto **después** de él (MOV-01, MOV-02); el historial
+> (`GET /companies/{companyId}/movements?productId=&type=&limit=`, más recientes primero) cubre
+> MOV-03. La escritura del movimiento y el cambio de stock van en **una sola transacción** (MOV-04) y
+> la salida se aplica con un update guardado por `stockQuantity >= quantity`, así que dos salidas
+> concurrentes no pueden dejar stock negativo: la perdedora responde `409 insufficient_stock` con el
+> stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
+> ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
+> por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
+> los roles leen el historial. `customerId` **no se expone** porque la feature de clientes (MI-11)
+> todavía no existe: la columna existe y queda nula, así que CLI-04 sigue pendiente.
+
 ### 5. Gestión de Clientes
 
 | ID | Requerimiento | Prioridad |
@@ -176,8 +189,8 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 
 - [x] CRUD de Productos (con SKU y foto)
 - [ ] Dashboard con métricas básicas
-- [ ] Entradas y salidas de stock
-- [ ] Historial de movimientos
+- [x] Entradas y salidas de stock
+- [x] Historial de movimientos
 
 ### Fase 3 — Clientes y Alertas
 

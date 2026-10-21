@@ -15,9 +15,18 @@ import type { ProductRepository } from "../../domain/repositories/product-reposi
  * in production and quietly false in the suite that runs against this adapter.
  */
 export class InMemoryProductRepository implements ProductRepository {
-	private readonly products = new Map<string, Product>();
+	private readonly products: Map<string, Product>;
 
-	constructor(products: Product[] = []) {
+	/**
+	 * `store` is adapter-specific and exists for the stock-movement ledger: the
+	 * in-memory movement adapter applies stock changes to the very rows this
+	 * repository serves, so both have to share one `Map` instead of keeping two
+	 * copies that drift. It is not part of the port; production wires the Prisma
+	 * adapters, where the shared state is the database.
+	 */
+	constructor(products: Product[] = [], store?: Map<string, Product>) {
+		this.products = store ?? new Map<string, Product>();
+
 		for (const product of products) {
 			this.products.set(product.id, product);
 		}
@@ -61,6 +70,18 @@ export class InMemoryProductRepository implements ProductRepository {
 		);
 
 		return product ?? null;
+	}
+
+	async findByIds(companyId: string, ids: string[]): Promise<Product[]> {
+		// No `deletedAt` filter on purpose: this is the history read of the
+		// stock movements, so a movement of a deleted product must stay
+		// readable (MOV-05). The company filter stays, so a deleted product of
+		// another company never resolves.
+		const wanted = new Set(ids);
+
+		return Array.from(this.products.values()).filter(
+			(row) => row.companyId === companyId && wanted.has(row.id),
+		);
 	}
 
 	async list(companyId: string, search?: string): Promise<Product[]> {

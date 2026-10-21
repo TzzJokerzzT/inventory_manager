@@ -41,6 +41,21 @@ export interface ProductRepository {
 	findBySku(companyId: string, sku: string): Promise<Product | null>;
 
 	/**
+	 * Resolves the products of the company with the given ids in one batch
+	 * read.
+	 *
+	 * It is a **history** read, which is why it differs from
+	 * {@link findActiveById}: a stock movement of a soft-deleted product must
+	 * stay readable (MOV-05), so the `deletedAt` filter is deliberately absent.
+	 * The `companyId` stays in the WHERE clause, so a deleted product of
+	 * another company never resolves. The result is not required to be
+	 * complete or ordered -- an id with no row is simply absent -- so the
+	 * caller joins in memory; for the movement history a missing product is an
+	 * inconsistent store, never an invented row.
+	 */
+	findByIds(companyId: string, ids: string[]): Promise<Product[]>;
+
+	/**
 	 * Lists the company's active products, ordered by name and then id so two
 	 * reads of the same state answer the same array.
 	 *

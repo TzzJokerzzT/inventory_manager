@@ -251,3 +251,32 @@ describe("Product.withChanges", () => {
 		expect(() => product.withChanges({ price: "7.505" })).toThrow(DomainError);
 	});
 });
+
+describe("Product.withStock", () => {
+	it("changes only the stock and preserves every other field", () => {
+		const created = create({
+			id: "product-1",
+			description: "Molido medio",
+			photoUrl: "https://example.com/a.png",
+			stockQuantity: 5,
+			lowStockThreshold: 2,
+			deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+		});
+
+		const restocked = created.withStock(15);
+
+		expect(restocked.stockQuantity).toBe(15);
+		expect({
+			...restocked.toJSON(),
+			stockQuantity: created.stockQuantity,
+		}).toEqual(created.toJSON());
+		expect(restocked.deletedAt).toBe(created.deletedAt);
+		expect(restocked.updatedAt).toBe(created.updatedAt);
+	});
+
+	it("accepts zero and rejects a negative or fractional quantity", () => {
+		expect(create({ stockQuantity: 5 }).withStock(0).stockQuantity).toBe(0);
+		expect(() => create().withStock(-1)).toThrow(DomainError);
+		expect(() => create().withStock(1.5)).toThrow(DomainError);
+	});
+});

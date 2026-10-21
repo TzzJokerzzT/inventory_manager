@@ -228,3 +228,48 @@ describe("InMemoryProductRepository.softDelete", () => {
 		).resolves.toBeNull();
 	});
 });
+
+describe("InMemoryProductRepository.findByIds", () => {
+	it("resolves the requested products of the company", async () => {
+		const repository = repositoryWith([
+			product(),
+			product({ id: "product-2", name: "Azucar", sku: "SUGAR-1" }),
+			product({ id: "product-3", name: "Yerba", sku: "YERBA-1" }),
+		]);
+
+		const found = await repository.findByIds(COMPANY, [
+			"product-1",
+			"product-3",
+		]);
+
+		expect(found.map((row) => row.id).sort()).toEqual([
+			"product-1",
+			"product-3",
+		]);
+	});
+
+	it("includes the soft-deleted rows, because a movement of a deleted product stays readable", async () => {
+		const deleted = product({
+			deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+		});
+		const repository = repositoryWith([deleted]);
+
+		const found = await repository.findByIds(COMPANY, ["product-1"]);
+
+		expect(found.map((row) => row.id)).toEqual(["product-1"]);
+	});
+
+	it("is scoped to the company", async () => {
+		const repository = repositoryWith([product({ companyId: OTHER_COMPANY })]);
+
+		await expect(repository.findByIds(COMPANY, ["product-1"])).resolves.toEqual(
+			[],
+		);
+	});
+
+	it("returns an empty list for an empty id list", async () => {
+		const repository = repositoryWith([product()]);
+
+		await expect(repository.findByIds(COMPANY, [])).resolves.toEqual([]);
+	});
+});

@@ -268,6 +268,35 @@ export class Product {
 	}
 
 	/**
+	 * Builds the next state of this product with a new stock quantity.
+	 *
+	 * It exists so the stock ledger (MI-8) can apply a movement without writing
+	 * the column outside the entity: the value is re-validated by the factory
+	 * (a non-negative integer) and every other field is carried over untouched.
+	 * `updatedAt` is preserved on purpose, because the Prisma adapter's guarded
+	 * stock update does not stamp it either; keeping the two adapters
+	 * interchangeable matters more than a timestamp the movement itself
+	 * carries.
+	 */
+	withStock(quantity: number): Product {
+		return Product.create({
+			id: this.id,
+			companyId: this.companyId,
+			name: this.name,
+			description: this.description,
+			sku: this.sku,
+			price: this.price,
+			photoUrl: this.photoUrl,
+			stockQuantity: quantity,
+			lowStockThreshold: this.lowStockThreshold,
+			categoryId: this.categoryId,
+			deletedAt: this.deletedAt,
+			createdAt: this.createdAt,
+			updatedAt: this.updatedAt,
+		});
+	}
+
+	/**
 	 * Builds the next state of this product, re-validating the changed fields
 	 * through the same factory. An absent change keeps the current value; an
 	 * explicit `null` clears `description` or `photoUrl` (the partial-update

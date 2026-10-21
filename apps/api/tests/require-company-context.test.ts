@@ -1,10 +1,12 @@
 import express from "express";
 import request from "supertest";
+import { Company } from "../src/domain/entities/company.js";
 import {
 	type CreateMembershipProps,
 	Membership,
 } from "../src/domain/entities/membership.js";
 import { User } from "../src/domain/entities/user.js";
+import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { errorHandler } from "../src/interfaces/http/middlewares/error-handler.js";
 import { createRequireCompanyContext } from "../src/interfaces/http/middlewares/require-company-context.js";
@@ -14,6 +16,9 @@ const USER_ID = "user-1";
 
 function createTestApp(memberships: Membership[]) {
 	const membershipRepository = new InMemoryMembershipRepository(memberships);
+	// The context carries the company name, so the row has to exist.
+	const companyRepository = new InMemoryCompanyRepository();
+	companyRepository.save(Company.create({ id: COMPANY_ID, name: "Acme" }));
 
 	const app = express();
 	app.get(
@@ -29,7 +34,7 @@ function createTestApp(memberships: Membership[]) {
 			});
 			next();
 		},
-		createRequireCompanyContext({ membershipRepository }),
+		createRequireCompanyContext({ membershipRepository, companyRepository }),
 		(request, response) => {
 			response.json(request.companyContext);
 		},
@@ -60,7 +65,7 @@ describe("requireCompanyContext", () => {
 	// membership stores only agree on bootstrap OWNER memberships. MEMBER and
 	// ADMIN role resolution is therefore proven here, at the middleware level
 	// only.
-	it("resolves an ACTIVE membership into { companyId, role }", async () => {
+	it("resolves an ACTIVE membership into { companyId, role, companyName }", async () => {
 		const memberApp = createTestApp([membership()]);
 		const adminApp = createTestApp([membership({ role: "ADMIN" })]);
 
@@ -75,11 +80,13 @@ describe("requireCompanyContext", () => {
 		expect(memberResponse.body).toEqual({
 			companyId: COMPANY_ID,
 			role: "MEMBER",
+			companyName: "Acme",
 		});
 		expect(adminResponse.status).toBe(200);
 		expect(adminResponse.body).toEqual({
 			companyId: COMPANY_ID,
 			role: "ADMIN",
+			companyName: "Acme",
 		});
 	});
 

@@ -21,26 +21,46 @@ frontend y una API REST para el backend. No hay código compartido entre ellas.
 funcionando. **El flujo de autenticación completo ya está implementado** (registro, login mediado
 por la API con el gate de email verificado, refresh, logout, bootstrap de sesión y manejo del 401),
 **las empresas ya funcionan** (alta con la membership de dueño en una sola transacción, listado
-filtrado por membership y endpoint de contexto con sus reglas de autorización) y **la firma de
-subidas de media por empresa ya está cableada**, junto con el shell de la aplicación, la vista del
-dashboard y el design system. Quedan pendientes **los módulos de negocio** (productos, movimientos,
-clientes y notificaciones de stock bajo) y **la gestión de miembros** de una empresa.
+filtrado por membership y endpoint de contexto con sus reglas de autorización), **la gestión de
+miembros está implementada** (invitación, listado, cambio de rol, revocación, salida, aceptación de
+invitaciones y notificaciones), **la firma de subidas de media por empresa ya está cableada** y
+**el catálogo de productos es el primer módulo de negocio terminado** (CRUD por empresa con SKU único,
+búsqueda, baja lógica y foto subida con firma), **los movimientos de stock también están
+terminados** (entradas y salidas con actualización atómica del stock, historial filtrable e
+auditoría inmutable de usuario, fecha y motivo) y **el padrón de clientes está cerrado** (CRUD por
+empresa con baja lógica y búsqueda por nombre, email o teléfono), junto con el shell de la
+aplicación, **la vista del dashboard, que ya es enteramente real** —cuatro KPIs, alertas, tabla de
+stock crítico y los gráficos, todos derivados de la empresa activa (MI-6 y MI-14)— y el design
+system. Los clientes se gestionan **por empresa y cualquier miembro activo** los crea, edita y da de
+baja, y **la vinculación de clientes a las salidas de stock (MI-10 / CLI-04) también está hecha**:
+una salida puede asociarse a un cliente —opcional, nunca una entrada— y el historial resuelve el
+nombre del lado del servidor, incluso después de que el cliente se dé de baja. Quedan pendientes
+**las notificaciones de stock bajo y la recuperación de contraseña** (el resumen de compras por
+cliente, con sus columnas, sigue sin construirse).
+Cada movimiento y el cambio de stock ocurren en **una sola transacción** —una salida nunca puede
+superar el stock disponible: la perdedora de dos salidas concurrentes responde `409
+insufficient_stock` sin registrar nada— y los movimientos son **inmutables**, porque son la traza de
+auditoría del inventario.
 El repositorio y el stack de tests ya están en pie.
 
 | Componente | Estado |
 | ------------ | -------- |
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 10 operaciones en `openapi.yaml` |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 33 operaciones en `openapi.yaml` |
 | **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
 | **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
 | Typecheck | ✅ `apps/web` y `apps/api` limpios (`tsc --noEmit`) |
 | **Autenticación** | ✅ registro, login (gate de email verificado), refresh, logout y bootstrap de sesión contra Auth0 |
 | **Empresas** | ✅ alta con membership `OWNER` en una transacción, listado por membership y `GET /companies/{id}/context` |
+| **Miembros** | ✅ invitación, listado, cambio de rol, revocación y salida por empresa, más invitaciones y notificaciones en `/me` |
+| **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica y foto firmada a Cloudinary |
+| **Movimientos** | ✅ entradas y salidas con stock atómico (una transacción con guard `stockQuantity >= quantity`), historial por producto, auditoría de usuario/fecha/motivo y cliente opcional en las salidas (MI-10) |
+| **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE`, las salidas pueden asociarse a un cliente (MI-10) y el detalle de un cliente lista sus salidas |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), vista del dashboard y páginas de login/registro/sin-empresas |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard con datos reales (cuatro KPIs, alertas, tabla de stock crítico y los gráficos de MI-14, todo derivado de la empresa activa), páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -65,18 +85,129 @@ no existe.**
 
 **Empresas.** Alta de empresa con la membership de dueño (`OWNER`) creada en la misma transacción;
 listado de las empresas del usuario (solo memberships `ACTIVE`); endpoint de contexto que resuelve
-la empresa y el rol del usuario; y switch de empresa en la barra superior. Productos, clientes y
-movimientos están solo en el esquema de datos —no hay endpoints ni pantallas todavía—, así que el
-aislamiento por empresa aplica hoy a lo que está construido (empresas y media).
+la empresa y el rol del usuario; y switch de empresa en la barra superior. El aislamiento por empresa
+cubre todo lo que está construido (empresas, media, miembros, productos, movimientos y clientes).
+
+**Miembros de la empresa.** Invitación por email, listado de miembros, cambio de rol, revocación y
+salida de la empresa, más el listado y la aceptación de invitaciones y las notificaciones del
+usuario (`/me/invitations`, `/me/notifications`). La matriz de autorización decide quién asigna cada
+rol —un `OWNER` puede asignar `ADMIN` u `OWNER`, un `ADMIN` asigna `MEMBER`—, nadie cambia su propio
+rol y el último `OWNER` activo no puede salir de la empresa.
+
+**Productos.** Catálogo por empresa en `/dashboard/products`: listado con búsqueda por nombre **o**
+SKU (subcadena, sin distinguir mayúsculas), alta, edición parcial y baja lógica (`204`). El SKU se
+normaliza a mayúsculas y es **único por empresa incluidas las filas dadas de baja**: un producto
+eliminado sigue reservando su SKU, así que recrearlo responde `409 sku_already_exists`. El precio
+viaja como **string decimal** (`"1500.00"`) porque la columna es `Decimal(12,2)` y un número JSON
+perdería precisión. La foto se sube **directo a Cloudinary** con la firma de
+`POST /companies/{id}/media/signature` y sólo se guarda el `secure_url`. Escribir (crear, editar o
+dar de baja) exige `manage_products`, que la matriz resuelve como `ADMIN` u `OWNER`; un `MEMBER` lee
+el catálogo y recibe `403 insufficient_role` si intenta escribir. `stockQuantity` es del servidor
+(sólo lo mueven las entradas y salidas de MI-8) y `lowStockThreshold` sigue en el default de la base;
+`categoryId` no se expone porque todavía no existe la feature de categorías, así que el filtro por
+categoría de PROD-04 **no** está implementado.
+
+**Movimientos de stock.** Entradas (`IN`) y salidas (`OUT`) en `/dashboard/movements`: formulario con
+selector de producto real, cantidad y motivo opcional, más una tabla con tipo, producto, cantidad,
+motivo, usuario y fecha. `POST /companies/{id}/movements` responde `201` con el movimiento y el
+`stockQuantity` del producto **después** del movimiento, y `GET /companies/{id}/movements` lista el
+historial de la empresa más reciente primero, con los filtros `productId`, `customerId` y `type`, y
+`limit` de `1` a `200` (default `50`). `customerId` es un **filtro de lectura** combinable con los
+otros: un cliente de otra empresa no devuelve filas en vez de responder `404`, y el `companyId`
+sigue siendo obligatorio en la consulta. Ese filtro es el que usa el detalle de un cliente (ver
+**Clientes**) para mostrar sus salidas, así que la página de movimientos **queda como está**: el
+detalle es una vista adicional y de solo lectura. El movimiento y el cambio de stock van en **una
+sola transacción**: una entrada suma, una salida resta y, si el movimiento no se puede registrar, el
+stock no cambia. **Una salida nunca puede superar el stock disponible**, porque la resta se hace con
+un update guardado (`stockQuantity >= quantity`): dos salidas concurrentes no pueden dejar stock
+negativo y la perdedora responde `409 insufficient_stock` con el stock disponible, sin registrar
+nada. Los movimientos son
+**inmutables** —no hay endpoints de edición ni de borrado— porque son la traza de auditoría del stock
+(MOV-05); `userId` y `createdAt` los pone el servidor y `reason` es opcional (≤300 caracteres).
+Cualquier membership `ACTIVE` registra y todos los roles leen el historial. **Una salida puede
+asociarse a un cliente** (MI-10 / CLI-04): el alta acepta un `customerId` **opcional y nullable** y
+cada movimiento del contrato lo expone resuelto (`customerId` más `customer: { id, name } | null`).
+Sólo vale para `OUT` —una entrada con cliente responde `400 customer_requires_exit`, porque una
+compra a proveedor no es una venta del cliente— y el cliente debe existir, estar activo y pertenecer
+a la empresa: un id ajeno, inexistente o dado de baja responde el mismo `404 customer_not_found`. Las
+dos validaciones corren **antes** de tocar el stock, así que un movimiento rechazado no registra
+fila ni mueve el stock. La asociación es opcional y **una venta sin cliente identificado sigue siendo
+válida**: se guarda con `customerId: null`. El historial resuelve el cliente en el servidor y **sigue
+mostrando su nombre después de la baja lógica**, porque la lectura por lote incluye las filas dadas
+de baja: el movimiento es la traza de auditoría. En la UI, el formulario de **salida** suma el
+selector opcional con la opción "Sin cliente" y la tabla suma la columna Cliente (nombre, o "—"),
+mientras el formulario de entrada no lo muestra. No hizo falta migración: `customer_id` existe desde
+la migración inicial. Las fotos de producto no cambian y `stockQuantity` sigue sin ser escribible
+desde los endpoints de productos.
+
+**Clientes.** Padrón por empresa en `/dashboard/clients`: listado con búsqueda, alta y edición en un
+formulario en la misma página, y baja con confirmación en dos pasos. `GET
+/companies/{id}/customers?search=` devuelve los clientes **activos** ordenados por nombre y luego por
+id, y `search` compara por subcadena y sin distinguir mayúsculas contra **nombre, email o teléfono**
+(el tope del contrato son 100 caracteres). Los campos son `name` (obligatorio, 1..120 tras trim) y
+tres contactos opcionales: `email` (se guarda en minúsculas, con el formato validado y ≤254),
+`phone` (≤40, sólo dígitos y `+ - ( ) . espacio`) y `address` (≤300); un valor vacío o sólo espacios
+se guarda como `null`. `PATCH` es **parcial** —un campo ausente no cambia y un `null` limpia el
+contacto— y `DELETE` responde `204` con **baja lógica**: la fila queda, pero el cliente desaparece
+del listado y de las lecturas, y un segundo `DELETE` responde `404 customer_not_found`. **No hay
+unicidad de email** porque el esquema no tiene índice único, así que dos clientes de la misma empresa
+pueden compartirlo. **Cualquier membership `ACTIVE`** crea, edita y da de baja, y todos los roles
+leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404`. Las salidas pueden
+asociarse a un cliente (MI-10, ver **Movimientos de stock**). Cada fila suma además la acción
+**Detalle**, que abre un panel **en la misma página** con los datos de contacto del cliente y la tabla
+de **sus salidas** (`type=OUT`): fecha, producto, SKU, cantidad, motivo y usuario, más el conteo de
+salidas y el total de unidades **de las salidas listadas**. El panel aclara que son las más recientes
+porque el endpoint pagina el historial: informa lo que recibió, nunca un total histórico. Es de solo
+lectura, no tiene ruta propia ni endpoint nuevo —reutiliza `GET /companies/{id}/movements` con
+`customerId` (ver **Movimientos de stock**)— y **no muestra montos de dinero**, porque un movimiento
+no guarda precio. **El resumen de compras por cliente sigue sin construirse**: el padrón no muestra
+columnas "Compras"/"Total" (decisión L4 de `odd/tasks/customer-links.md`), así que la tabla
+principal sigue mostrando sólo los datos de contacto.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
 nunca el cliente.
 
 **Shell y dashboard.** El shell de la aplicación (barra lateral con navegación, switch de empresa,
-logout y modo oscuro) y una vista de dashboard con KPIs, alertas y tabla de stock crítico **con
-datos de muestra**: el nombre de la empresa activa es real (viene de `GET /companies`), pero los
-indicadores y la tabla son mock declarado.
+logout y modo oscuro) y la vista de dashboard de la empresa activa, **toda con datos reales**: los
+cuatro KPIs, las alertas y la tabla de stock crítico (MI-6) más los tres gráficos (MI-14). Los datos
+salen de dos lecturas de la empresa activa —`GET /companies/{id}/products`, que ya devuelve el
+catálogo completo sin paginar, y el reporte de evolución de los últimos 30 días—, así que **no hay
+endpoint de métricas** ni datos de muestra: el aviso "Datos de muestra" se eliminó porque ya no era
+cierto. Los cuatro KPIs son:
+
+1. **Total de productos** — el tamaño del catálogo activo de la empresa (DASH-01).
+2. **Valor del inventario** — `precio × stock` de todo el catálogo, sumado en **centavos enteros** con
+   el mismo helper del gráfico de valor, así que la tarjeta y el gráfico muestran el mismo total
+   (DASH-04).
+3. **Productos con stock crítico** — los productos donde `stockQuantity <= lowStockThreshold`. Hoy el
+   umbral es siempre 0, así que son los **agotados**; cuando MI-12 permita editarlo, la misma regla
+   cubre el stock bajo sin tocar el dashboard.
+4. **Unidades movidas hoy (UTC)** — `entries + exits` del último punto del reporte de 30 días. Es UTC
+   y así se rotula, porque el reporte agrega por **día UTC**: el número no es "hoy" en el calendario
+   del navegador.
+
+La **tabla de stock crítico** usa ese mismo predicado —el KPI, las alertas y la tabla no pueden
+discrepar— y ordena por unidades ascendente y luego por nombre, con las columnas Producto, SKU,
+Categoría, Precio, Unidades y Estado (`StockBadge`); la Categoría es **—** mientras no exista la
+feature de categorías. Las **alertas** salen de los mismos números: una de peligro si hay agotados,
+una de advertencia si hay críticos que todavía tienen unidades y una informativa cuando no hay
+ninguna. Mientras las lecturas no responden los KPIs muestran **—** (nunca un cero que nadie
+calculó), un fallo de lectura se muestra como una sola alerta y sin productos críticos la tabla lo
+dice. Los tres gráficos son:
+
+- **Distribución del stock** por **estado** (agotados contra con stock), no por categoría: DASH-02
+  pedía categorías, pero esa feature todavía no existe (el `categoryId` de todos los productos es
+  nulo), así que un gráfico por categoría mostraría una única porción "Sin categoría". Cuando las
+  categorías existan, reemplazan esta división; no se suma un cuarto gráfico.
+- **Valor del inventario**: `precio × stock` de cada producto, sumado en **centavos enteros** (el
+  precio es un string decimal y sumar floats mostraría un total que nadie puede reconciliar), con el
+  total de la empresa y las barras de los **8 productos de mayor valor**.
+- **Evolución de entradas y salidas**: barras apiladas por **día UTC** de los últimos 30 días, desde
+  `GET /companies/{id}/reports/movements?days=` (ventana de `1` a `90` días, `days` por defecto `30`,
+  días sin movimientos rellenados con cero y del más viejo al más nuevo).
+
+Los gráficos usan **Recharts** (ya estaba en el stack) y tienen estado de carga, de error y de vacío.
 
 **Design system.** Paleta de tokens (modo claro y oscuro), componentes base (`Button`, `Card`,
 `Spinner`, `Toast`) y componentes del design system (`Alert`, `DataTable`, `KpiCard`, `StockBadge`,
@@ -84,24 +215,8 @@ indicadores y la tabla son mock declarado.
 
 ### Planificado
 
-**Dashboard con datos reales.** Reemplazar los datos de muestra por los indicadores reales
-(MI-6/MI-9).
-
-**Gestión de productos.** Alta, edición y baja lógica con nombre, descripción, precio, foto y
-**código SKU único dentro de cada empresa** (MI-7; vistas MI-21 y MI-25).
-
-**Entradas y salidas de inventario.** Registro de entradas y salidas con actualización automática
-del stock, historial por producto y motivo; **una salida nunca puede superar el stock disponible**
-(MI-8; vista MI-26).
-
-**Gestión de clientes.** Alta, edición y baja con historial de compras alimentado por los
-movimientos de salida (MI-11; vista MI-24).
-
 **Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
 listado de reposición (MI-12).
-
-**Gestión de miembros.** Invitar, asignar roles y dar de baja miembros de una empresa (MI-45/MI-46/
-MI-47); la matriz de autorización ya está modelada en el backend.
 
 **Recuperación de contraseña.** Flujo de reset (MI-16); hoy no existe.
 
@@ -165,7 +280,11 @@ apps/web/
 │   └── features/                 # ← una carpeta por funcionalidad
 │       ├── auth/                 # login, registro, logout y sesión (refresh/bootstrap)
 │       ├── company/              # empresas, switch y contexto activo
-│       ├── dashboard/            # vista del dashboard (datos de muestra)
+│       ├── member/               # invitaciones, roster de miembros y salida de la empresa
+│       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
+│       ├── movement/             # entradas y salidas de stock (formulario e historial)
+│       ├── client/               # padrón de clientes (lista, búsqueda, formulario, baja y detalle)
+│       ├── dashboard/            # vista del dashboard (KPIs, alertas, tabla y gráficos reales)
 │       └── shell/                # el shell de la aplicación
 └── public/
 ```
@@ -184,13 +303,16 @@ Las dependencias apuntan **hacia adentro**: el dominio no conoce Express, ni Pri
 apps/api/
 ├── src/
 │   ├── domain/                   # ← el centro, sin dependencias externas
-│   │   ├── entities/             # Company, Membership, User
+│   │   ├── entities/             # Company, Membership, Product, StockMovement, User
 │   │   ├── errors/               # errores de dominio (EmailNotVerified, …)
 │   │   ├── policies/             # matriz de autorización
 │   │   └── repositories/         # interfaces (puertos), no implementaciones
 │   ├── application/              # casos de uso
 │   │   ├── ports/                # IdentityProvider, MediaUploadSigner
-│   │   └── use-cases/            # create-company, list-companies, login, register, refresh
+│   │   └── use-cases/            # create-company, list-companies, login, register, refresh,
+│   │                             # productos (create/list/get/update/delete), movimientos
+│   │                             # (register-stock-movement, list-stock-movements) y el reporte
+│   │                             # del dashboard (get-movement-trend)
 │   ├── infrastructure/           # implementaciones de los puertos
 │   │   ├── database/             # Prisma: repositorios y mapeos
 │   │   ├── auth0/                # validación del JWT de Auth0 (JWKS)
@@ -215,8 +337,8 @@ rompió.
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
 comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
-(`apps/api/openapi.yaml`), la fuente de verdad de los 10 endpoints: métodos, seguridad y códigos de
-error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
+(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (33 operaciones): métodos, seguridad
+y códigos de error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
 **genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
 `lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
 
@@ -226,10 +348,12 @@ caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build
 
 ### Endpoints de la API
 
-Las 10 operaciones registradas en el contrato. «Token» = cabecera `Authorization: Bearer <JWT>`;
-el `429` es el rate limit (el global aplica a todas las rutas, y login/register/refresh suman uno
-propio más estricto). Las rutas de empresa exigen además una membership `ACTIVE` (ver la sección
-siguiente).
+Las operaciones de autenticación, empresas, media, miembros, invitaciones, notificaciones, productos,
+movimientos, clientes y reportes del contrato (`apps/api/openapi.yaml`, 33 operaciones en total),
+servidas en `/docs`.
+«Token» = cabecera `Authorization: Bearer <JWT>`; el `429` es el rate limit (el global aplica a todas
+las rutas, y login/register/refresh suman uno propio más estricto). Las rutas de empresa exigen además
+una membership `ACTIVE` (ver la sección siguiente).
 
 | Operación | Token | Errores que importan | Qué hace |
 | ----------- | ------- | ---------------------- | ---------- |
@@ -244,11 +368,33 @@ siguiente).
 | `PATCH /me` | sí | 400, 401, 403 (`user_not_provisioned`), 429, 500 | Fija o borra el `fullName` del usuario autenticado (`null`, `""` o solo espacios lo borran; el tope es 120 caracteres tras trim) y responde la misma representación que `GET /me` |
 | `GET /companies/{companyId}/context` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Resuelve la empresa y el rol del usuario |
 | `POST /companies/{companyId}/media/signature` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Firma los parámetros de subida directa |
+| `GET /companies/{companyId}/members` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 429, 500 | Lista el roster: memberships `ACTIVE` e `INVITED`, nunca una `REVOKED` |
+| `POST /companies/{companyId}/members` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 409, 429, 500 | Invita por email creando una membership `INVITED`; el `409` es un email que ya tiene membership `ACTIVE` o `INVITED` |
+| `PATCH /companies/{companyId}/members/{membershipId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`membership_not_found`), 409 (`last_active_owner`), 429, 500 | Cambia el rol de una membership; nadie cambia el suyo y la empresa conserva un `OWNER` activo |
+| `DELETE /companies/{companyId}/members/{membershipId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`membership_not_found`), 409 (`last_active_owner`), 429, 500 | Revoca una membership (`status = REVOKED`, la fila queda) |
+| `DELETE /companies/{companyId}/members/me` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 404 (`membership_not_found`), 409 (`last_active_owner`), 429, 500 | Sale de la empresa revocando su propia membership; el último `OWNER` activo no puede salir |
+| `GET /companies/{companyId}/products?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los productos no dados de baja, ordenados por nombre y luego por id; `search` compara por subcadena contra nombre o SKU |
+| `POST /companies/{companyId}/products` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 409 (`sku_already_exists`), 429, 500 | Da de alta un producto (el SKU se normaliza a mayúsculas) y responde `201` |
+| `GET /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 429, 500 | Lee un producto; uno de otra empresa y uno dado de baja responden el mismo 404 |
+| `PATCH /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 409 (`sku_already_exists`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` limpia `description` o `photoUrl` |
+| `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
+| `GET /companies/{companyId}/movements?productId=&customerId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId`, `customerId` y `type` filtran (combinables entre sí) y `limit` va de `1` a `200` (default `50`). `customerId` es un filtro de lectura, no un recurso: un id de otra empresa no devuelve filas en vez de un `404`. Cada movimiento trae el producto, el usuario y el cliente resueltos por la API: `customer` es `null` cuando no hay asociación y **sigue resolviéndose después de la baja lógica del cliente** |
+| `POST /companies/{companyId}/movements` | sí | 400 (`customer_requires_exit`), 401, 403 (`company_access_forbidden`), 404 (`product_not_found` / `customer_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante. Acepta un `customerId` opcional que **sólo es válido con `type: OUT`**; el cliente se valida antes de escribir, así que un rechazo no toca el stock |
+| `GET /companies/{companyId}/reports/movements?days=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Reporte del dashboard: entradas y salidas **por día UTC**, del más viejo al más nuevo y con los días sin movimientos en cero; `days` va de `1` a `90` (default `30`) |
+| `GET /companies/{companyId}/customers?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los clientes activos ordenados por nombre y luego por id; `search` compara por subcadena, sin distinguir mayúsculas, contra nombre, email o teléfono |
+| `POST /companies/{companyId}/customers` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Da de alta un cliente y responde `201`; escribe cualquier membership `ACTIVE` |
+| `GET /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Lee un cliente; uno de otra empresa y uno dado de baja responden el mismo 404 |
+| `PATCH /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` (o un valor en blanco) limpia `email`, `phone` o `address` |
+| `DELETE /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204`; un segundo `DELETE` responde `404` |
+| `GET /me/invitations` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las invitaciones pendientes del usuario autenticado; sin nada pendiente responde `200` con `[]` |
+| `POST /me/invitations/accept` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Acepta todas las invitaciones pendientes; es idempotente y no lleva body |
+| `GET /me/notifications` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las notificaciones del usuario, más recientes primero; sin novedades responde `200` con `[]` |
+| `POST /me/notifications/read` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Marca todas las notificaciones del usuario como leídas y responde `204` |
 
 ### Aislamiento por empresa (el punto crítico)
 
 No se usa **Row Level Security** de Supabase, así que **el aislamiento entre empresas depende por
-completo del código de la aplicación**. Hoy hay dos piezas que lo materializan:
+completo del código de la aplicación**. Hoy hay tres piezas que lo materializan:
 
 - **En el repositorio**, el listado filtra por memberships `ACTIVE` (`findAllForUser`) y el alta
   crea la empresa y la membership del dueño en **una sola transacción** (`createOwnedBy`).
@@ -256,11 +402,16 @@ completo del código de la aplicación**. Hoy hay dos piezas que lo materializan
   `ACTIVE` en la empresa del path (`/companies/:companyId/*`) y resuelve su rol. Un no-miembro y una
   empresa inexistente responden el mismo 403 (`company_access_forbidden`) para que los ids no se
   puedan enumerar.
+- **En cada consulta de producto o de cliente**, el `companyId` viaja en el `WHERE` y nunca en un
+  filtro posterior sobre lo ya leído, y el repositorio excluye las filas con `deletedAt`: un producto
+  (o un cliente) de otra empresa y uno inexistente responden el mismo `404` (`product_not_found`,
+  `customer_not_found`).
 
-El límite honesto: esto cubre lo que está construido (empresas, contexto y firma de media). Los
-recursos por empresa que todavía no existen (productos, movimientos, clientes) **deberán colgarse del
-mismo sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo el mayor
-riesgo de seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer su test.
+El límite honesto: esto cubre lo que está construido (empresas, contexto, firma de media, miembros,
+productos, movimientos, clientes y el reporte del dashboard, que lee con `where: { companyId,
+createdAt: { gte: since } }`). Cualquier recurso nuevo por empresa **debe colgarse del mismo
+sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo el mayor riesgo de
+seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer su test.
 
 ---
 
@@ -504,30 +655,18 @@ El setup de la Fase 1 está cerrado: Git, CI, Prisma + Supabase, Auth0, Cloudina
 Husky, el `.env.example` de la raíz y el contrato OpenAPI ya están en el repo. Lo que queda es **el
 producto en sí**, no la infraestructura.
 
-### Gestión de miembros (multi-usuario)
-
-El modelo de acceso ya está en `schema.prisma` y la matriz de autorización en
-`apps/api/src/domain/policies/authorization.ts`, pero los endpoints todavía no existen:
-
-- [x] **Asignar un miembro con rol** — **MI-45** (ADMIN/OWNER asignan; OWNER asigna ADMIN/OWNER).
-- [x] **Aceptar una asignación** — **MI-46** (incluye decidir qué hacer con más de una invitación
-      pendiente al mismo email).
-- [x] **Cambiar el rol de un miembro (promover/rebajar)** — **MI-47**.
-- [x] **Invariante del último OWNER** — **MI-49**: una empresa nunca puede quedar sin OWNER (la regla
-      ya está en `can()`, falta el endpoint que la use).
-
 ### Core de inventario (Fase 2 y 3)
 
-- [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView`.
-- [ ] **CRUD de productos** — MI-7 (vistas MI-21 y MI-25).
-- [ ] **Entradas y salidas de stock** — MI-8 (vista MI-26).
-- [ ] **CRUD de clientes** — MI-11 (vista MI-24).
+- [x] **Dashboard con datos reales** — MI-6: los cuatro KPIs (total de productos, valor del inventario, productos con stock crítico y unidades movidas hoy en UTC), las alertas y la tabla de stock crítico se derivan de `GET /companies/{id}/products` y del reporte de evolución, y el aviso "Datos de muestra" se eliminó porque ya no había datos de muestra. Los gráficos ya eran reales (MI-14). MI-9 nombra el **historial de movimientos**, que está construido desde MI-8 (`/dashboard/movements`): no queda nada mockeado en el dashboard.
+- [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
+- [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
+- [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.
 - [ ] **Notificaciones de stock bajo** — MI-12.
 
 ### Polish (Fase 4)
 
 - [ ] **Recuperación de contraseña** — MI-16.
-- [ ] **Gráficos** — MI-14.
+- [x] **Gráficos** — MI-14 (DASH-02): tres gráficos con datos reales de la empresa activa en Recharts —distribución del stock por estado, valor del inventario en centavos enteros y evolución de entradas/salidas por día UTC desde `GET /companies/{id}/reports/movements?days=`—. El desglose por categoría espera la feature de categorías.
 - [ ] **Filtros y búsqueda** — MI-15.
 - [ ] **Notificaciones por email** — MI-13.
 

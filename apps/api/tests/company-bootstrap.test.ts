@@ -67,6 +67,9 @@ describe("company bootstrap", () => {
 			registerUser: {} as never,
 			revokeMember: {} as never,
 			updateUserFullName: {} as never,
+			customers: {} as never,
+			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});

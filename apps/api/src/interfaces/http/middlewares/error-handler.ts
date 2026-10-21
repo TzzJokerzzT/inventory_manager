@@ -1,6 +1,14 @@
 import type { ErrorRequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ValiError } from "valibot";
+import {
+	CUSTOMER_NOT_FOUND_CODE,
+	CustomerNotFoundError,
+} from "../../../domain/errors/customer-not-found-error.js";
+import {
+	CUSTOMER_REQUIRES_EXIT_CODE,
+	CustomerRequiresExitError,
+} from "../../../domain/errors/customer-requires-exit-error.js";
 import { DomainError } from "../../../domain/errors/domain-error.js";
 import { EmailNotVerifiedError } from "../../../domain/errors/email-not-verified-error.js";
 import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
@@ -8,6 +16,10 @@ import {
 	INSUFFICIENT_ROLE_CODE,
 	InsufficientRoleError,
 } from "../../../domain/errors/insufficient-role-error.js";
+import {
+	INSUFFICIENT_STOCK_CODE,
+	InsufficientStockError,
+} from "../../../domain/errors/insufficient-stock-error.js";
 import { InvalidCredentialsError } from "../../../domain/errors/invalid-credentials-error.js";
 import {
 	LAST_ACTIVE_OWNER_CODE,
@@ -21,6 +33,14 @@ import {
 	MEMBERSHIP_NOT_FOUND_CODE,
 	MembershipNotFoundError,
 } from "../../../domain/errors/membership-not-found-error.js";
+import {
+	PRODUCT_NOT_FOUND_CODE,
+	ProductNotFoundError,
+} from "../../../domain/errors/product-not-found-error.js";
+import {
+	SKU_ALREADY_EXISTS_CODE,
+	SkuAlreadyExistsError,
+} from "../../../domain/errors/sku-already-exists-error.js";
 import { UserNotProvisionedError } from "../../../domain/errors/user-not-provisioned-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
@@ -101,6 +121,16 @@ export const errorHandler: ErrorRequestHandler = (
 		return;
 	}
 
+	if (error instanceof InsufficientStockError) {
+		// 409, not 400: the body is well formed and the caller may register the
+		// movement, the product simply does not have that much stock. Nothing was
+		// recorded and the stock did not change (MOV-04).
+		response.status(StatusCodes.CONFLICT).json({
+			error: { message: error.message, code: INSUFFICIENT_STOCK_CODE },
+		});
+		return;
+	}
+
 	if (error instanceof MembershipAlreadyExistsError) {
 		response.status(StatusCodes.CONFLICT).json({
 			error: { message: error.message, code: MEMBERSHIP_ALREADY_EXISTS_CODE },
@@ -122,6 +152,45 @@ export const errorHandler: ErrorRequestHandler = (
 	if (error instanceof MembershipNotFoundError) {
 		response.status(StatusCodes.NOT_FOUND).json({
 			error: { message: error.message, code: MEMBERSHIP_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof ProductNotFoundError) {
+		// The same 404 a foreign id and an absent one get: the product is not in
+		// this company's catalogue, and which of the two it was is not something
+		// the caller needs to know (S4).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: PRODUCT_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof CustomerNotFoundError) {
+		// The same 404 a foreign id and an absent one get: the customer is not in
+		// this company's roster, and which of the two it was is not something the
+		// caller needs to know (S5).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: CUSTOMER_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof CustomerRequiresExitError) {
+		// 400, not 409: the body is semantically invalid -- a customer belongs to
+		// a sale (CLI-04) and an entry is a purchase from a supplier. The code is
+		// what lets the client point at the `customerId` field.
+		response.status(StatusCodes.BAD_REQUEST).json({
+			error: { message: error.message, code: CUSTOMER_REQUIRES_EXIT_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof SkuAlreadyExistsError) {
+		// 409, not 400: the body is well formed, the company just already has
+		// that SKU -- deleted rows included, because they keep it reserved (S2).
+		response.status(StatusCodes.CONFLICT).json({
+			error: { message: error.message, code: SKU_ALREADY_EXISTS_CODE },
 		});
 		return;
 	}

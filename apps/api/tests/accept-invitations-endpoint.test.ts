@@ -110,6 +110,7 @@ describe("POST /me/invitations/accept", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			// The acceptance slice never reaches these; the explicit `{} as never`
 			// records that the wiring is intentionally inert rather than forgotten.
@@ -127,6 +128,9 @@ describe("POST /me/invitations/accept", () => {
 			mediaUploadSigner: {
 				createUploadSignature: () => ({ signed: true }),
 			} as never,
+			customers: {} as never,
+			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

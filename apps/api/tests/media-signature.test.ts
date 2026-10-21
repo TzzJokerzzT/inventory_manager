@@ -22,6 +22,7 @@ const TEST_WEB_ORIGIN = "http://localhost:3000";
 const FIXED_TIMESTAMP_MS = 1_700_000_000_000;
 const EXPECTED_TIMESTAMP = Math.floor(FIXED_TIMESTAMP_MS / 1000);
 const FAKE_API_SECRET = "SUPERSECRET-API-SECRET";
+const WORKSPACE_FOLDER = "inventory-manager/products";
 
 type Sign = (
 	paramsToSign: Record<string, unknown>,
@@ -100,6 +101,7 @@ describe("POST /companies/:companyId/media/signature", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			// The media slice never reaches these; the explicit `{} as never`
 			// records that the wiring is intentionally inert rather than forgotten.
@@ -115,6 +117,9 @@ describe("POST /companies/:companyId/media/signature", () => {
 			revokeMember: {} as never,
 			updateUserFullName: {} as never,
 			mediaUploadSigner,
+			customers: {} as never,
+			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,
@@ -146,7 +151,7 @@ describe("POST /companies/:companyId/media/signature", () => {
 			apiKey: "123456789012345",
 			timestamp: EXPECTED_TIMESTAMP,
 			signature: "fixed-signature",
-			folder: `companies/${company.id}`,
+			folder: `${WORKSPACE_FOLDER}/${company.id}-acme`,
 			allowedFormats: ["jpg", "png", "webp"],
 			maxFileSizeBytes: 5_242_880,
 		});
@@ -201,13 +206,13 @@ describe("POST /companies/:companyId/media/signature", () => {
 		expect(sign).toHaveBeenCalledTimes(1);
 		expect(sign).toHaveBeenCalledWith(
 			{
-				folder: `companies/${company.id}`,
+				folder: `${WORKSPACE_FOLDER}/${company.id}-acme`,
 				timestamp: EXPECTED_TIMESTAMP,
 				allowed_formats: "jpg,png,webp",
 			},
 			FAKE_API_SECRET,
 		);
-		expect(response.body.folder).toBe(`companies/${company.id}`);
+		expect(response.body.folder).toBe(`${WORKSPACE_FOLDER}/${company.id}-acme`);
 		expect(response.body.allowedFormats).toEqual(["jpg", "png", "webp"]);
 		expect(response.body.timestamp).toBe(EXPECTED_TIMESTAMP);
 		expect(response.body).not.toHaveProperty("extra");

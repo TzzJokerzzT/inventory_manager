@@ -2,25 +2,30 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import {
-	DropzoneField,
-	SelectField,
-	TextareaField,
-	TextField,
-} from "@/components/design-system";
+import { Alert } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { Divider } from "@/components/ui/divider";
 import { LazyMotionTag } from "@/src/shared/components/Animation";
+import { useActiveCompany } from "../company/store/company-selectors";
+import { useMe } from "../user/api/use-me";
+import { canManageProducts, roleForCompany } from "./lib/product-permissions";
+import { ProductForm } from "./product-form";
 
-const categories = [
-	{ value: "tecnologia", label: "Tecnologia" },
-	{ value: "computadores", label: "Computadores" },
-	{ value: "redes", label: "Redes" },
-	{ value: "gamer", label: "Gamer" },
-	{ value: "hogar", label: "Hogar" },
-];
-
+/**
+ * Create page shell (`/dashboard/products/create`).
+ *
+ * The role check here is UX only, mirroring the list: while `/me` is still
+ * loading it renders the form, and the API answers `403 insufficient_role` if a
+ * MEMBER got this far. The server is the real guard; hiding the form once the
+ * role is known only spares them a form that cannot succeed.
+ */
 export function CreateProduct() {
+	const company = useActiveCompany();
+	const { data: me } = useMe();
+	const companyId = company?.id;
+	const allowed =
+		me === undefined ? true : canManageProducts(roleForCompany(me, companyId));
+
 	return (
 		<LazyMotionTag
 			tag="div"
@@ -32,7 +37,7 @@ export function CreateProduct() {
 			<header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 				<div className="min-w-0">
 					<h1 className="text-xl font-bold text-text-primary sm:text-2xl">
-						Productos
+						Nuevo producto
 					</h1>
 					<p className="mt-1 text-sm text-text-secondary">
 						Los campos marcados con * son obligatorios
@@ -50,72 +55,19 @@ export function CreateProduct() {
 
 			<section
 				aria-label="Formulario de creación"
-				className="flex w-full justify-center lg:min-h-[calc(100vh-15rem)] lg:items-center"
+				className="flex w-full justify-center"
 			>
-				<form className="grid w-full min-w-0 max-w-3xl grid-cols-1 gap-4 rounded-xl border bg-surface p-4 sm:grid-cols-2 sm:p-6">
-					<TextField
-						label="Nombre del producto *"
-						type="text"
-						name="name"
-						placeholder="Cable HDMI 2.1 x 3 m"
-						autoComplete="off"
-						className="sm:col-span-2"
-					/>
-					<TextField
-						label="Código SKU *"
-						type="text"
-						name="sku"
-						placeholder="CH-4856931"
-						autoComplete="off"
-					/>
-
-					<SelectField
-						label="Categoría"
-						options={categories}
-						name="category"
-						placeholder="Busca o selecciona una categoría"
-					/>
-
-					<TextField
-						label="Precio unitario *"
-						type="number"
-						name="price"
-						placeholder="$10.0000"
-					/>
-
-					<TextField
-						label="Umbral de stock bajo *"
-						type="number"
-						name="lowStockThreshold"
-						placeholder="20"
-					/>
-
-					<TextareaField
-						label="Descripción del producto *"
-						name="description"
-						placeholder="Coloque la descripción producto"
-						autoComplete="off"
-						className="sm:col-span-full"
-					/>
-
-					<DropzoneField
-						name="photos"
-						label="Foto del producto *"
-						hint="Sube las fotos de tus productos"
-						accept="jpg, png, webp"
-						maxSize={5 * 1024 * 1024}
-						multiple
-						onFilesChange={(files) => console.log(files)}
-						className="sm:col-span-full"
-					/>
-
-					<div className="col-span-full flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
-						<Button className="h-10 w-full sm:w-30" variant="outline">
-							Cancelar
-						</Button>
-						<Button className="h-10 w-full sm:w-30">Crear</Button>
-					</div>
-				</form>
+				{companyId === undefined ? (
+					<p className="text-sm text-text-muted">
+						Seleccioná una empresa para crear un producto.
+					</p>
+				) : allowed ? (
+					<ProductForm companyId={companyId} />
+				) : (
+					<Alert variant="danger" title="No podés crear productos">
+						Tu rol en esta empresa no permite crear productos.
+					</Alert>
+				)}
 			</section>
 		</LazyMotionTag>
 	);

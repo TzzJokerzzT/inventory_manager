@@ -142,6 +142,9 @@ function createTestApp(options: {
 		mediaUploadSigner: {} as never,
 		revokeMember: {} as never,
 		updateUserFullName: {} as never,
+		customers: {} as never,
+		products: {} as never,
+		movements: {} as never,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: TEST_WEB_ORIGIN,
 	});

@@ -36,11 +36,15 @@ export interface MediaUploadSignature {
 /**
  * Produces the parameters the browser needs for a direct upload.
  *
- * The only caller input is the company the upload belongs to; every other
- * parameter (folder layout, allowed formats, size limit) is decided by the
- * adapter. Signing "whatever the caller asks for" would turn the endpoint into
- * a proxy for arbitrary uploads.
+ * The caller only names the company; the adapter derives the folder from the
+ * company's id and name (`<workspace>/<companyId>-<company-name-slug>`), and
+ * keeps the allowed formats and the size limit as its own constants. Signing
+ * "whatever the caller asks for" would turn the endpoint into a proxy for
+ * arbitrary uploads.
  */
 export interface MediaUploadSigner {
-	createUploadSignature(request: { companyId: string }): MediaUploadSignature;
+	createUploadSignature(request: {
+		companyId: string;
+		companyName: string;
+	}): MediaUploadSignature;
 }

@@ -47,6 +47,9 @@ function createTestApp() {
 		registerUser: {} as never,
 		revokeMember: {} as never,
 		updateUserFullName: {} as never,
+		customers: {} as never,
+		products: {} as never,
+		movements: {} as never,
 		authCookieOptions: cookieOptions,
 		corsOrigin: ALLOWED_ORIGIN,
 	});

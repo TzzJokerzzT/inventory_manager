@@ -26,6 +26,30 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | DASH-04 | Indicador de valor total del inventario | Media |
 | DASH-05 | Filtrado por empresa (si el usuario tiene múltiples) | Alta |
 
+> **Estado (MI-6, `odd/tasks/dashboard-metrics.md`; gráficos en MI-14):** el dashboard ya **no muestra
+datos de muestra**: los cuatro KPIs, las alertas y la tabla de stock crítico se derivan de dos
+lecturas de la empresa activa —`GET /companies/{companyId}/products`, que devuelve el catálogo
+completo sin paginar, y el reporte de evolución de los últimos 30 días— **sin endpoint nuevo**. El
+aviso "Datos de muestra" se eliminó porque ya no era cierto. **DASH-01** (total de productos activos)
+es real (el tamaño del catálogo); **DASH-03** (tabla de stock crítico) es real y usa el predicado
+`stockQuantity <= lowStockThreshold` —hoy el umbral es siempre 0, así que la tabla son los
+**agotados**; cuando MI-12 permita editarlo, la misma regla cubre el stock bajo sin tocar el
+dashboard—, ordenada por unidades ascendente y luego por nombre, con las columnas Producto, SKU,
+Categoría (**—** mientras no exista la feature), Precio, Unidades y Estado (`StockBadge`); **DASH-04**
+(valor del inventario) es real **en la tarjeta y en el gráfico**, ambos calculados en el cliente en
+**centavos enteros** desde el precio decimal por el stock con el mismo helper, así que muestran el
+mismo total; **DASH-05** lo resuelve el contexto de empresa (la empresa activa: el catálogo y el
+reporte ya vienen filtrados por `companyId`), no un filtro nuevo. **DASH-02** se cumple
+**parcialmente**: el gráfico de distribución del stock es por **estado** (agotados contra con stock),
+**no por categoría**, porque la feature de categorías no existe y el `categoryId` de todos los
+productos es nulo —un gráfico por categoría mostraría una sola porción "Sin categoría"—; el
+**desglose por categoría queda pendiente de esa feature** y la reemplazará, no se sumará como cuarto
+gráfico. Librería: **Recharts**, que ya estaba en el stack. Los tres gráficos son: **distribución del
+stock por estado**; **valor del inventario**, con el total de la empresa y las barras de los 8
+productos de mayor valor; y **evolución de entradas/salidas** por **día UTC**, del más viejo al más
+nuevo y con los días sin movimientos en cero, desde
+`GET /companies/{companyId}/reports/movements?days=` (`days` entero de `1` a `90`, default `30`).
+
 ### 3. Gestión de Productos
 
 | ID | Requerimiento | Prioridad |
@@ -37,6 +61,16 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | PROD-05 | Validación de unicidad de SKU por empresa | Alta |
 | PROD-06 | Carga de imagen del producto (optimización incluida) | Media |
 
+> **Estado (MI-7, `odd/tasks/products.md`):** el alta, la edición y la baja lógica (PROD-01, PROD-02,
+> PROD-03) están implementadas, igual que la unicidad de SKU por empresa (PROD-05, con el SKU
+> normalizado a mayúsculas porque el índice `UNIQUE` de Postgres distingue grafía) y la foto
+> (PROD-06). PROD-04 se cumple **sólo por nombre y por SKU**: el **filtro por categoría no está
+> implementado** porque todavía no existe la feature de categorías (ni CRUD, ni endpoint, ni UI) y
+> `categoryId` no se expone en el contrato; entra cuando esa feature exista. PROD-06 se resuelve con
+> **subida directa firmada** a Cloudinary: el formulario pide la firma a
+> `POST /companies/{companyId}/media/signature`, sube el archivo y guarda únicamente el `secure_url`;
+> la optimización es la entrega de Cloudinary, no un paso de código propio.
+
 ### 4. Entradas y Salidas de Inventario
 
 | ID | Requerimiento | Prioridad |
@@ -47,6 +81,27 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | MOV-04 | Actualización automática del stock disponible | Alta |
 | MOV-05 | Registro de usuario, fecha y motivo en cada movimiento | Media |
 
+> **Estado (MI-8, `odd/tasks/movements.md`):** MOV-01 a MOV-05 están implementados. El alta (`POST
+> /companies/{companyId}/movements`) registra una entrada (`IN`) o una salida (`OUT`) y responde `201`
+> con el movimiento y el `stockQuantity` del producto **después** de él (MOV-01, MOV-02); el historial
+> (`GET /companies/{companyId}/movements?productId=&customerId=&type=&limit=`, más recientes primero)
+> cubre MOV-03. `customerId` es un **filtro de lectura** opcional y combinable con `productId`, `type` y
+> `limit`: un id que no pertenece a la empresa no devuelve filas en vez de responder `404`, y el
+> `companyId` sigue siendo obligatorio en la consulta. Ese filtro es el que alimenta el detalle de un
+> cliente (ver la nota de la sección 5). La escritura del movimiento y el cambio de stock van en **una
+> sola transacción** (MOV-04) y la salida se aplica con un update guardado por `stockQuantity >=
+> quantity`, así que dos salidas concurrentes no pueden dejar stock negativo: la perdedora responde
+> `409 insufficient_stock` con el stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
+> ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
+> por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
+> los roles leen el historial. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede
+> asociarse a un cliente**: `customerId` se acepta opcional y nullable en el alta y se expone en el
+> historial ya resuelto (`customerId` más `customer: { id, name } | null`). La lectura por lote de
+> clientes incluye las filas con `deletedAt`, así que un movimiento **sigue mostrando el nombre del
+> cliente después de su baja lógica**: el ledger es la traza de auditoría de MOV-05 y dar de baja un
+> cliente no borra ni altera sus movimientos. Sin migración: `customer_id` existe desde la migración
+> inicial.
+
 ### 5. Gestión de Clientes
 
 | ID | Requerimiento | Prioridad |
@@ -56,6 +111,38 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | CLI-03 | Eliminación lógica de clientes | Media |
 | CLI-04 | Asociación de clientes a movimientos de salida (ventas) | Media |
 | CLI-05 | Listado y búsqueda de clientes | Media |
+
+> **Estado (MI-11, `odd/tasks/customers.md`):** CLI-01, CLI-02, CLI-03 y CLI-05 están implementados:
+alta, edición parcial y baja lógica de clientes, más el listado con búsqueda por nombre, email o
+teléfono (subcadena, sin distinguir mayúsculas; orden por nombre y luego id). La **baja es lógica**
+(`deletedAt`): el cliente desaparece del listado y de las lecturas, y un segundo `DELETE` responde
+`404`. La autorización es una decisión explícita del humano: **cualquier membership `ACTIVE` crea,
+edita y da de baja**, y todos los roles leen; el guard es el contexto de empresa, así que no hay una
+fila nueva en la matriz de autorización. `email`, `phone` y `address` son opcionales y un valor vacío
+se guarda como `null`; **no hay unicidad de email** porque el esquema no define índice único.
+**CLI-04 (asociar clientes a los movimientos de salida) está implementado** (MI-10,
+`odd/tasks/customer-links.md`): el alta de un movimiento acepta `customerId` **opcional y nullable**
+y **sólo con `type: "OUT"`** —una entrada con cliente responde `400 customer_requires_exit`, porque
+una compra a proveedor no es una venta del cliente—, y el cliente debe existir, estar activo y
+pertenecer a la empresa o el alta responde `404 customer_not_found` (idéntico para ajeno, inexistente
+y dado de baja). Las dos validaciones corren **antes** de la escritura atómica, así que el movimiento
+rechazado no registra fila ni mueve el stock. La asociación es **opcional**: una venta sin cliente
+identificado sigue siendo válida y se guarda con `customerId: null`. En la UI, el formulario de salida
+suma el selector opcional (con la opción "Sin cliente") y el historial suma la columna Cliente. **El
+resumen de compras por cliente (columnas "Compras"/"Total") no forma parte de MI-10** (decisión L4):
+el padrón sigue mostrando sólo los datos de contacto.
+
+> **Estado (vista de detalle, `odd/tasks/customer-detail.md`):** en `/dashboard/clients` la acción
+> **Detalle** abre un panel **en la misma página** con los datos de contacto y la tabla de **sus
+> salidas** (`type=OUT`) —fecha, producto, SKU, cantidad, motivo y usuario—, más el conteo de salidas y
+> el total de unidades **de las salidas listadas** (el panel aclara "Se muestran las salidas más
+> recientes", porque el endpoint pagina el historial: no promete un total histórico) y **no calcula
+> montos**, porque un movimiento no guarda precio. No es un requerimiento nuevo: es una **vista sobre
+> CLI-03/CLI-05/MOV-03**. No agrega endpoints —reutiliza `GET /companies/{companyId}/movements` con
+> `customerId`, un filtro de lectura que en un cliente de otra empresa devuelve `[]` en vez de
+> `404`— ni filas a `can()`, porque leer clientes y movimientos ya está permitido a cualquier
+> membership `ACTIVE`. La página de Movimientos queda igual: el detalle es adicional y de solo
+> lectura, y el resumen de compras por cliente sigue fuera de alcance.
 
 ### 6. Gestión Multi-Empresa
 
@@ -164,20 +251,20 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 
 ### Fase 2 — Core de Inventario
 
-- [ ] CRUD de Productos (con SKU y foto)
-- [ ] Dashboard con métricas básicas
-- [ ] Entradas y salidas de stock
-- [ ] Historial de movimientos
+- [x] CRUD de Productos (con SKU y foto)
+- [x] Dashboard con métricas básicas (MI-6: cuatro KPIs, alertas y tabla de stock crítico con datos reales)
+- [x] Entradas y salidas de stock
+- [x] Historial de movimientos
 
 ### Fase 3 — Clientes y Alertas
 
-- [ ] CRUD de Clientes
-- [ ] Vinculación de clientes a salidas
+- [x] CRUD de Clientes
+- [x] Vinculación de clientes a salidas
 - [ ] Notificaciones de stock bajo en UI
 
 ### Fase 4 — Polish
 
-- [ ] Gráficos en el dashboard
+- [x] Gráficos en el dashboard (MI-14: distribución del stock por estado, valor del inventario y evolución de entradas/salidas por día UTC)
 - [ ] Filtros y búsquedas avanzadas
 - [ ] Recuperación de contraseña
 - [ ] Notificaciones por email

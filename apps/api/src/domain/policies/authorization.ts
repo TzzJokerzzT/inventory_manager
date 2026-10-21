@@ -13,7 +13,8 @@ export type AuthorizationAction =
 	| "change_own_role"
 	| "leave"
 	| "create_company"
-	| "view_users";
+	| "view_users"
+	| "manage_products";
 
 /**
  * The three assignment rows of the matrix. §5.8 rules on *assigning or
@@ -90,5 +91,10 @@ export function can(
 			// users" is scoped to one's own companies by the query, not by
 			// role, so neither discriminates between roles here.
 			return true;
+		case "manage_products":
+			// S6, decided by the human: "OWNER y ADMIN escriben; MEMBER solo
+			// lee". Reading the catalogue needs no row of its own -- the
+			// company context already proves an ACTIVE membership.
+			return role === "ADMIN" || role === "OWNER";
 	}
 }

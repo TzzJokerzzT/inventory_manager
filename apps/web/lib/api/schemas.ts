@@ -4,6 +4,8 @@ import {
 	number,
 	object,
 	picklist,
+	pipe,
+	regex,
 	safeParse,
 	string,
 } from "valibot";
@@ -306,6 +308,378 @@ export type NotificationsResponse = components["schemas"]["MeNotification"][];
  */
 export function parseNotifications(data: unknown): NotificationsResponse {
 	const result = safeParse(notificationsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One product exactly as the products endpoints serialize it.
+ *
+ * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
+ * `Decimal(12,2)` and a float in the contract would lose precision at the first
+ * rounding, so the boundary fails a numeric price instead of silently rounding
+ * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
+ * counts; `description`, `photoUrl` and `categoryId` are nullable because a
+ * product can live without them.
+ */
+export const productSchema = object({
+	id: string(),
+	companyId: string(),
+	name: string(),
+	description: nullable(string()),
+	sku: string(),
+	price: string(),
+	photoUrl: nullable(string()),
+	stockQuantity: number(),
+	lowStockThreshold: number(),
+	categoryId: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+});
+
+/** One product, derived from the OpenAPI contract. */
+export type Product = components["schemas"]["Product"];
+
+/** Body of `POST /companies/{companyId}/products`, derived from the contract. */
+export type CreateProductRequest =
+	components["schemas"]["CreateProductRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/products/{productId}`, derived from the
+ * contract. Every field is optional on purpose: an absent field keeps its
+ * value, while an explicit `null` clears `description` or `photoUrl`.
+ */
+export type UpdateProductRequest =
+	components["schemas"]["UpdateProductRequest"];
+
+/** Shape of `GET /companies/{companyId}/products`: the company's catalogue. */
+export const productsResponseSchema = array(productSchema);
+
+/** `GET /companies/{companyId}/products` response, derived from the contract. */
+export type ProductsResponse = components["schemas"]["Product"][];
+
+/**
+ * Validates the catalogue at the boundary.
+ *
+ * Same contract as {@link parseCompaniesResponse}: a backend that changes shape
+ * fails as an {@link ApiError} with a readable message instead of exploding
+ * inside the table, and a numeric `price` never reaches the price formatter.
+ */
+export function parseProducts(data: unknown): ProductsResponse {
+	const result = safeParse(productsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single product: the detail read, the creation and the update.
+ *
+ * It exists so the product the form receives back goes through the same
+ * boundary as the listed ones: a cast here would let a shape change reach a
+ * view unnoticed.
+ */
+export function parseProduct(data: unknown): Product {
+	const result = safeParse(productSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One customer exactly as the customers endpoints serialize it.
+ *
+ * `email`, `phone` and `address` are nullable on purpose: they are optional
+ * contact fields and the API stores an empty value as `null`. `createdAt` and
+ * `updatedAt` are ISO strings, and a soft-deleted customer never reaches here —
+ * the contract has no `deletedAt` field, and a deleted id answers `404`.
+ */
+export const customerSchema = object({
+	id: string(),
+	companyId: string(),
+	name: string(),
+	email: nullable(string()),
+	phone: nullable(string()),
+	address: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+});
+
+/** One customer, derived from the OpenAPI contract. */
+export type Customer = components["schemas"]["Customer"];
+
+/** Body of `POST /companies/{companyId}/customers`, derived from the contract. */
+export type CreateCustomerRequest =
+	components["schemas"]["CreateCustomerRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/customers/{customerId}`, derived from
+ * the contract. Every field is optional on purpose: an absent field keeps its
+ * value, while an explicit `null` clears `email`, `phone` or `address`.
+ */
+export type UpdateCustomerRequest =
+	components["schemas"]["UpdateCustomerRequest"];
+
+/**
+ * Shape of `GET /companies/{companyId}/customers`: the company's customers,
+ * already ordered by `name` and then `id` by the API, which is why the list is
+ * shown in the order it arrives.
+ */
+export const customersResponseSchema = array(customerSchema);
+
+/** `GET /companies/{companyId}/customers` response, derived from the contract. */
+export type CustomersResponse = components["schemas"]["Customer"][];
+
+/**
+ * Validates the customer list at the boundary.
+ *
+ * Same contract as {@link parseProducts}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * table, and a numeric phone never reaches a cell.
+ */
+export function parseCustomers(data: unknown): CustomersResponse {
+	const result = safeParse(customersResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single customer: the detail read, the creation and the update.
+ *
+ * It exists so the customer the form receives back goes through the same
+ * boundary as the listed ones: a cast here would let a shape change reach a
+ * view unnoticed.
+ */
+export function parseCustomer(data: unknown): Customer {
+	const result = safeParse(customerSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * The upload contract `POST /companies/{companyId}/media/signature` returns:
+ * the Cloudinary coordinates plus the limits the server already signed into
+ * the signature. The browser validates the file against **these** values, not
+ * against its own constants, so a server-side change of formats or size limit
+ * moves the client with it.
+ */
+export const mediaUploadSignatureSchema = object({
+	cloudName: string(),
+	apiKey: string(),
+	timestamp: number(),
+	signature: string(),
+	folder: string(),
+	allowedFormats: array(string()),
+	maxFileSizeBytes: number(),
+});
+
+/** Signed upload parameters, derived from the OpenAPI contract. */
+export type MediaUploadSignature =
+	components["schemas"]["MediaUploadSignature"];
+
+/**
+ * The product a movement refers to, as the history shows it.
+ *
+ * It is a reduced copy on purpose: the movement is immutable, so the name and the
+ * SKU are the ones the product had when the stock moved, not a live join.
+ */
+export const movementProductSchema = object({
+	id: string(),
+	name: string(),
+	sku: string(),
+});
+
+/** The product of a movement, derived from the OpenAPI contract. */
+export type MovementProduct = components["schemas"]["MovementProduct"];
+
+/**
+ * The customer a sale is associated with, as the history shows it.
+ *
+ * A reduced copy like {@link movementProductSchema}, and for the same reason: the
+ * movement is the audit trail of the stock (MOV-05), so a customer soft-deleted
+ * after the sale still shows the name the ledger recorded, instead of the row
+ * turning into a hole.
+ */
+export const movementCustomerSchema = object({
+	id: string(),
+	name: string(),
+});
+
+/** The customer of a movement, derived from the OpenAPI contract. */
+export type MovementCustomer = components["schemas"]["MovementCustomer"];
+
+/**
+ * The fields every movement carries, shared by the history and the creation
+ * response.
+ *
+ * `type` is a closed list — the direction lives there, never in the sign of the
+ * number — so an unknown value fails at the boundary instead of reaching the
+ * badge. `quantity` is a **number** because it is a count, unlike the product's
+ * decimal price. `reason` and `actor` are nullable: the reason is optional and a
+ * user that cannot be resolved must never hide the movement, because the
+ * movement is the audit trail of the stock (MOV-05).
+ *
+ * `customerId` and `customer` are both required and nullable (MI-10): the API
+ * resolves the customer on the server, so `customer` is `null` exactly when the
+ * movement has no association — an entry, or a sale without an identified
+ * customer — and the table never reads `customerId` to decide what to show.
+ */
+const movementFields = {
+	id: string(),
+	companyId: string(),
+	productId: string(),
+	type: picklist(["IN", "OUT"]),
+	quantity: number(),
+	reason: nullable(string()),
+	createdAt: string(),
+	product: movementProductSchema,
+	actor: nullable(userSummarySchema),
+	customerId: nullable(string()),
+	customer: nullable(movementCustomerSchema),
+} as const;
+
+/** One stock movement exactly as the movements endpoints serialize it. */
+export const stockMovementSchema = object(movementFields);
+
+/** One stock movement, derived from the OpenAPI contract. */
+export type StockMovement = components["schemas"]["StockMovement"];
+
+/** Shape of `GET /companies/{companyId}/movements`: newest first. */
+export const movementsResponseSchema = array(stockMovementSchema);
+
+/** `GET /companies/{companyId}/movements` response, derived from the contract. */
+export type MovementsResponse = components["schemas"]["StockMovement"][];
+
+/**
+ * Body of `POST /companies/{companyId}/movements`, derived from the contract.
+ *
+ * The direction is a field, not a sign: an exit sends `quantity` positive with
+ * `type: "OUT"`, which is exactly what the API expects. `customerId` is optional
+ * and only meaningful on an exit (MI-10): an entry that carries a customer
+ * answers `400 customer_requires_exit`, so nothing builds one for `IN`.
+ */
+export type RegisterMovementRequest =
+	components["schemas"]["RegisterMovementRequest"];
+
+/**
+ * The creation response: the recorded movement plus the product's stock after
+ * it. The stock is the server's number, so the UI shows it instead of computing
+ * `previous + quantity` from a cache it cannot trust.
+ */
+export const registerMovementResponseSchema = object({
+	...movementFields,
+	stockQuantity: number(),
+});
+
+/** `POST /companies/{companyId}/movements` response, derived from the contract. */
+export type RegisterMovementResponse =
+	components["schemas"]["RegisterMovementResponse"];
+
+/**
+ * Validates the history at the boundary.
+ *
+ * Same contract as {@link parseProducts}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * movements table, and a `quantity` that is not a number never reaches the
+ * formatter.
+ */
+export function parseMovements(data: unknown): MovementsResponse {
+	const result = safeParse(movementsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates the creation response, which is a movement plus the resulting stock.
+ *
+ * The stock is what the person sees on success, so a response without it must
+ * fail here rather than in the UI.
+ */
+export function parseRegisterMovementResponse(
+	data: unknown,
+): RegisterMovementResponse {
+	const result = safeParse(registerMovementResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One point of the movement trend: a **UTC day** and what entered and left the
+ * stock that day.
+ *
+ * `date` is validated against the `Format: date` the contract declares instead of
+ * accepting any string: the aggregate is per day, so a full timestamp or a local
+ * date is a shape change, not a value the chart could place on its axis. The
+ * counters are **numbers** because they are sums of quantities, not money.
+ */
+export const movementTrendPointSchema = object({
+	date: pipe(string(), regex(/^\d{4}-\d{2}-\d{2}$/)),
+	entries: number(),
+	exits: number(),
+});
+
+/** One day of the movement trend, derived from the OpenAPI contract. */
+export type MovementTrendPoint = components["schemas"]["MovementTrendPoint"];
+
+/**
+ * Shape of `GET /companies/{companyId}/reports/movements`: the window the server
+ * aggregated plus one point per day, **oldest first** and already zero-filled by
+ * the server for the days without movements. The client draws them in the order
+ * it receives them and never re-sorts or re-fills.
+ */
+export const movementTrendResponseSchema = object({
+	days: number(),
+	series: array(movementTrendPointSchema),
+});
+
+/** `GET /companies/{companyId}/reports/movements` response, derived from the contract. */
+export type MovementTrendResponse =
+	components["schemas"]["MovementTrendResponse"];
+
+/**
+ * Validates the trend report at the boundary.
+ *
+ * Same contract as {@link parseMovements}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * chart, and a missing series never turns into a period the server did not
+ * compute.
+ */
+export function parseMovementTrend(data: unknown): MovementTrendResponse {
+	const result = safeParse(movementTrendResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates the signature before a byte is uploaded.
+ *
+ * A signature with a changed shape would otherwise produce a request the
+ * storage provider rejects with an opaque error, far from its cause.
+ */
+export function parseMediaUploadSignature(data: unknown): MediaUploadSignature {
+	const result = safeParse(mediaUploadSignatureSchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

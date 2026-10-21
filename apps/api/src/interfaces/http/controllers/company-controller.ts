@@ -58,8 +58,12 @@ export interface CompanyController {
  * The resolved user the company routes are guaranteed to have: `requireUser`
  * runs before this controller, so a missing user is a programming error and
  * not something to work around by inventing one.
+ *
+ * Exported because the stock movement controller is mounted on the same
+ * `companyScoped` router and needs the caller for the audit trail (MOV-05); a
+ * second copy of this accessor would be a second place to forget the check.
  */
-function resolvedUser(request: Request): User {
+export function resolvedUser(request: Request): User {
 	const user = request.user;
 	if (user === undefined) {
 		throw new Error(
@@ -73,8 +77,12 @@ function resolvedUser(request: Request): User {
  * The resolved company context a company-scoped handler is guaranteed to have:
  * `requireCompanyContext` runs before it, so a missing context is a
  * programming error, not a forbidden access to manufacture.
+ *
+ * Exported because the product controller is mounted on the same
+ * `companyScoped` router and needs the exact same guarantee; a second copy of
+ * this accessor would be a second place to forget the check.
  */
-function resolvedCompanyContext(request: Request): CompanyContext {
+export function resolvedCompanyContext(request: Request): CompanyContext {
 	const context = request.companyContext;
 	if (context === undefined) {
 		throw new Error(
@@ -161,12 +169,14 @@ export function createCompanyController(
 			try {
 				const context = resolvedCompanyContext(request);
 
-				// The upload parameters are decided by the signer from the company
-				// id alone: whatever folder/formats/timestamp the client sends in
-				// the body is ignored, so the signed contract is always the
-				// server's, never the caller's.
+				// The upload parameters are decided by the signer: whatever
+				// folder/formats/timestamp the client sends in the body is ignored,
+				// so the signed contract is always the server's, never the
+				// caller's. The company context supplies the id and the name the
+				// folder is built from; it already proved who may ask.
 				const signature = dependencies.mediaUploadSigner.createUploadSignature({
 					companyId: context.companyId,
+					companyName: context.companyName,
 				});
 
 				// Never the api secret: the response is exactly the parameters the

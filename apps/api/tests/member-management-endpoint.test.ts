@@ -4,12 +4,14 @@ import { InviteMemberUseCase } from "../src/application/use-cases/invite-member.
 import { LeaveCompanyUseCase } from "../src/application/use-cases/leave-company.js";
 import { ListMembersUseCase } from "../src/application/use-cases/list-members.js";
 import { RevokeMembershipUseCase } from "../src/application/use-cases/revoke-membership.js";
+import { Company } from "../src/domain/entities/company.js";
 import {
 	Membership,
 	type MembershipRole,
 	type MembershipStatus,
 } from "../src/domain/entities/membership.js";
 import { User } from "../src/domain/entities/user.js";
+import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
@@ -92,6 +94,14 @@ describe("member management endpoints", () => {
 			return membership;
 		}
 
+		// The context now carries the company name, so every company a scoped
+		// request names has to exist in the store.
+		const companyRepository = new InMemoryCompanyRepository();
+		companyRepository.save(Company.create({ id: COMPANY, name: "Acme" }));
+		companyRepository.save(
+			Company.create({ id: OTHER_COMPANY, name: "Globex" }),
+		);
+
 		const app = buildApp({
 			acceptInvitations: {} as never,
 			changeMemberRole: new ChangeMemberRoleUseCase({ membershipRepository }),
@@ -113,6 +123,7 @@ describe("member management endpoints", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			// The member-management slice never reaches these; the explicit
 			// `{} as never` records that the wiring is intentionally inert.
@@ -120,6 +131,9 @@ describe("member management endpoints", () => {
 			listPendingInvitations: {} as never,
 			markNotificationsRead: {} as never,
 			mediaUploadSigner: {} as never,
+			customers: {} as never,
+			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

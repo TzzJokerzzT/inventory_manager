@@ -45,8 +45,12 @@ function isLink(entry: NavEntry): entry is NavLinkEntry {
  * the company switcher, the user area (logout) and the theme toggle, plus the
  * content area.
  *
- * The shell fills the viewport height: sidebar and header stay fixed and only
- * `main` scrolls.
+ * The shell is pinned to the viewport (`fixed inset-0`) instead of merely being
+ * `h-dvh` in the document flow: the page itself must never scroll, so the
+ * document cannot gain a scrollbar that would drag the sidebar and the header
+ * away when the content ends. `main` is the only scroll container, and
+ * `overscroll-contain` stops the scroll from chaining to the document at the
+ * end of the view.
  *
  * Below `lg` the sidebar is an icon-only rail that the user can expand (it
  * overlays the content instead of pushing it). From `lg` it is the regular

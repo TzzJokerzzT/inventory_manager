@@ -117,6 +117,7 @@ describe("POST /companies/:companyId/media/signature", () => {
 			revokeMember: {} as never,
 			updateUserFullName: {} as never,
 			mediaUploadSigner,
+			customers: {} as never,
 			products: {} as never,
 			movements: {} as never,
 			authCookieOptions: {

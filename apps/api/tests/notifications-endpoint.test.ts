@@ -87,6 +87,7 @@ describe("me notifications endpoints", () => {
 			}),
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: (_request, _response, next) => next(),
+			customers: {} as never,
 			products: {} as never,
 			movements: {} as never,
 			authCookieOptions: {

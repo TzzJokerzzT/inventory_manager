@@ -62,6 +62,7 @@ describe("requireAuth on the company routes", () => {
 			registerUser: {} as never,
 			revokeMember: {} as never,
 			updateUserFullName: {} as never,
+			customers: {} as never,
 			products: {} as never,
 			movements: {} as never,
 			authCookieOptions: {} as never,

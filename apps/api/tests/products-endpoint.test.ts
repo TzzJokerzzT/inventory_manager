@@ -114,6 +114,9 @@ describe("product endpoints", () => {
 				update: new UpdateProductUseCase({ productRepository }),
 				remove: new DeleteProductUseCase({ productRepository }),
 			},
+			// Not exercised by this suite: the customer slice keeps the app
+			// buildable, and its own suite wires it for real.
+			customers: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,

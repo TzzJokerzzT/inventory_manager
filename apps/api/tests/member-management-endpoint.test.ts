@@ -131,6 +131,7 @@ describe("member management endpoints", () => {
 			listPendingInvitations: {} as never,
 			markNotificationsRead: {} as never,
 			mediaUploadSigner: {} as never,
+			customers: {} as never,
 			products: {} as never,
 			movements: {} as never,
 			authCookieOptions: {

@@ -95,6 +95,7 @@ function createTestApp() {
 		mediaUploadSigner: {} as never,
 		revokeMember: {} as never,
 		updateUserFullName: {} as never,
+		customers: {} as never,
 		products: {} as never,
 		movements: {} as never,
 		authCookieOptions: defaultCookieOptions,

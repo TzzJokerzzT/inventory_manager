@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { CompanyController } from "../controllers/company-controller.js";
+import type { CustomerController } from "../controllers/customer-controller.js";
 import type { ProductController } from "../controllers/product-controller.js";
 import type { StockMovementController } from "../controllers/stock-movement-controller.js";
 
@@ -15,6 +16,7 @@ import type { StockMovementController } from "../controllers/stock-movement-cont
 export function companyRoutes(
 	controller: CompanyController,
 	products: ProductController,
+	customers: CustomerController,
 	movements: StockMovementController,
 ): Router {
 	const router = Router();
@@ -52,6 +54,15 @@ export function companyRoutes(
 	companyScoped.get("/products/:productId", products.get);
 	companyScoped.patch("/products/:productId", products.update);
 	companyScoped.delete("/products/:productId", products.remove);
+	// Customer routes. Same protected sub-router, same reasoning: the company
+	// comes from the path and the membership, never from the body. Who may
+	// write is "any ACTIVE membership" (S6), so there is no role check here nor
+	// in the use cases.
+	companyScoped.get("/customers", customers.list);
+	companyScoped.post("/customers", customers.create);
+	companyScoped.get("/customers/:customerId", customers.get);
+	companyScoped.patch("/customers/:customerId", customers.update);
+	companyScoped.delete("/customers/:customerId", customers.remove);
 	// Stock movement routes. They share the protected sub-router, so they
 	// inherit `requireCompanyContext`: any ACTIVE membership registers and reads
 	// (S6), and the company comes from the path, never from the body. There is

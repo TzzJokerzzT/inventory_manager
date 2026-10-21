@@ -1,6 +1,10 @@
 import type { ErrorRequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ValiError } from "valibot";
+import {
+	CUSTOMER_NOT_FOUND_CODE,
+	CustomerNotFoundError,
+} from "../../../domain/errors/customer-not-found-error.js";
 import { DomainError } from "../../../domain/errors/domain-error.js";
 import { EmailNotVerifiedError } from "../../../domain/errors/email-not-verified-error.js";
 import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
@@ -154,6 +158,16 @@ export const errorHandler: ErrorRequestHandler = (
 		// the caller needs to know (S4).
 		response.status(StatusCodes.NOT_FOUND).json({
 			error: { message: error.message, code: PRODUCT_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof CustomerNotFoundError) {
+		// The same 404 a foreign id and an absent one get: the customer is not in
+		// this company's roster, and which of the two it was is not something the
+		// caller needs to know (S5).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: CUSTOMER_NOT_FOUND_CODE },
 		});
 		return;
 	}

@@ -10,13 +10,17 @@ import type { MediaUploadSigner } from "../../application/ports/media-upload-sig
 import type { AcceptInvitationsUseCase } from "../../application/use-cases/accept-invitations.js";
 import type { ChangeMemberRoleUseCase } from "../../application/use-cases/change-member-role.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
+import type { CreateCustomerUseCase } from "../../application/use-cases/create-customer.js";
 import type { CreateProductUseCase } from "../../application/use-cases/create-product.js";
+import type { DeleteCustomerUseCase } from "../../application/use-cases/delete-customer.js";
 import type { DeleteProductUseCase } from "../../application/use-cases/delete-product.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
+import type { GetCustomerUseCase } from "../../application/use-cases/get-customer.js";
 import type { GetProductUseCase } from "../../application/use-cases/get-product.js";
 import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
 import type { LeaveCompanyUseCase } from "../../application/use-cases/leave-company.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
+import type { ListCustomersUseCase } from "../../application/use-cases/list-customers.js";
 import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
 import type { ListNotificationsUseCase } from "../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../application/use-cases/list-pending-invitations.js";
@@ -28,6 +32,7 @@ import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
+import type { UpdateCustomerUseCase } from "../../application/use-cases/update-customer.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
 import type { UpdateUserFullNameUseCase } from "../../application/use-cases/update-user-full-name.js";
 import {
@@ -35,6 +40,7 @@ import {
 	createAuthController,
 } from "./controllers/auth-controller.js";
 import { createCompanyController } from "./controllers/company-controller.js";
+import { createCustomerController } from "./controllers/customer-controller.js";
 import { createMeController } from "./controllers/me-controller.js";
 import { createProductController } from "./controllers/product-controller.js";
 import { createStockMovementController } from "./controllers/stock-movement-controller.js";
@@ -100,6 +106,17 @@ export interface AppDependencies {
 		remove: DeleteProductUseCase;
 	};
 	/**
+	 * The customer slice of MI-11. One field, not five, because the routes that
+	 * consume it are all mounted together on the company-scoped router.
+	 */
+	customers: {
+		list: ListCustomersUseCase;
+		create: CreateCustomerUseCase;
+		get: GetCustomerUseCase;
+		update: UpdateCustomerUseCase;
+		remove: DeleteCustomerUseCase;
+	};
+	/**
 	 * The stock movement slice of MI-8. One field, not two, because both routes
 	 * are mounted together on the company-scoped router.
 	 */
@@ -146,6 +163,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 		buildRoutes({
 			company: createCompanyController(dependencies),
 			products: createProductController(dependencies.products),
+			customers: createCustomerController(dependencies.customers),
 			movements: createStockMovementController(dependencies.movements),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,

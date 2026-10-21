@@ -2,13 +2,17 @@ import { v2 as cloudinary } from "cloudinary";
 import { AcceptInvitationsUseCase } from "./application/use-cases/accept-invitations.js";
 import { ChangeMemberRoleUseCase } from "./application/use-cases/change-member-role.js";
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
+import { CreateCustomerUseCase } from "./application/use-cases/create-customer.js";
 import { CreateProductUseCase } from "./application/use-cases/create-product.js";
+import { DeleteCustomerUseCase } from "./application/use-cases/delete-customer.js";
 import { DeleteProductUseCase } from "./application/use-cases/delete-product.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
+import { GetCustomerUseCase } from "./application/use-cases/get-customer.js";
 import { GetProductUseCase } from "./application/use-cases/get-product.js";
 import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
 import { LeaveCompanyUseCase } from "./application/use-cases/leave-company.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
+import { ListCustomersUseCase } from "./application/use-cases/list-customers.js";
 import { ListMembersUseCase } from "./application/use-cases/list-members.js";
 import { ListNotificationsUseCase } from "./application/use-cases/list-notifications.js";
 import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
@@ -20,12 +24,14 @@ import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.j
 import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
+import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
 import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
+import { PrismaCustomerRepository } from "./infrastructure/database/prisma-customer-repository.js";
 import { PrismaMembershipRepository } from "./infrastructure/database/prisma-membership-repository.js";
 import { PrismaNotificationRepository } from "./infrastructure/database/prisma-notification-repository.js";
 import { PrismaProductRepository } from "./infrastructure/database/prisma-product-repository.js";
@@ -50,6 +56,7 @@ const userRepository = new PrismaUserRepository({ prisma });
 const membershipRepository = new PrismaMembershipRepository({ prisma });
 const notificationRepository = new PrismaNotificationRepository({ prisma });
 const productRepository = new PrismaProductRepository({ prisma });
+const customerRepository = new PrismaCustomerRepository({ prisma });
 const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
@@ -157,6 +164,13 @@ const app = buildApp({
 		get: new GetProductUseCase({ productRepository }),
 		update: new UpdateProductUseCase({ productRepository }),
 		remove: new DeleteProductUseCase({ productRepository }),
+	},
+	customers: {
+		list: new ListCustomersUseCase({ customerRepository }),
+		create: new CreateCustomerUseCase({ customerRepository }),
+		get: new GetCustomerUseCase({ customerRepository }),
+		update: new UpdateCustomerUseCase({ customerRepository }),
+		remove: new DeleteCustomerUseCase({ customerRepository }),
 	},
 	movements: {
 		register: new RegisterStockMovementUseCase({

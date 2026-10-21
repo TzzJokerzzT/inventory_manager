@@ -23,6 +23,12 @@ export type RegisterMovementResult =
 
 export interface StockMovementFilters {
 	productId?: string;
+	/**
+	 * Only the movements of this customer: the sales of one customer, combined
+	 * with `type=OUT` when the caller wants nothing but exits. It is a read
+	 * filter, so an id of another company matches no row instead of failing.
+	 */
+	customerId?: string;
 	type?: StockMovementType;
 	limit: number;
 }
@@ -53,7 +59,9 @@ export interface StockMovementRepository {
 	 *
 	 * `productId` and `type` narrow the history (MOV-03) and `limit` caps it,
 	 * so the list endpoint answers in a bounded read instead of loading the
-	 * whole trail.
+	 * whole trail. `customerId` narrows it to the sales of one customer; it is
+	 * applied in the WHERE next to `companyId`, so a customer of another
+	 * company simply matches no row (it is not a resource to answer 404 for).
 	 */
 	findByCompany(
 		companyId: string,

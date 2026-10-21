@@ -92,6 +92,12 @@ const limitSchema = v.pipe(
  */
 export const listStockMovementsQuerySchema = v.object({
 	productId: v.optional(v.pipe(v.string(), v.uuid("productId must be a uuid"))),
+	// Same shape and the same 400 as `productId`: a malformed id never reaches
+	// the query. The filter only narrows the read; an id of another company is
+	// not an error.
+	customerId: v.optional(
+		v.pipe(v.string(), v.uuid("customerId must be a uuid")),
+	),
 	type: v.optional(typeSchema),
 	limit: v.optional(limitSchema, "50"),
 });

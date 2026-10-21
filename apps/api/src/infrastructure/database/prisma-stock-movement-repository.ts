@@ -136,6 +136,11 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
 				...(filters.productId === undefined
 					? {}
 					: { productId: filters.productId }),
+				// The customer is a filter inside the company's WHERE, never a
+				// lookup: an id of another company matches no row.
+				...(filters.customerId === undefined
+					? {}
+					: { customerId: filters.customerId }),
 				...(filters.type === undefined ? {} : { type: filters.type }),
 			},
 			// Newest first, with the id as the tie-break, so two reads of the same

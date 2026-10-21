@@ -45,6 +45,7 @@ export function createStockMovementController(
 				const movements = await dependencies.list.execute(
 					{
 						productId: query.productId,
+						customerId: query.customerId,
 						type: query.type,
 						limit: query.limit,
 					},

@@ -269,6 +269,52 @@ describe("PrismaStockMovementRepository.findByCompany", () => {
 		});
 	});
 
+	it("puts the customerId in the where, keeping the order and the limit", async () => {
+		const { delegate, stockMovementFindMany } = buildFakeDelegate();
+		stockMovementFindMany.mockResolvedValue([
+			movementRow({ type: "OUT", customerId: "customer-1" }),
+		]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const found = await repository.findByCompany("company-1", {
+			customerId: "customer-1",
+			limit: 20,
+		});
+
+		expect(stockMovementFindMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", customerId: "customer-1" },
+			orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+			take: 20,
+		});
+		expect(found.map((row) => row.id)).toEqual(["movement-1"]);
+	});
+
+	it("composes the customerId with the product and type filters", async () => {
+		const { delegate, stockMovementFindMany } = buildFakeDelegate();
+		stockMovementFindMany.mockResolvedValue([
+			movementRow({ type: "OUT", customerId: "customer-1" }),
+		]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		await repository.findByCompany("company-1", {
+			productId: "product-1",
+			customerId: "customer-1",
+			type: "OUT",
+			limit: 20,
+		});
+
+		expect(stockMovementFindMany).toHaveBeenCalledWith({
+			where: {
+				companyId: "company-1",
+				productId: "product-1",
+				customerId: "customer-1",
+				type: "OUT",
+			},
+			orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+			take: 20,
+		});
+	});
+
 	it("maps the rows back into domain entities, keeping the reason", async () => {
 		const { delegate, stockMovementFindMany } = buildFakeDelegate();
 		stockMovementFindMany.mockResolvedValue([

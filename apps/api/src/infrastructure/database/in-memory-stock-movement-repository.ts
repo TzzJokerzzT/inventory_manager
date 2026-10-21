@@ -73,13 +73,19 @@ export class InMemoryStockMovementRepository
 	): Promise<StockMovement[]> {
 		// Same scoping and order as the Prisma adapter's query: the company is
 		// part of the filter, newest first, and the limit is applied after the
-		// order so it keeps the newest rows.
+		// order so it keeps the newest rows. The customer filter mirrors the
+		// WHERE clause too: an anonymous movement never matches a customer id.
 		return Array.from(this.movements.values())
 			.filter((movement) => movement.companyId === companyId)
 			.filter(
 				(movement) =>
 					filters.productId === undefined ||
 					movement.productId === filters.productId,
+			)
+			.filter(
+				(movement) =>
+					filters.customerId === undefined ||
+					movement.customerId === filters.customerId,
 			)
 			.filter(
 				(movement) =>

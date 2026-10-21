@@ -239,4 +239,102 @@ describe("InMemoryStockMovementRepository.findByCompany", () => {
 
 		expect(movements.map((row) => row.id)).toEqual(["m-3", "m-2"]);
 	});
+
+	/**
+	 * Two sales of one customer, one sale of another customer and an anonymous
+	 * entry, so the customer filter has a history to narrow.
+	 */
+	async function seededWithCustomers() {
+		const { repository, store } = build();
+
+		await repository.register(
+			movement({ id: "m-1", quantity: 5, createdAt: T0 }),
+		);
+		await repository.register(
+			movement({
+				id: "m-2",
+				type: "OUT",
+				quantity: 1,
+				customerId: "customer-1",
+				createdAt: T1,
+			}),
+		);
+		await repository.register(
+			movement({
+				id: "m-3",
+				type: "OUT",
+				quantity: 1,
+				customerId: "customer-1",
+				createdAt: T2,
+			}),
+		);
+		await repository.register(
+			movement({
+				id: "m-4",
+				type: "OUT",
+				quantity: 1,
+				customerId: "customer-2",
+				createdAt: new Date("2026-10-21T13:00:00.000Z"),
+			}),
+		);
+
+		return { repository, store };
+	}
+
+	it("filters by customerId, keeping the order and the limit", async () => {
+		const { repository } = await seededWithCustomers();
+
+		const movements = await repository.findByCompany(COMPANY, {
+			customerId: "customer-1",
+			limit: 50,
+		});
+		const limited = await repository.findByCompany(COMPANY, {
+			customerId: "customer-1",
+			limit: 1,
+		});
+
+		expect(movements.map((row) => row.id)).toEqual(["m-3", "m-2"]);
+		// The order is still newest first and the limit still keeps the newest.
+		expect(limited.map((row) => row.id)).toEqual(["m-3"]);
+	});
+
+	it("returns no rows for a customer whose movements belong to another company", async () => {
+		const { repository } = build([
+			product(),
+			product({ id: "product-other", companyId: OTHER_COMPANY }),
+		]);
+		// The sale is recorded under its own company, so the ledger really has
+		// it and the empty answer below is the company scoping.
+		await repository.register(
+			movement({
+				id: "m-1",
+				companyId: OTHER_COMPANY,
+				productId: "product-other",
+				type: "OUT",
+				customerId: "customer-9",
+			}),
+		);
+		// A sale of our own company proves the empty answer below is the customer
+		// filter and not an empty ledger.
+		await repository.register(
+			movement({
+				id: "m-2",
+				quantity: 1,
+				customerId: "customer-1",
+			}),
+		);
+
+		await expect(
+			repository.findByCompany(OTHER_COMPANY, {
+				customerId: "customer-9",
+				limit: 50,
+			}),
+		).resolves.toHaveLength(1);
+		await expect(
+			repository.findByCompany(COMPANY, {
+				customerId: "customer-9",
+				limit: 50,
+			}),
+		).resolves.toEqual([]);
+	});
 });

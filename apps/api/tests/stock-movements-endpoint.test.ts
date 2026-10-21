@@ -31,6 +31,7 @@ const COMPANY = "11111111-2222-4333-8444-555555555555";
 const OTHER_COMPANY = "99999999-8888-4777-8666-555555555555";
 const MISSING_PRODUCT_ID = "12345678-1234-4123-8123-123456789012";
 const CUSTOMER_ID = "cccccccc-3333-4333-8333-333333333333";
+const SECOND_CUSTOMER_ID = "ffffffff-6666-4666-8666-666666666666";
 const OTHER_CUSTOMER_ID = "dddddddd-4444-4444-8444-444444444444";
 const MISSING_CUSTOMER_ID = "eeeeeeee-5555-4555-8555-555555555555";
 
@@ -604,6 +605,7 @@ describe("stock movement endpoints", () => {
 
 		const PRODUCT_A = "aaaaaaaa-1111-4111-8111-111111111111";
 		const PRODUCT_B = "bbbbbbbb-2222-4222-8222-222222222222";
+		const PRODUCT_FOREIGN = "ffffffff-7777-4777-8777-777777777777";
 
 		async function appWithHistory() {
 			const testApp = createTestApp();
@@ -620,6 +622,97 @@ describe("stock movement endpoints", () => {
 			const created = await seedHistory(testApp.app);
 
 			return { ...testApp, created };
+		}
+
+		/**
+		 * Seeds two sales of one customer on different products, one sale of
+		 * another customer, an anonymous entry and one sale under the other
+		 * company, all through the API so the history is the real one.
+		 */
+		async function appWithSales() {
+			const testApp = createTestApp();
+			testApp.seedRoster();
+			// The owner belongs to both companies, so the other company's sale can
+			// be read there and the filter's isolation is observable.
+			testApp.seedMembership({
+				userId: testApp.owner.id,
+				role: "OWNER",
+				companyId: OTHER_COMPANY,
+			});
+			await seedProduct(testApp.productRepository, {
+				id: PRODUCT_A,
+				sku: "CAF-500",
+				stockQuantity: 100,
+			});
+			await seedProduct(testApp.productRepository, {
+				id: PRODUCT_B,
+				name: "Azucar",
+				sku: "SUGAR-1",
+				stockQuantity: 100,
+			});
+			await seedProduct(testApp.productRepository, {
+				id: PRODUCT_FOREIGN,
+				companyId: OTHER_COMPANY,
+				name: "Aji",
+				sku: "AJE-1",
+				stockQuantity: 100,
+			});
+			await seedCustomer(testApp.customerRepository);
+			await seedCustomer(testApp.customerRepository, {
+				id: SECOND_CUSTOMER_ID,
+				name: "Juan Perez",
+			});
+			await seedCustomer(testApp.customerRepository, {
+				id: OTHER_CUSTOMER_ID,
+				companyId: OTHER_COMPANY,
+				name: "Globex Buyer",
+			});
+
+			async function post(companyId: string, body: Record<string, unknown>) {
+				const response = await request(testApp.app)
+					.post(`/companies/${companyId}/movements`)
+					.set("authorization", authorization(OWNER_SUB))
+					.send(body);
+
+				expect(response.status).toBe(201);
+				// A small gap between the posts keeps the newest-first order
+				// deterministic, like `seedHistory` does.
+				await new Promise((resolve) => setTimeout(resolve, 5));
+
+				return response.body as { id: string };
+			}
+
+			const saleA = await post(COMPANY, {
+				productId: PRODUCT_A,
+				type: "OUT",
+				quantity: 2,
+				customerId: CUSTOMER_ID,
+			});
+			const saleB = await post(COMPANY, {
+				productId: PRODUCT_B,
+				type: "OUT",
+				quantity: 1,
+				customerId: CUSTOMER_ID,
+			});
+			const saleC = await post(COMPANY, {
+				productId: PRODUCT_A,
+				type: "OUT",
+				quantity: 3,
+				customerId: SECOND_CUSTOMER_ID,
+			});
+			const entry = await post(COMPANY, {
+				productId: PRODUCT_A,
+				type: "IN",
+				quantity: 10,
+			});
+			await post(OTHER_COMPANY, {
+				productId: PRODUCT_FOREIGN,
+				type: "OUT",
+				quantity: 1,
+				customerId: OTHER_CUSTOMER_ID,
+			});
+
+			return { ...testApp, sales: { saleA, saleB, saleC, entry } };
 		}
 
 		it("lists the company's movements newest first with product and actor resolved", async () => {
@@ -726,6 +819,122 @@ describe("stock movement endpoints", () => {
 					(movement: { productId: string }) => movement.productId,
 				),
 			).toEqual([PRODUCT_B, PRODUCT_A]);
+		});
+
+		it("filters by customerId, returning only that customer's movements", async () => {
+			const { app, sales } = await appWithSales();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/movements?customerId=${CUSTOMER_ID}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(
+				response.body.map((movement: { id: string }) => movement.id),
+			).toEqual([sales.saleB.id, sales.saleA.id]);
+			expect(
+				response.body.every(
+					(movement: { customerId: string | null }) =>
+						movement.customerId === CUSTOMER_ID,
+				),
+			).toBe(true);
+		});
+
+		it("composes the customerId filter with type, so only the sales come back", async () => {
+			const { app, sales } = await appWithSales();
+
+			const onlySales = await request(app)
+				.get(
+					`/companies/${COMPANY}/movements?customerId=${CUSTOMER_ID}&type=OUT`,
+				)
+				.set("authorization", authorization(OWNER_SUB));
+			const onlyEntries = await request(app)
+				.get(
+					`/companies/${COMPANY}/movements?customerId=${CUSTOMER_ID}&type=IN`,
+				)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(onlySales.status).toBe(200);
+			expect(
+				onlySales.body.map((movement: { id: string }) => movement.id),
+			).toEqual([sales.saleB.id, sales.saleA.id]);
+			// The same customer has no entries, so both filters are applied.
+			expect(onlyEntries.status).toBe(200);
+			expect(onlyEntries.body).toEqual([]);
+		});
+
+		it("composes the customerId filter with productId", async () => {
+			const { app, sales } = await appWithSales();
+
+			// Both customers bought PRODUCT_A, so the product filter alone would
+			// keep both sales and only the customer filter can drop the other
+			// one.
+			const response = await request(app)
+				.get(
+					`/companies/${COMPANY}/movements?customerId=${CUSTOMER_ID}&productId=${PRODUCT_A}`,
+				)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(
+				response.body.map((movement: { id: string }) => movement.id),
+			).toEqual([sales.saleA.id]);
+		});
+
+		it("does not narrow the history when customerId is absent", async () => {
+			const { app, sales } = await appWithSales();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(
+				response.body.map((movement: { id: string }) => movement.id),
+			).toEqual([
+				sales.entry.id,
+				sales.saleC.id,
+				sales.saleB.id,
+				sales.saleA.id,
+			]);
+		});
+
+		it("answers 400 for a malformed customerId", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/movements?customerId=not-a-uuid`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.issues.length).toBeGreaterThan(0);
+		});
+
+		it("never leaks another company's movements through the customerId filter", async () => {
+			const { app } = await appWithSales();
+
+			const ours = await request(app)
+				.get(`/companies/${COMPANY}/movements?customerId=${OTHER_CUSTOMER_ID}`)
+				.set("authorization", authorization(OWNER_SUB));
+			const theirs = await request(app)
+				.get(
+					`/companies/${OTHER_COMPANY}/movements?customerId=${OTHER_CUSTOMER_ID}`,
+				)
+				.set("authorization", authorization(OWNER_SUB));
+
+			// A customer of another company is a filter that matches nothing
+			// here: no 404 and no rows.
+			expect(ours.status).toBe(200);
+			expect(ours.body).toEqual([]);
+			// The sale does exist under its own company, so the empty answer is
+			// the company scoping and not a lost customer.
+			expect(theirs.status).toBe(200);
+			expect(
+				theirs.body.map(
+					(movement: { customerId: string }) => movement.customerId,
+				),
+			).toEqual([OTHER_CUSTOMER_ID]);
 		});
 
 		it.each([

@@ -16,11 +16,15 @@ import { createFakeUserRepository } from "./support/fake-user-repository.js";
 const COMPANY = "company-1";
 const OTHER_COMPANY = "company-2";
 const PRODUCT = "product-1";
+const SECOND_PRODUCT = "product-2";
 const CUSTOMER = "customer-1";
+const SECOND_CUSTOMER = "customer-2";
+const FOREIGN_CUSTOMER = "customer-other";
 
 const T0 = new Date("2026-10-21T10:00:00.000Z");
 const T1 = new Date("2026-10-21T11:00:00.000Z");
 const T2 = new Date("2026-10-21T12:00:00.000Z");
+const T3 = new Date("2026-10-21T13:00:00.000Z");
 
 function product(
 	overrides: Partial<Parameters<typeof Product.create>[0]> = {},
@@ -461,6 +465,146 @@ describe("ListStockMovementsUseCase", () => {
 
 		expect(byProduct.map((movement) => movement.id)).toEqual(["m-3"]);
 		expect(byType.map((movement) => movement.id)).toEqual(["m-2"]);
+	});
+
+	/**
+	 * Seeds two sales of one customer, one sale of another customer and an
+	 * anonymous entry: enough to tell the customer filter apart from a type or
+	 * a product filter.
+	 */
+	function seedSales(repository: InMemoryStockMovementRepository) {
+		seedMovement(repository, {
+			id: "m-1",
+			type: "OUT",
+			quantity: 1,
+			customerId: CUSTOMER,
+			createdAt: T0,
+		});
+		seedMovement(repository, {
+			id: "m-2",
+			productId: SECOND_PRODUCT,
+			type: "OUT",
+			quantity: 2,
+			customerId: CUSTOMER,
+			createdAt: T1,
+		});
+		seedMovement(repository, {
+			id: "m-3",
+			type: "OUT",
+			quantity: 3,
+			customerId: SECOND_CUSTOMER,
+			createdAt: T2,
+		});
+		seedMovement(repository, { id: "m-4", createdAt: T3 });
+	}
+
+	function buildWithSales() {
+		return build({
+			products: [
+				product(),
+				product({ id: SECOND_PRODUCT, name: "Azucar", sku: "SUGAR-1" }),
+			],
+			customers: [
+				customer(),
+				customer({ id: SECOND_CUSTOMER, name: "Juan Perez" }),
+			],
+		});
+	}
+
+	it("filters by customerId, returning only that customer's movements", async () => {
+		const { list, stockMovementRepository } = buildWithSales();
+		seedSales(stockMovementRepository);
+
+		const movements = await list.execute(
+			{ customerId: CUSTOMER },
+			{ companyId: COMPANY },
+		);
+
+		expect(movements.map((movement) => movement.id)).toEqual(["m-2", "m-1"]);
+		expect(
+			movements.every((movement) => movement.customerId === CUSTOMER),
+		).toBe(true);
+	});
+
+	it("composes the customerId filter with the type filter", async () => {
+		const { list, stockMovementRepository } = buildWithSales();
+		seedSales(stockMovementRepository);
+
+		const sales = await list.execute(
+			{ customerId: CUSTOMER, type: "OUT" },
+			{ companyId: COMPANY },
+		);
+		const entries = await list.execute(
+			{ customerId: CUSTOMER, type: "IN" },
+			{ companyId: COMPANY },
+		);
+
+		expect(sales.map((movement) => movement.id)).toEqual(["m-2", "m-1"]);
+		// The customer only has exits, so asking for entries plus that customer
+		// matches nothing: both filters are applied.
+		expect(entries).toEqual([]);
+	});
+
+	it("composes the customerId filter with the productId filter", async () => {
+		const { list, stockMovementRepository } = buildWithSales();
+		seedSales(stockMovementRepository);
+
+		// Both customers bought PRODUCT, so the product filter alone would keep
+		// both sales and only the customer filter can drop the other one.
+		const movements = await list.execute(
+			{ customerId: CUSTOMER, productId: PRODUCT },
+			{ companyId: COMPANY },
+		);
+
+		expect(movements.map((movement) => movement.id)).toEqual(["m-1"]);
+	});
+
+	it("does not narrow the history when customerId is absent", async () => {
+		const { list, stockMovementRepository } = buildWithSales();
+		seedSales(stockMovementRepository);
+
+		const movements = await list.execute({}, { companyId: COMPANY });
+
+		expect(movements.map((movement) => movement.id)).toEqual([
+			"m-4",
+			"m-3",
+			"m-2",
+			"m-1",
+		]);
+	});
+
+	it("returns no rows for a customer that belongs to another company", async () => {
+		const { list, stockMovementRepository } = build({
+			customers: [
+				customer({
+					id: FOREIGN_CUSTOMER,
+					companyId: OTHER_COMPANY,
+					name: "Globex Buyer",
+				}),
+			],
+		});
+		seedMovement(stockMovementRepository, {
+			id: "m-1",
+			companyId: OTHER_COMPANY,
+			type: "OUT",
+			customerId: FOREIGN_CUSTOMER,
+		});
+		// A movement of our own company proves the empty answer below comes from
+		// the filter and not from an empty ledger.
+		seedMovement(stockMovementRepository, { id: "m-2", createdAt: T0 });
+
+		// A customer of another company is a filter that matches nothing, not a
+		// missing resource: no 404 and no separate lookup.
+		await expect(
+			list.execute({ customerId: FOREIGN_CUSTOMER }, { companyId: COMPANY }),
+		).resolves.toEqual([]);
+		// The sale does exist under its own company, so the empty answer above is
+		// the company scoping and not a lost customer.
+		const [foreign] = await stockMovementRepository.findByCompany(
+			OTHER_COMPANY,
+			{ limit: 50 },
+		);
+		expect(foreign.customerId).toBe(FOREIGN_CUSTOMER);
 	});
 
 	it("defaults the limit to 50 and honours an explicit one", async () => {

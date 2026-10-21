@@ -91,6 +91,12 @@ export function toStockMovementView(
 export interface ListStockMovementsInput {
 	/** Only the movements of this product (MOV-03). */
 	productId?: string;
+	/**
+	 * Only the movements associated with this customer. It combines with the
+	 * other filters and, unlike a resource read, an id that does not belong to
+	 * the company answers no rows instead of an error.
+	 */
+	customerId?: string;
 	/** Only entries (`IN`) or only exits (`OUT`). */
 	type?: StockMovementType;
 	/** Page size, newest first; defaults to {@link DEFAULT_STOCK_MOVEMENT_LIMIT}. */
@@ -149,6 +155,7 @@ export class ListStockMovementsUseCase {
 			context.companyId,
 			{
 				productId: input.productId,
+				customerId: input.customerId,
 				type: input.type,
 				limit: input.limit ?? DEFAULT_STOCK_MOVEMENT_LIMIT,
 			},

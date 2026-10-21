@@ -994,8 +994,9 @@ paths:
         newest first. The history is the audit trail of the stock (MOV-05), so
         movements are immutable: there is no update or delete operation.
 
-        `productId` narrows the history of one product (MOV-03) and `type`
-        narrows it to entries or exits. The product and the actor of each
+        `productId` narrows the history of one product (MOV-03), `customerId`
+        narrows it to the sales of one customer and `type` narrows it to
+        entries or exits. The product and the actor of each
         movement are resolved server-side; `actor` is null when the user row
         cannot be resolved, which never hides the movement.
       security:
@@ -1011,6 +1012,17 @@ paths:
           in: query
           required: false
           description: Only the movements of this product.
+          schema:
+            type: string
+            format: uuid
+        - name: customerId
+          in: query
+          required: false
+          description: |
+            Only the movements associated with this customer (the sales of a
+            customer, combined with `type=OUT`). It is a read filter, not a
+            resource: an id that does not belong to the company simply returns
+            no rows.
           schema:
             type: string
             format: uuid

@@ -87,7 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 	const collapsibleText = expanded ? "" : "sr-only lg:not-sr-only";
 
 	return (
-		<div className="flex h-dvh overflow-hidden bg-background">
+		<div className="fixed inset-0 flex overflow-hidden bg-background">
 			<div className="relative w-16 shrink-0 lg:w-60">
 				{expanded && (
 					<div
@@ -187,7 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 				</aside>
 			</div>
 
-			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+			<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				<header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 sm:gap-4 sm:px-6">
 					<div className="min-w-0">
 						<CompanySwitcher />
@@ -209,7 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 				<main
 					ref={mainRef}
-					className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6"
+					className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6"
 				>
 					{children}
 				</main>

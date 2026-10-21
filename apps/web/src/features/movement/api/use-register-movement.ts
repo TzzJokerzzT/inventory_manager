@@ -1,0 +1,58 @@
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { getApiClient } from "@/lib/api/client";
+import {
+	parseRegisterMovementResponse,
+	type RegisterMovementRequest,
+	type RegisterMovementResponse,
+} from "@/lib/api/schemas";
+import { getAccessToken } from "@/src/features/auth/api/get-access-token";
+import { productsQueryPrefix } from "@/src/features/product/api/use-products";
+import { movementsQueryPrefix } from "./use-movements";
+
+/**
+ * Registers an entry or an exit (`POST /companies/{id}/movements`).
+ *
+ * The API answers the recorded movement **and the stock left after it**, in one
+ * transaction (MOV-04), so the UI shows the server's number instead of computing
+ * `previous + quantity` from a cache it cannot trust.
+ *
+ * On success two prefixes are invalidated: the company's history, so the new row
+ * appears from the server's state, and the product catalogue, whose
+ * `stockQuantity` just changed — that is what makes the stock shown elsewhere
+ * update without a reload (S8). A failed registration invalidates nothing,
+ * because the stock did not move.
+ *
+ * An exit larger than the available stock arrives as {@link ApiError} with
+ * `code: "insufficient_stock"` and a message that states the stock available;
+ * the form surfaces that message instead of pretending the movement succeeded.
+ */
+export function useRegisterMovement(companyId: string | undefined) {
+	const queryClient = useQueryClient();
+
+	return useMutation<
+		RegisterMovementResponse,
+		unknown,
+		RegisterMovementRequest
+	>({
+		mutationFn: async (input) => {
+			if (!companyId) {
+				throw new Error("No active company");
+			}
+			const response = await getApiClient({ getAccessToken }).post(
+				`/companies/${companyId}/movements`,
+				input,
+			);
+			return parseRegisterMovementResponse(response.data);
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({
+				queryKey: movementsQueryPrefix(companyId),
+			});
+			queryClient.invalidateQueries({
+				queryKey: productsQueryPrefix(companyId),
+			});
+		},
+	});
+}

@@ -7,10 +7,12 @@ import {
 	parseMembership,
 	parseMembershipsResponse,
 	parseMeResponse,
+	parseMovements,
 	parseNotifications,
 	parsePendingInvitations,
 	parseProduct,
 	parseProducts,
+	parseRegisterMovementResponse,
 } from "./schemas";
 
 describe("parseLoginResponse", () => {
@@ -555,6 +557,112 @@ describe("parseProduct", () => {
 
 	it("rejects a product whose shape changed", () => {
 		expect(() => parseProduct({ id: "p1" })).toThrow(ApiError);
+	});
+});
+
+function movement(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "m1",
+		companyId: "c1",
+		productId: "p1",
+		type: "IN",
+		quantity: 10,
+		reason: "Compra a proveedor",
+		createdAt: "2026-10-21T12:00:00.000Z",
+		product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
+		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
+		...overrides,
+	};
+}
+
+describe("parseMovements", () => {
+	it("returns the history exactly as the API serializes it", () => {
+		const history = [movement()];
+
+		expect(parseMovements(history)).toEqual(history);
+	});
+
+	it("accepts an empty history", () => {
+		expect(parseMovements([])).toEqual([]);
+	});
+
+	it("accepts a movement whose actor could not be resolved", () => {
+		// El actor ausente nunca oculta el movimiento: es la traza del stock.
+		const parsed = parseMovements([movement({ actor: null })]);
+
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0].actor).toBeNull();
+	});
+
+	it("accepts a movement without a reason", () => {
+		const parsed = parseMovements([movement({ reason: null })]);
+
+		expect(parsed[0].reason).toBeNull();
+	});
+
+	it("keeps the direction of the movement", () => {
+		expect(parseMovements([movement({ type: "OUT" })])[0].type).toBe("OUT");
+	});
+
+	it("rejects a quantity that is not a number", () => {
+		// `quantity` es un conteo en el contrato, no el string decimal del precio.
+		expect(() => parseMovements([movement({ quantity: "10" })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a type outside IN and OUT", () => {
+		expect(() => parseMovements([movement({ type: "ENTRADA" })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a movement without its resolved product", () => {
+		const { product: _product, ...withoutProduct } = movement();
+
+		expect(() => parseMovements([withoutProduct])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects an entry whose fields are missing or mistyped", () => {
+		expect(() => parseMovements([{ id: "m1" }])).toThrow(
+			/respuesta inesperada/,
+		);
+
+		expect(() => parseMovements([movement({ createdAt: 123 })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseMovements({ movements: [] })).toThrow(ApiError);
+	});
+});
+
+describe("parseRegisterMovementResponse", () => {
+	it("returns the movement plus the stock left after it", () => {
+		const parsed = parseRegisterMovementResponse({
+			...movement(),
+			stockQuantity: 10,
+		});
+
+		expect(parsed.id).toBe("m1");
+		expect(parsed.stockQuantity).toBe(10);
+	});
+
+	it("rejects a response that does not carry the resulting stock", () => {
+		// Sin ese campo la UI no puede mostrar el stock real, así que el límite
+		// lo rechaza en vez de dejar que una vista lo invente.
+		expect(() => parseRegisterMovementResponse(movement())).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a response whose movement shape changed", () => {
+		expect(() =>
+			parseRegisterMovementResponse({ id: "m1", stockQuantity: 10 }),
+		).toThrow(ApiError);
 	});
 });
 

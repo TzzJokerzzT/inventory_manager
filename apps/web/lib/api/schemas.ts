@@ -413,6 +413,113 @@ export type MediaUploadSignature =
 	components["schemas"]["MediaUploadSignature"];
 
 /**
+ * The product a movement refers to, as the history shows it.
+ *
+ * It is a reduced copy on purpose: the movement is immutable, so the name and the
+ * SKU are the ones the product had when the stock moved, not a live join.
+ */
+export const movementProductSchema = object({
+	id: string(),
+	name: string(),
+	sku: string(),
+});
+
+/** The product of a movement, derived from the OpenAPI contract. */
+export type MovementProduct = components["schemas"]["MovementProduct"];
+
+/**
+ * The fields every movement carries, shared by the history and the creation
+ * response.
+ *
+ * `type` is a closed list — the direction lives there, never in the sign of the
+ * number — so an unknown value fails at the boundary instead of reaching the
+ * badge. `quantity` is a **number** because it is a count, unlike the product's
+ * decimal price. `reason` and `actor` are nullable: the reason is optional and a
+ * user that cannot be resolved must never hide the movement, because the
+ * movement is the audit trail of the stock (MOV-05).
+ */
+const movementFields = {
+	id: string(),
+	companyId: string(),
+	productId: string(),
+	type: picklist(["IN", "OUT"]),
+	quantity: number(),
+	reason: nullable(string()),
+	createdAt: string(),
+	product: movementProductSchema,
+	actor: nullable(userSummarySchema),
+} as const;
+
+/** One stock movement exactly as the movements endpoints serialize it. */
+export const stockMovementSchema = object(movementFields);
+
+/** One stock movement, derived from the OpenAPI contract. */
+export type StockMovement = components["schemas"]["StockMovement"];
+
+/** Shape of `GET /companies/{companyId}/movements`: newest first. */
+export const movementsResponseSchema = array(stockMovementSchema);
+
+/** `GET /companies/{companyId}/movements` response, derived from the contract. */
+export type MovementsResponse = components["schemas"]["StockMovement"][];
+
+/**
+ * Body of `POST /companies/{companyId}/movements`, derived from the contract.
+ *
+ * The direction is a field, not a sign: an exit sends `quantity` positive with
+ * `type: "OUT"`, which is exactly what the API expects.
+ */
+export type RegisterMovementRequest =
+	components["schemas"]["RegisterMovementRequest"];
+
+/**
+ * The creation response: the recorded movement plus the product's stock after
+ * it. The stock is the server's number, so the UI shows it instead of computing
+ * `previous + quantity` from a cache it cannot trust.
+ */
+export const registerMovementResponseSchema = object({
+	...movementFields,
+	stockQuantity: number(),
+});
+
+/** `POST /companies/{companyId}/movements` response, derived from the contract. */
+export type RegisterMovementResponse =
+	components["schemas"]["RegisterMovementResponse"];
+
+/**
+ * Validates the history at the boundary.
+ *
+ * Same contract as {@link parseProducts}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * movements table, and a `quantity` that is not a number never reaches the
+ * formatter.
+ */
+export function parseMovements(data: unknown): MovementsResponse {
+	const result = safeParse(movementsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates the creation response, which is a movement plus the resulting stock.
+ *
+ * The stock is what the person sees on success, so a response without it must
+ * fail here rather than in the UI.
+ */
+export function parseRegisterMovementResponse(
+	data: unknown,
+): RegisterMovementResponse {
+	const result = safeParse(registerMovementResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
  * Validates the signature before a byte is uploaded.
  *
  * A signature with a changed shape would otherwise produce a request the

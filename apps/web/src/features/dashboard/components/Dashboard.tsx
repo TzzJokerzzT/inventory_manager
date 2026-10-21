@@ -70,49 +70,60 @@ export function Dashboard() {
 			initial={{ opacity: 0, y: 20 }}
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.5 }}
-			className="flex flex-col gap-6"
+			className="flex min-w-0 flex-col gap-4 sm:gap-6"
 		>
 			<ViewHeader
 				title="Dashboard"
 				subTitle={`Empresa activa: ${company?.name ?? "Sin empresa"}`}
 			/>
 
-			{hasReadError ? (
-				<Alert
-					variant="danger"
-					title="No pudimos cargar las métricas del dashboard"
-				>
-					{readError instanceof ApiError
-						? readError.message
-						: LOAD_ERROR_FALLBACK}
-				</Alert>
-			) : null}
+			<section
+				aria-label="Stock"
+				className="grid grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,2fr)] xl:items-start"
+			>
+				{hasReadError ? (
+					<Alert
+						variant="danger"
+						title="No pudimos cargar las métricas del dashboard"
+					>
+						{readError instanceof ApiError
+							? readError.message
+							: LOAD_ERROR_FALLBACK}
+					</Alert>
+				) : null}
 
-			<KPIs metrics={metrics} isLoading={isLoading} />
+				<SectionTitle ariaLabel="KPIs" title="KPIs">
+					<div className="border border-border bg-surface p-4 rounded-xl sm:p-6 lg:p-8">
+						<KPIs metrics={metrics} isLoading={isLoading} />
 
-			<StockAlerts metrics={metrics} />
-
-			<SectionTitle ariaLabel="Stock crítico" title="Stock">
-				<DataTable
-					columns={stockColumns}
-					rows={metrics?.criticalProducts ?? []}
-					getRowKey={(row) => row.id}
-					emptyMessage={emptyMessage}
-				/>
-			</SectionTitle>
-
-			<SectionTitle ariaLabel="Gráficos" title="Gráficos">
-				<p className="text-sm text-text-secondary">
-					Estos gráficos son datos reales de la empresa activa.
-				</p>
-				<div className="grid gap-6 xl:grid-cols-2">
-					<StockStatusChart companyId={companyId} />
-					<InventoryValueChart companyId={companyId} />
-					<div className="min-w-0 xl:col-span-2">
-						<MovementTrendChart companyId={companyId} />
+						<StockAlerts metrics={metrics} />
 					</div>
-				</div>
-			</SectionTitle>
+				</SectionTitle>
+
+				<SectionTitle ariaLabel="Stock crítico" title="Stock">
+					<DataTable
+						columns={stockColumns}
+						rows={metrics?.criticalProducts ?? []}
+						getRowKey={(row) => row.id}
+						emptyMessage={emptyMessage}
+					/>
+				</SectionTitle>
+
+				<SectionTitle ariaLabel="Gráficos" title="Gráficos">
+					<div className="grid gap-6 xl:grid-cols-2">
+						<div className="border border-border bg-surface p-4 rounded-xl sm:p-6 lg:p-8">
+							<StockStatusChart companyId={companyId} />
+						</div>
+
+						<div className="border border-border bg-surface p-4 rounded-xl sm:p-6 lg:p-8">
+							<InventoryValueChart companyId={companyId} />
+						</div>
+						<div className="min-w-0 xl:col-span-2 border border-border bg-surface p-4 rounded-xl sm:p-6 lg:p-8">
+							<MovementTrendChart companyId={companyId} />
+						</div>
+					</div>
+				</SectionTitle>
+			</section>
 		</LazyMotionTag>
 	);
 }

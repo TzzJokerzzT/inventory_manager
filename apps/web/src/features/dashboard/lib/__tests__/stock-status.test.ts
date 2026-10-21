@@ -1,5 +1,5 @@
 import type { Product } from "@/lib/api/schemas";
-import { stockStatusCounts } from "../stock-status";
+import { stockStatusCounts, stockStatusFor } from "../stock-status";
 
 function product(overrides: Partial<Product> = {}): Product {
 	return {
@@ -46,5 +46,32 @@ describe("stockStatusCounts", () => {
 
 	it("returns zeros for a company with no products", () => {
 		expect(stockStatusCounts([])).toEqual({ outOfStock: 0, inStock: 0 });
+	});
+});
+
+describe("stockStatusFor", () => {
+	it("marks a product without units as out of stock", () => {
+		// S3: agotado gana sobre stock bajo, aunque el umbral sea 0.
+		expect(
+			stockStatusFor(product({ stockQuantity: 0, lowStockThreshold: 0 })),
+		).toBe("out_of_stock");
+	});
+
+	it("marks a product with units up to its threshold as low stock", () => {
+		expect(
+			stockStatusFor(product({ stockQuantity: 2, lowStockThreshold: 3 })),
+		).toBe("low_stock");
+		expect(
+			stockStatusFor(product({ stockQuantity: 3, lowStockThreshold: 3 })),
+		).toBe("low_stock");
+	});
+
+	it("marks a product above its threshold as in stock", () => {
+		expect(
+			stockStatusFor(product({ stockQuantity: 4, lowStockThreshold: 3 })),
+		).toBe("in_stock");
+		expect(
+			stockStatusFor(product({ stockQuantity: 5, lowStockThreshold: 0 })),
+		).toBe("in_stock");
 	});
 });

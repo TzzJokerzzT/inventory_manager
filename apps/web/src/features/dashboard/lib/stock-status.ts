@@ -29,3 +29,24 @@ export function stockStatusCounts(products: Product[]): StockStatusCounts {
 
 	return { outOfStock, inStock };
 }
+
+/**
+ * The badge a single product earns: sold out, low stock or healthy.
+ *
+ * Sold out wins over low stock even when the threshold is 0, so a product with no
+ * units is never labelled with the softer warning. The critical predicate is the
+ * dashboard's (`stockQuantity <= lowStockThreshold`), so the table's Estado and
+ * the critical-stock KPI always agree.
+ */
+export function stockStatusFor(
+	product: Product,
+): "out_of_stock" | "low_stock" | "in_stock" {
+	if (product.stockQuantity === 0) {
+		return "out_of_stock";
+	}
+	if (product.stockQuantity <= product.lowStockThreshold) {
+		return "low_stock";
+	}
+
+	return "in_stock";
+}

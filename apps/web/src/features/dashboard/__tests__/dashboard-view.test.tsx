@@ -2,7 +2,6 @@ import { render, screen, within } from "@testing-library/react";
 import { useCompanies } from "@/src/features/company/api/use-companies";
 import { useCompanyStore } from "@/src/features/company/store/company-store";
 import { useProducts } from "@/src/features/product/api/use-products";
-import { dashboardKpis, stockTableRows } from "@/src/utils/mockData";
 import { useMovementTrend } from "../api/use-movement-trend";
 import { Dashboard } from "../components/Dashboard";
 
@@ -62,22 +61,69 @@ function product(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function mockCharts() {
+/**
+ * Catalogue of the active company: one out-of-stock product, one below a
+ * positive threshold and one healthy, so the derived metrics cover the three
+ * states.
+ */
+function catalogue() {
+	return [
+		product({
+			id: "p1",
+			name: "Café molido 500g",
+			sku: "CAF-500",
+			stockQuantity: 0,
+		}),
+		product({
+			id: "p2",
+			name: "Yerba mate 1kg",
+			sku: "YER-1000",
+			price: "2000.00",
+			stockQuantity: 3,
+			lowStockThreshold: 5,
+		}),
+		product({
+			id: "p3",
+			name: "Azúcar 1kg",
+			sku: "AZU-1000",
+			price: "1000.00",
+			stockQuantity: 4,
+			lowStockThreshold: 0,
+		}),
+	];
+}
+
+function mockProducts(state: Partial<ReturnType<typeof useProducts>> = {}) {
 	useProductsMock.mockReturnValue({
-		data: [product()],
+		data: catalogue(),
 		isPending: false,
 		isError: false,
 		error: undefined,
+		...state,
 	} as unknown as ReturnType<typeof useProducts>);
+}
+
+function mockTrend(state: Partial<ReturnType<typeof useMovementTrend>> = {}) {
 	useMovementTrendMock.mockReturnValue({
 		data: {
 			days: 30,
-			series: [{ date: "2026-10-20", entries: 3, exits: 1 }],
+			series: [
+				{ date: "2026-10-19", entries: 9, exits: 0 },
+				{ date: "2026-10-20", entries: 3, exits: 1 },
+			],
 		},
 		isPending: false,
 		isError: false,
 		error: undefined,
+		...state,
 	} as unknown as ReturnType<typeof useMovementTrend>);
+}
+
+/** The value a KPI card renders under its label, as the person sees it. */
+function cardValue(label: string): string {
+	const card = screen.getByText(label).closest('[data-slot="kpi-card"]');
+	const values = card?.querySelectorAll("p") ?? [];
+	return values[1]?.textContent ?? "";
 }
 
 describe("DashboardView", () => {
@@ -85,64 +131,123 @@ describe("DashboardView", () => {
 		jest.clearAllMocks();
 		useCompanyStore.setState({ activeCompanyId: undefined });
 		mockCompanies({ data: [company("c1", "Primera")] });
-		mockCharts();
+		mockProducts();
+		mockTrend();
 	});
 
-	it("renders the KPI cards from the mock module", () => {
+	it("reaches the KPI cards with the metrics of the active company", () => {
+		// S2: los cuatro KPIs salen del catálogo y del reporte de evolución.
 		render(<Dashboard />);
 
-		for (const kpi of dashboardKpis) {
-			expect(screen.getByText(kpi.label)).toBeTruthy();
-		}
-		expect(screen.getByText("1.248")).toBeTruthy();
-		expect(screen.getByText("$ 84.320")).toBeTruthy();
+		expect(cardValue("Total de productos")).toBe("3");
+		// 2000,00 × 3 + 1000,00 × 4, en centavos enteros.
+		expect(cardValue("Valor del inventario")).toBe("$ 10.000,00");
+		expect(cardValue("Productos con stock crítico")).toBe("2");
+		// entries + exits del último punto de la serie (hoy, UTC).
+		expect(cardValue("Unidades movidas hoy (UTC)")).toBe("4");
 	});
 
-	it("shows a visible sample-data notice that cannot be mistaken for real data", () => {
+	it("no longer shows a sample-data notice nor sample numbers", () => {
+		// S5: el dashboard ya no mezcla datos de muestra con los reales.
 		render(<Dashboard />);
 
-		const notice = screen.getByRole("status");
-		expect(notice).toBeTruthy();
-		expect(notice.textContent).toContain("Datos de muestra");
-		expect(notice.textContent).toContain("números de ejemplo");
+		expect(screen.queryByText(/datos de muestra/i)).toBeNull();
+		expect(screen.queryByText(/números de ejemplo/i)).toBeNull();
+		expect(screen.queryByText("1.248")).toBeNull();
+		expect(screen.queryByText("$ 84.320")).toBeNull();
 	});
 
-	it("renders the stock table rows through DataTable", () => {
-		const { container } = render(<Dashboard />);
-
-		expect(container.querySelector('[data-slot="data-table"]')).toBeTruthy();
-		for (const row of stockTableRows) {
-			expect(screen.getByText(row.name)).toBeTruthy();
-			expect(screen.getByText(row.sku)).toBeTruthy();
-		}
-	});
-
-	it("maps each stock badge status to its visible label", () => {
+	it("renders the critical products in the stock table, ordered by units", () => {
+		// S3: la tabla es la misma regla que el KPI, no una lista aparte.
 		render(<Dashboard />);
 
-		expect(screen.getByText("Agotado")).toBeTruthy();
-		expect(screen.getByText("Stock bajo")).toBeTruthy();
-		expect(screen.getByText("En stock")).toBeTruthy();
+		const table = screen.getByRole("region", { name: "Stock crítico" });
+		const rows = within(table).getAllByRole("row");
+
+		expect(rows).toHaveLength(3);
+		expect(within(rows[1]).getByText("Café molido 500g")).toBeTruthy();
+		expect(within(rows[1]).getByText("Agotado")).toBeTruthy();
+		expect(within(rows[2]).getByText("Yerba mate 1kg")).toBeTruthy();
+		expect(within(rows[2]).getByText("Stock bajo")).toBeTruthy();
+		expect(within(table).queryByText("Azúcar 1kg")).toBeNull();
+	});
+
+	it("shows the empty state of the critical table when nothing is critical", () => {
+		mockProducts({
+			data: [product({ stockQuantity: 9, lowStockThreshold: 0 })],
+		});
+
+		render(<Dashboard />);
+
+		const table = screen.getByRole("region", { name: "Stock crítico" });
+		expect(
+			within(table).getByText("No hay productos con stock crítico."),
+		).toBeTruthy();
+	});
+
+	it("derives the alerts from the same catalogue", () => {
+		// S4: peligro por los agotados, advertencia por los que están bajo umbral.
+		render(<Dashboard />);
+
+		const alerts = screen.getAllByRole("alert");
+		const titles = alerts.map((alert) => alert.textContent ?? "");
+
+		expect(titles.some((text) => text.includes("1 producto agotado"))).toBe(
+			true,
+		);
+		expect(
+			titles.some((text) => text.includes("1 producto con stock bajo")),
+		).toBe(true);
+	});
+
+	it("shows an informative message instead of invented alerts", () => {
+		mockProducts({
+			data: [product({ stockQuantity: 9, lowStockThreshold: 0 })],
+		});
+
+		render(<Dashboard />);
+
+		const status = screen.getAllByRole("status");
+		expect(
+			status.some((node) => node.textContent?.includes("Sin alertas de stock")),
+		).toBe(true);
+		expect(screen.queryAllByRole("alert")).toHaveLength(0);
+	});
+
+	it("keeps the loading state while the queries are pending", () => {
+		mockProducts({ data: undefined, isPending: true });
+		mockTrend({ data: undefined, isPending: true });
+
+		render(<Dashboard />);
+
+		const section = screen.getByRole("region", { name: "Indicadores" });
+		expect(section.getAttribute("aria-busy")).toBe("true");
+		expect(within(section).getAllByText("—")).toHaveLength(4);
+		expect(
+			screen.getByText("Cargando los datos de la empresa activa…"),
+		).toBeTruthy();
+	});
+
+	it("reports a failed read once, without duplicating it per section", () => {
+		mockProducts({
+			data: undefined,
+			isError: true,
+			error: new Error("boom"),
+		});
+
+		render(<Dashboard />);
+
+		const dashboards = screen.getAllByText(
+			"No pudimos cargar las métricas del dashboard",
+		);
+		expect(dashboards).toHaveLength(1);
+		expect(screen.queryByText("Datos de muestra")).toBeNull();
 	});
 
 	it("shows the real active company from the mocked query", () => {
 		render(<Dashboard />);
 
-		// La empresa activa es el dato real del encabezado; el mock solo cubre
-		// KPIs, alertas y tabla, así que el nombre viene de la query mockeada.
 		expect(screen.getByText("Empresa activa: Primera")).toBeTruthy();
-	});
-
-	it("scopes the sample-data notice to the KPIs, alerts and table", () => {
-		render(<Dashboard />);
-
-		// S5: el aviso cubre solo lo que sigue mockeado (MI-6/MI-9); no puede
-		// hablar de los gráficos, que son datos reales.
-		const notice = screen.getByRole("status");
-		expect(notice.textContent).toContain(
-			"Los indicadores, las alertas y la tabla",
-		);
-		expect(notice.textContent).not.toMatch(/gr[aá]ficos/i);
 	});
 
 	it("renders the three real-data charts in a Gráficos section", () => {
@@ -163,47 +268,68 @@ describe("DashboardView", () => {
 		).toHaveLength(4);
 	});
 
-	it("feeds the charts with the real data of the active company", () => {
+	it("keeps feeding the charts with the catalogue and the series", () => {
 		render(<Dashboard />);
 
 		const charts = screen.getByRole("region", { name: "Gráficos" });
 
-		// Distribución: un producto con stock, ninguno agotado.
+		// Distribución: dos productos con stock y uno agotado.
 		const statusChart = within(charts).getByRole("region", {
 			name: "Distribución del stock",
 		});
 		expect(within(statusChart).getByText("Con stock")).toBeTruthy();
-		expect(within(statusChart).getByText("Agotados")).toBeTruthy();
+		const statusRows = within(
+			within(statusChart).getByRole("table"),
+		).getAllByRole("row");
+		expect(within(statusRows[1]).getByText("2")).toBeTruthy();
+		expect(within(statusRows[2]).getByText("1")).toBeTruthy();
 
-		// Valor: 2 × 1500,00 en centavos enteros.
+		// Valor: el ranking de productos con stock, en centavos enteros.
 		const valueChart = within(charts).getByRole("region", {
 			name: "Valor del inventario",
 		});
-		// El total aparece en la tarjeta y en la fila del producto: las dos son
-		// el mismo número, así que se verifica la fila de la tabla.
 		const valueRows = within(
 			within(valueChart).getByRole("table"),
 		).getAllByRole("row");
-		expect(within(valueRows[1]).getByText("Café molido 500g")).toBeTruthy();
-		expect(within(valueRows[1]).getByText("$ 3.000,00")).toBeTruthy();
+		expect(within(valueRows[1]).getByText("Yerba mate 1kg")).toBeTruthy();
+		expect(within(valueRows[1]).getByText("$ 6.000,00")).toBeTruthy();
+		expect(within(valueRows[2]).getByText("$ 4.000,00")).toBeTruthy();
 
-		// Evolución: la serie que devolvió el reporte.
+		// Evolución: la serie que devolvió el reporte de 30 días.
 		const trendChart = within(charts).getByRole("region", {
 			name: "Evolución de entradas y salidas",
 		});
 		expect(
 			within(trendChart).getByText(
-				"En los últimos 30 días entraron 3 unidades y salieron 1.",
+				"En los últimos 30 días entraron 12 unidades y salieron 1.",
 			),
 		).toBeTruthy();
 	});
 
-	it("keeps the mocked KPIs, alerts and table next to the real charts", () => {
-		render(<Dashboard />);
+	it("updates the cards, the alerts and the table when the data changes", () => {
+		const view = render(<Dashboard />);
 
-		// Los gráficos no reemplazan lo que sigue mockeado (MI-6/MI-9).
-		expect(screen.getByText(dashboardKpis[0].label)).toBeTruthy();
-		expect(screen.getByText("Alertas de Stock")).toBeTruthy();
-		expect(screen.getByText(stockTableRows[0].name)).toBeTruthy();
+		expect(cardValue("Total de productos")).toBe("3");
+
+		mockProducts({
+			data: [
+				product({
+					id: "p9",
+					name: "Fideos 500g",
+					sku: "FID-500",
+					stockQuantity: 0,
+					lowStockThreshold: 0,
+				}),
+			],
+		});
+		mockTrend({ data: { days: 30, series: [] } });
+		view.rerender(<Dashboard />);
+
+		expect(cardValue("Total de productos")).toBe("1");
+		expect(cardValue("Productos con stock crítico")).toBe("1");
+		expect(cardValue("Unidades movidas hoy (UTC)")).toBe("0");
+		const table = screen.getByRole("region", { name: "Stock crítico" });
+		expect(within(table).getByText("Fideos 500g")).toBeTruthy();
+		expect(within(table).queryByText("Yerba mate 1kg")).toBeNull();
 	});
 });

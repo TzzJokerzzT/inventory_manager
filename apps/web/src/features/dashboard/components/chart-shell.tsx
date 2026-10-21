@@ -10,9 +10,9 @@ const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
  * The frame every dashboard chart shares: an accessible section, a caption that
  * says where the numbers come from, and the chart itself.
  *
- * The caption is not decoration: the dashboard mixes real charts with mock KPIs,
- * alerts and table, so each chart states that **it** is real data of the active
- * company (S5) instead of relying on a single notice at the top.
+ * The caption is not decoration: each chart states that **it** reads the active
+ * company, so a chart never depends on a notice somewhere else in the page to
+ * explain its numbers (MI-14 S5).
  */
 export function ChartShell({
 	ariaLabel,

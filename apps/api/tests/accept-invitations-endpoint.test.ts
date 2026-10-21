@@ -110,6 +110,7 @@ describe("POST /me/invitations/accept", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			// The acceptance slice never reaches these; the explicit `{} as never`
 			// records that the wiring is intentionally inert rather than forgotten.

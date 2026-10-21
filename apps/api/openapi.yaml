@@ -274,8 +274,12 @@ paths:
       summary: Sign upload parameters for a direct-to-storage upload
       description: |
         The request body is ignored: every upload parameter is decided by the
-        server from the company id, so the signed contract is always the
-        server's, never the caller's.
+        server, so the signed contract is always the server's, never the
+        caller's. Uploads land in one folder per company inside the project's
+        workspace folder: `inventory-manager/products/{companyId}-{company
+        name}`, with the name lowercased and reduced to safe path characters.
+        The company id in the URL proves the caller may ask for a signature and
+        is also what names the folder.
       security:
         - bearerAuth: []
       parameters:

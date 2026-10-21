@@ -102,6 +102,7 @@ describe("POST /companies/:companyId/members", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			// The invite slice never reaches these; the explicit `{} as never`
 			// records that the wiring is intentionally inert rather than forgotten.

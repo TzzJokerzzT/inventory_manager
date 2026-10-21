@@ -165,12 +165,14 @@ export function createCompanyController(
 			try {
 				const context = resolvedCompanyContext(request);
 
-				// The upload parameters are decided by the signer from the company
-				// id alone: whatever folder/formats/timestamp the client sends in
-				// the body is ignored, so the signed contract is always the
-				// server's, never the caller's.
+				// The upload parameters are decided by the signer: whatever
+				// folder/formats/timestamp the client sends in the body is ignored,
+				// so the signed contract is always the server's, never the
+				// caller's. The company context supplies the id and the name the
+				// folder is built from; it already proved who may ask.
 				const signature = dependencies.mediaUploadSigner.createUploadSignature({
 					companyId: context.companyId,
+					companyName: context.companyName,
 				});
 
 				// Never the api secret: the response is exactly the parameters the

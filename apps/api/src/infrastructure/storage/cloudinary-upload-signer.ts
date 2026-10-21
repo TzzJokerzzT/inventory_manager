@@ -19,8 +19,39 @@ const ALLOWED_FORMATS = Object.freeze(["jpg", "png", "webp"] as const);
  */
 const MAX_FILE_SIZE_BYTES = 5_242_880;
 
-/** Root folder every company's uploads are nested under. */
-const FOLDER_ROOT = "companies";
+/**
+ * The folder every upload of this project lands in. The account already has it
+ * provisioned, so it is a constant and never a caller input.
+ */
+const UPLOAD_ROOT = "inventory-manager/products";
+
+/** Longest company-name slug, so a pathological name cannot bloat the path. */
+const COMPANY_SLUG_MAX_LENGTH = 60;
+
+/** Label used when a company name has no usable characters at all. */
+const FALLBACK_COMPANY_SLUG = "company";
+
+/**
+ * Turns a company name into one safe path segment: lowercased, accents
+ * stripped, every run of non-alphanumerics collapsed to a dash.
+ *
+ * Cloudinary reads `/` as a folder separator, so sanitizing is not cosmetic:
+ * without it a company named `A/B` would create a nested folder, and `..` could
+ * climb out of the company's folder. The output is always `[a-z0-9-]`, so the
+ * folder layout is exactly `<root>/<companyId>-<slug>`.
+ */
+function companySlug(name: string): string {
+	const slug = name
+		.normalize("NFKD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, COMPANY_SLUG_MAX_LENGTH)
+		.replace(/-+$/g, "");
+
+	return slug.length > 0 ? slug : FALLBACK_COMPANY_SLUG;
+}
 
 /**
  * Signs the server-decided upload parameters. Injected so the adapter stays
@@ -67,11 +98,15 @@ export class CloudinaryUploadSigner implements MediaUploadSigner {
 
 	createUploadSignature({
 		companyId,
+		companyName,
 	}: {
 		companyId: string;
+		companyName: string;
 	}): MediaUploadSignature {
 		const timestamp = Math.floor(this.now() / 1000);
-		const folder = `${FOLDER_ROOT}/${companyId}`;
+		// One folder per company, named after its id and its name, nested inside
+		// the workspace folder the Cloudinary account already has.
+		const folder = `${UPLOAD_ROOT}/${companyId}-${companySlug(companyName)}`;
 
 		// The exact parameters Cloudinary signs: the client has to send these
 		// back untouched, and any tampering breaks the signature. `folder` ties

@@ -4,11 +4,13 @@ import { DeleteProductUseCase } from "../src/application/use-cases/delete-produc
 import { GetProductUseCase } from "../src/application/use-cases/get-product.js";
 import { ListProductsUseCase } from "../src/application/use-cases/list-products.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
+import { Company } from "../src/domain/entities/company.js";
 import {
 	Membership,
 	type MembershipRole,
 } from "../src/domain/entities/membership.js";
 import { User } from "../src/domain/entities/user.js";
+import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
@@ -80,6 +82,14 @@ describe("product endpoints", () => {
 			);
 		}
 
+		// The context now carries the company name, so every company a scoped
+		// request names has to exist in the store.
+		const companyRepository = new InMemoryCompanyRepository();
+		companyRepository.save(Company.create({ id: COMPANY, name: "Acme" }));
+		companyRepository.save(
+			Company.create({ id: OTHER_COMPANY, name: "Globex" }),
+		);
+
 		const app = buildApp({
 			acceptInvitations: {} as never,
 			changeMemberRole: {} as never,
@@ -111,6 +121,7 @@ describe("product endpoints", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			mediaUploadSigner: {} as never,
 			authCookieOptions: {

@@ -143,7 +143,10 @@ const app = buildApp({
 		audience,
 	}),
 	requireUser: createRequireUser({ userRepository }),
-	requireCompanyContext: createRequireCompanyContext({ membershipRepository }),
+	requireCompanyContext: createRequireCompanyContext({
+		membershipRepository,
+		companyRepository,
+	}),
 	products: {
 		list: new ListProductsUseCase({ productRepository }),
 		create: new CreateProductUseCase({ productRepository }),

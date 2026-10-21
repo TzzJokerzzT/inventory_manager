@@ -128,6 +128,45 @@ describe("PrismaCustomerRepository.findActiveById", () => {
 	});
 });
 
+describe("PrismaCustomerRepository.findByIds", () => {
+	it("reads the ids of the company without the deletedAt filter and maps every row", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([
+			row(),
+			row({ id: "customer-2", name: "Maria G.", deletedAt: DELETED_AT }),
+		]);
+
+		const repository = new PrismaCustomerRepository({ prisma: delegate });
+		const found = await repository.findByIds("company-1", [
+			"customer-1",
+			"customer-2",
+		]);
+
+		// No `deletedAt` predicate: the movement history must keep resolving a
+		// customer that was deleted after the sale.
+		expect(findMany).toHaveBeenCalledWith({
+			where: {
+				companyId: "company-1",
+				id: { in: ["customer-1", "customer-2"] },
+			},
+		});
+		expect(found).toHaveLength(2);
+		expect(found[1].deletedAt).toBe(DELETED_AT);
+	});
+
+	it("returns an empty list when asked for no ids", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([]);
+
+		const repository = new PrismaCustomerRepository({ prisma: delegate });
+
+		await expect(repository.findByIds("company-1", [])).resolves.toEqual([]);
+		expect(findMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", id: { in: [] } },
+		});
+	});
+});
+
 describe("PrismaCustomerRepository.list", () => {
 	it("lists the company's active customers ordered by name and then id", async () => {
 		const { delegate, findMany } = buildFakeDelegate();

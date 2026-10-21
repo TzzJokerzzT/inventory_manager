@@ -3,6 +3,7 @@ import { ListProductsUseCase } from "../src/application/use-cases/list-products.
 import { ListStockMovementsUseCase } from "../src/application/use-cases/list-stock-movements.js";
 import { RegisterStockMovementUseCase } from "../src/application/use-cases/register-stock-movement.js";
 import { Company } from "../src/domain/entities/company.js";
+import { Customer } from "../src/domain/entities/customer.js";
 import {
 	Membership,
 	type MembershipRole,
@@ -10,6 +11,7 @@ import {
 import { Product } from "../src/domain/entities/product.js";
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
+import { InMemoryCustomerRepository } from "../src/infrastructure/database/in-memory-customer-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
@@ -28,6 +30,9 @@ const TEST_WEB_ORIGIN = "http://localhost:3000";
 const COMPANY = "11111111-2222-4333-8444-555555555555";
 const OTHER_COMPANY = "99999999-8888-4777-8666-555555555555";
 const MISSING_PRODUCT_ID = "12345678-1234-4123-8123-123456789012";
+const CUSTOMER_ID = "cccccccc-3333-4333-8333-333333333333";
+const OTHER_CUSTOMER_ID = "dddddddd-4444-4444-8444-444444444444";
+const MISSING_CUSTOMER_ID = "eeeeeeee-5555-4555-8555-555555555555";
 
 const OWNER_SUB = "auth0|owner";
 const ADMIN_SUB = "auth0|admin";
@@ -53,6 +58,7 @@ describe("stock movement endpoints", () => {
 		const store = new Map<string, Product>();
 		const productRepository = new InMemoryProductRepository([], store);
 		const stockMovementRepository = new InMemoryStockMovementRepository(store);
+		const customerRepository = new InMemoryCustomerRepository();
 
 		const owner = User.create({
 			auth0Sub: OWNER_SUB,
@@ -128,11 +134,13 @@ describe("stock movement endpoints", () => {
 				register: new RegisterStockMovementUseCase({
 					productRepository,
 					stockMovementRepository,
+					customerRepository,
 				}),
 				list: new ListStockMovementsUseCase({
 					stockMovementRepository,
 					productRepository,
 					userRepository,
+					customerRepository,
 				}),
 			},
 			requireAuth: createRequireAuth({
@@ -162,6 +170,7 @@ describe("stock movement endpoints", () => {
 			member,
 			outsider,
 			productRepository,
+			customerRepository,
 			seedMembership,
 			seedRoster: () => {
 				seedMembership({ userId: owner.id, role: "OWNER" });
@@ -208,6 +217,34 @@ describe("stock movement endpoints", () => {
 		return product;
 	}
 
+	/**
+	 * Seeds a customer directly through the customer repository: the movements
+	 * slice must not depend on the customers endpoints, and the roster of the
+	 * fixture has to start from a known state.
+	 */
+	async function seedCustomer(
+		app_customers: InMemoryCustomerRepository,
+		overrides: {
+			id?: string;
+			companyId?: string;
+			name?: string;
+			deleted?: boolean;
+		} = {},
+	) {
+		const customer = Customer.create({
+			id: overrides.id ?? CUSTOMER_ID,
+			companyId: overrides.companyId ?? COMPANY,
+			name: overrides.name ?? "Maria Gonzalez",
+			deletedAt: overrides.deleted
+				? new Date("2026-10-22T12:00:00.000Z")
+				: null,
+		});
+
+		await app_customers.create(customer);
+
+		return customer;
+	}
+
 	describe("POST /companies/:companyId/movements", () => {
 		it("registers an IN and answers 201 with the movement and the resulting stock", async () => {
 			const { app, seedRoster, productRepository, owner } = createTestApp();
@@ -233,6 +270,8 @@ describe("stock movement endpoints", () => {
 				quantity: 10,
 				reason: "Compra a proveedor",
 				createdAt: expect.any(String),
+				customerId: null,
+				customer: null,
 				product: { id: product.id, name: "Cafe molido 500g", sku: "CAF-500" },
 				actor: { id: owner.id, fullName: "Olivia Owner", email: "owner@x.com" },
 				stockQuantity: 10,
@@ -257,6 +296,9 @@ describe("stock movement endpoints", () => {
 			expect(response.status).toBe(201);
 			expect(response.body.stockQuantity).toBe(6);
 			expect(response.body.reason).toBeNull();
+			// An exit without a customer is a valid anonymous sale.
+			expect(response.body.customerId).toBeNull();
+			expect(response.body.customer).toBeNull();
 			// The product read shows the stock the movement produced, without a
 			// second write to the product.
 			expect(catalogue.status).toBe(200);
@@ -279,6 +321,115 @@ describe("stock movement endpoints", () => {
 
 			expect(response.status).toBe(201);
 		});
+
+		it("associates a customer with an OUT and answers 201 with it resolved", async () => {
+			const { app, seedRoster, productRepository, customerRepository } =
+				createTestApp();
+			seedRoster();
+			const product = await seedProduct(productRepository, {
+				stockQuantity: 10,
+			});
+			const customer = await seedCustomer(customerRepository);
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({
+					productId: product.id,
+					type: "OUT",
+					quantity: 3,
+					customerId: customer.id,
+				});
+
+			expect(response.status).toBe(201);
+			expect(response.body.customerId).toBe(customer.id);
+			expect(response.body.customer).toEqual({
+				id: customer.id,
+				name: "Maria Gonzalez",
+			});
+			expect(response.body.stockQuantity).toBe(7);
+		});
+
+		it("answers 400 customer_requires_exit for an IN with a customer and records nothing", async () => {
+			const { app, seedRoster, productRepository, customerRepository } =
+				createTestApp();
+			seedRoster();
+			const product = await seedProduct(productRepository, {
+				stockQuantity: 10,
+			});
+			const customer = await seedCustomer(customerRepository);
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({
+					productId: product.id,
+					type: "IN",
+					quantity: 1,
+					customerId: customer.id,
+				});
+			const history = await request(app)
+				.get(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.code).toBe("customer_requires_exit");
+			expect(history.body).toEqual([]);
+			await expect(
+				productRepository.findActiveById(COMPANY, product.id),
+			).resolves.toMatchObject({ stockQuantity: 10 });
+		});
+
+		const customerCases: Array<
+			[
+				string,
+				{ id?: string; companyId?: string; deleted?: boolean } | null,
+				string,
+			]
+		> = [
+			["an absent customer", null, MISSING_CUSTOMER_ID],
+			[
+				"another company's customer",
+				{ id: OTHER_CUSTOMER_ID, companyId: OTHER_COMPANY },
+				OTHER_CUSTOMER_ID,
+			],
+			["a soft-deleted customer", { deleted: true }, CUSTOMER_ID],
+		];
+
+		it.each(customerCases)(
+			"answers 404 customer_not_found for %s and leaves the stock and the history untouched",
+			async (_label, seed, customerId) => {
+				const { app, seedRoster, productRepository, customerRepository } =
+					createTestApp();
+				seedRoster();
+				if (seed !== null) {
+					await seedCustomer(customerRepository, seed);
+				}
+				const product = await seedProduct(productRepository, {
+					stockQuantity: 10,
+				});
+
+				const response = await request(app)
+					.post(`/companies/${COMPANY}/movements`)
+					.set("authorization", authorization(OWNER_SUB))
+					.send({
+						productId: product.id,
+						type: "OUT",
+						quantity: 2,
+						customerId,
+					});
+				const history = await request(app)
+					.get(`/companies/${COMPANY}/movements`)
+					.set("authorization", authorization(OWNER_SUB));
+
+				expect(response.status).toBe(404);
+				expect(response.body.error.code).toBe("customer_not_found");
+				expect(history.body).toEqual([]);
+				await expect(
+					productRepository.findActiveById(COMPANY, product.id),
+				).resolves.toMatchObject({ stockQuantity: 10 });
+			},
+		);
 
 		it("answers 409 insufficient_stock and leaves the stock and the history untouched", async () => {
 			const { app, seedRoster, productRepository } = createTestApp();
@@ -389,6 +540,27 @@ describe("stock movement endpoints", () => {
 			expect(response.body.error.issues.length).toBeGreaterThan(0);
 		});
 
+		it("answers 400 for a malformed customerId on an exit", async () => {
+			const { app, seedRoster, productRepository } = createTestApp();
+			seedRoster();
+			const product = await seedProduct(productRepository, {
+				stockQuantity: 10,
+			});
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({
+					productId: product.id,
+					type: "OUT",
+					quantity: 1,
+					customerId: "not-a-uuid",
+				});
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.issues.length).toBeGreaterThan(0);
+		});
+
 		it("answers 401 without a token and 403 for a non-member", async () => {
 			const { app, seedRoster, productRepository } = createTestApp();
 			seedRoster();
@@ -472,10 +644,53 @@ describe("stock movement endpoints", () => {
 				quantity: 7,
 				reason: null,
 				createdAt: expect.any(String),
+				customerId: null,
+				customer: null,
 				product: { id: PRODUCT_B, name: "Azucar", sku: "SUGAR-1" },
 				actor: { id: expect.any(String), fullName: null, email: "admin@x.com" },
 			});
 			expect(response.body[1].actor.id).toBe(member.id);
+		});
+
+		it("returns the customer of a sale and keeps it readable after the soft delete", async () => {
+			const testApp = createTestApp();
+			testApp.seedRoster();
+			await seedProduct(testApp.productRepository, {
+				id: PRODUCT_A,
+				sku: "CAF-500",
+				stockQuantity: 10,
+			});
+			const customer = await seedCustomer(testApp.customerRepository);
+
+			const created = await request(testApp.app)
+				.post(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({
+					productId: PRODUCT_A,
+					type: "OUT",
+					quantity: 2,
+					customerId: customer.id,
+				});
+			await testApp.customerRepository.softDelete(
+				COMPANY,
+				customer.id,
+				new Date("2026-10-22T12:00:00.000Z"),
+			);
+
+			const history = await request(testApp.app)
+				.get(`/companies/${COMPANY}/movements`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(created.status).toBe(201);
+			expect(history.status).toBe(200);
+			expect(history.body).toHaveLength(1);
+			expect(history.body[0].customerId).toBe(customer.id);
+			// The ledger is the audit trail: deleting the customer never hides
+			// the sale.
+			expect(history.body[0].customer).toEqual({
+				id: customer.id,
+				name: "Maria Gonzalez",
+			});
 		});
 
 		it("filters by productId and by type", async () => {

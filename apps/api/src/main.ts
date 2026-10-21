@@ -176,11 +176,13 @@ const app = buildApp({
 		register: new RegisterStockMovementUseCase({
 			productRepository,
 			stockMovementRepository,
+			customerRepository,
 		}),
 		list: new ListStockMovementsUseCase({
 			stockMovementRepository,
 			productRepository,
 			userRepository,
+			customerRepository,
 		}),
 	},
 	mediaUploadSigner,

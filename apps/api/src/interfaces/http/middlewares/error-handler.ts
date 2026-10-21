@@ -5,6 +5,10 @@ import {
 	CUSTOMER_NOT_FOUND_CODE,
 	CustomerNotFoundError,
 } from "../../../domain/errors/customer-not-found-error.js";
+import {
+	CUSTOMER_REQUIRES_EXIT_CODE,
+	CustomerRequiresExitError,
+} from "../../../domain/errors/customer-requires-exit-error.js";
 import { DomainError } from "../../../domain/errors/domain-error.js";
 import { EmailNotVerifiedError } from "../../../domain/errors/email-not-verified-error.js";
 import { IdentityProviderUnavailableError } from "../../../domain/errors/identity-provider-unavailable-error.js";
@@ -168,6 +172,16 @@ export const errorHandler: ErrorRequestHandler = (
 		// caller needs to know (S5).
 		response.status(StatusCodes.NOT_FOUND).json({
 			error: { message: error.message, code: CUSTOMER_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof CustomerRequiresExitError) {
+		// 400, not 409: the body is semantically invalid -- a customer belongs to
+		// a sale (CLI-04) and an entry is a purchase from a supplier. The code is
+		// what lets the client point at the `customerId` field.
+		response.status(StatusCodes.BAD_REQUEST).json({
+			error: { message: error.message, code: CUSTOMER_REQUIRES_EXIT_CODE },
 		});
 		return;
 	}

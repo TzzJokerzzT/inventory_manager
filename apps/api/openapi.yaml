@@ -1102,7 +1102,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/RegisterMovementResponse"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          description: |
+            The body is invalid, or a `customerId` was sent with `type: IN`;
+            in that case the `code` is `customer_requires_exit`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Error"
+                  - $ref: "#/components/schemas/CodedError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1117,7 +1125,9 @@ paths:
         "404":
           description: |
             The product does not exist, belongs to another company, or was
-            soft-deleted; the `code` is `product_not_found`.
+            soft-deleted (`product_not_found`); or the associated customer does
+            not exist, belongs to another company, or was soft-deleted
+            (`customer_not_found`).
           content:
             application/json:
               schema:
@@ -1956,7 +1966,7 @@ components:
     StockMovement:
       type: object
       required:
-        [id, companyId, productId, type, quantity, reason, createdAt, product, actor]
+        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer]
       description: |
         One immutable stock movement -- the audit trail of the inventory
         (MOV-05). `type` is `IN` for an entry and `OUT` for an exit, and
@@ -1987,6 +1997,21 @@ components:
         createdAt:
           type: string
           format: date-time
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            The customer associated with the sale, or null for an anonymous
+            exit (or any entry). Only `OUT` movements can carry one.
+        customer:
+          description: |
+            The associated customer resolved by the API, or null when there is
+            none. A customer that was soft-deleted after the sale is still
+            resolved here: the movement is the audit trail.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MovementCustomer"
         product:
           $ref: "#/components/schemas/MovementProduct"
         actor:
@@ -2012,6 +2037,21 @@ components:
           type: string
           maxLength: 64
 
+    MovementCustomer:
+      type: object
+      required: [id, name]
+      description: |
+        The customer a sale is associated with, as the history shows it. It is
+        resolved even when the customer was soft-deleted afterwards, because
+        the movement must stay readable.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+
     RegisterMovementRequest:
       type: object
       required: [productId, type, quantity]
@@ -2030,6 +2070,14 @@ components:
           type: string
           maxLength: 300
           nullable: true
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Associates the sale with a customer. Only valid when `type` is
+            `OUT`; an entry with a customer answers 400 `customer_requires_exit`.
+            The customer must be active and belong to the company.
 
     RegisterMovementResponse:
       allOf:

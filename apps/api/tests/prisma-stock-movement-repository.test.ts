@@ -123,6 +123,7 @@ describe("PrismaStockMovementRepository.register", () => {
 				quantity: 10,
 				reason: null,
 				userId: "user-1",
+				customerId: null,
 				createdAt: CREATED_AT,
 			},
 		});
@@ -131,6 +132,36 @@ describe("PrismaStockMovementRepository.register", () => {
 			movement: expect.any(StockMovement),
 			stockQuantity: 25,
 		});
+	});
+
+	it("persists the customer associated with the sale", async () => {
+		const {
+			delegate,
+			productUpdateMany,
+			productFindFirst,
+			stockMovementCreate,
+		} = buildFakeDelegate();
+		productUpdateMany.mockResolvedValue({ count: 1 });
+		productFindFirst.mockResolvedValue(productRow({ stockQuantity: 6 }));
+		stockMovementCreate.mockResolvedValue(
+			movementRow({ type: "OUT", quantity: 4, customerId: "customer-1" }),
+		);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const result = await repository.register(
+			movement({
+				type: "OUT",
+				quantity: 4,
+				customerId: "customer-1",
+			}),
+		);
+
+		expect(stockMovementCreate.mock.calls[0][0].data.customerId).toBe(
+			"customer-1",
+		);
+		expect(result.kind === "registered" && result.movement.customerId).toBe(
+			"customer-1",
+		);
 	});
 
 	it("guards an OUT with stockQuantity >= quantity and decrements", async () => {
@@ -256,7 +287,20 @@ describe("PrismaStockMovementRepository.findByCompany", () => {
 			quantity: 2,
 			reason: "Venta",
 			userId: "user-1",
+			customerId: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
+	});
+
+	it("maps the customerId of a sale back from the row", async () => {
+		const { delegate, stockMovementFindMany } = buildFakeDelegate();
+		stockMovementFindMany.mockResolvedValue([
+			movementRow({ type: "OUT", quantity: 2, customerId: "customer-1" }),
+		]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const [found] = await repository.findByCompany("company-1", { limit: 50 });
+
+		expect(found?.customerId).toBe("customer-1");
 	});
 });

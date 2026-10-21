@@ -66,6 +66,18 @@ export class PrismaCustomerRepository implements CustomerRepository {
 		return this.toDomain(row);
 	}
 
+	async findByIds(companyId: string, ids: string[]): Promise<Customer[]> {
+		// No `deletedAt` filter: this is the history read of the stock
+		// movements (MOV-05), so a soft-deleted customer of the company must
+		// still resolve. The `companyId` stays in the WHERE clause, so the
+		// isolation is the query's, not a post-filter's.
+		const rows = await this.prisma.customer.findMany({
+			where: { companyId, id: { in: ids } },
+		});
+
+		return rows.map((row) => this.toDomain(row));
+	}
+
 	async list(companyId: string, search?: string): Promise<Customer[]> {
 		const needle = search?.trim();
 

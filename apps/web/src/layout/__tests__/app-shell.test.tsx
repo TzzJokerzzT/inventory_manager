@@ -77,4 +77,22 @@ describe("AppShell", () => {
 
 		expect(screen.getByText("contenido")).toBeTruthy();
 	});
+
+	/**
+	 * The scroll contract: the shell is pinned outside the document flow and
+	 * `main` is the only scroll container, so scrolling the content to the end
+	 * can never drag the sidebar or the header away with it.
+	 */
+	it("pins the shell and keeps the scroll inside main", () => {
+		const { container } = render(<AppShell>contenido</AppShell>);
+		const shell = container.firstElementChild as HTMLElement;
+		const main = screen.getByRole("main");
+
+		expect(shell.className).toContain("fixed");
+		expect(shell.className).toContain("inset-0");
+		expect(shell.className).toContain("overflow-hidden");
+		expect(main.className).toContain("overflow-y-auto");
+		expect(main.className).toContain("overscroll-contain");
+		expect(main.className).toContain("min-h-0");
+	});
 });

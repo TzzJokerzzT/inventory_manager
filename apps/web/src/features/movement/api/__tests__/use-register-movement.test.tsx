@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { ApiError, getApiClient } from "@/lib/api/client";
+import type { RegisterMovementRequest } from "@/lib/api/schemas";
 import { useRegisterMovement } from "../use-register-movement";
 
 jest.mock("@/lib/api/client", () => ({
@@ -24,6 +25,8 @@ function registered(overrides: Record<string, unknown> = {}) {
 		createdAt: "2026-10-21T12:00:00.000Z",
 		product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
+		customerId: null,
+		customer: null,
 		stockQuantity: 10,
 		...overrides,
 	};
@@ -98,6 +101,68 @@ describe("useRegisterMovement", () => {
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["movements", "c1"] });
 		// El del catálogo: el stock que se muestra en productos cambia sin recargar.
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["products", "c1"] });
+	});
+
+	it("sends the customer of a sale with the body", async () => {
+		const post = jest.fn(async () => ({
+			data: registered({
+				type: "OUT",
+				customerId: "cu1",
+				customer: { id: "cu1", name: "Almacén Sur" },
+			}),
+		}));
+		getApiClientMock.mockReturnValue({
+			post,
+		} as unknown as ReturnType<typeof getApiClient>);
+		const queryClient = newQueryClient();
+
+		const { result } = renderHook(() => useRegisterMovement("c1"), {
+			wrapper: wrapperFor(queryClient),
+		});
+
+		const created = await result.current.mutateAsync({
+			productId: "p1",
+			type: "OUT",
+			quantity: 2,
+			customerId: "cu1",
+		});
+
+		expect(post).toHaveBeenCalledWith("/companies/c1/movements", {
+			productId: "p1",
+			type: "OUT",
+			quantity: 2,
+			customerId: "cu1",
+		});
+		expect(created.customer?.name).toBe("Almacén Sur");
+	});
+
+	it("leaves the customer out of the body when the sale has none", async () => {
+		const post = jest.fn(
+			async (_url: string, _body: RegisterMovementRequest) => ({
+				data: registered({ type: "OUT" }),
+			}),
+		);
+		getApiClientMock.mockReturnValue({
+			post,
+		} as unknown as ReturnType<typeof getApiClient>);
+		const queryClient = newQueryClient();
+
+		const { result } = renderHook(() => useRegisterMovement("c1"), {
+			wrapper: wrapperFor(queryClient),
+		});
+
+		await result.current.mutateAsync({
+			productId: "p1",
+			type: "OUT",
+			quantity: 2,
+			customerId: null,
+		});
+
+		const [, body] = post.mock.calls[0];
+		// Una venta anónima manda el mismo cuerpo que antes de MI-10: la clave
+		// ausente, no un `customerId: null` de más.
+		expect("customerId" in body).toBe(false);
+		expect(body).toEqual({ productId: "p1", type: "OUT", quantity: 2 });
 	});
 
 	it("preserves the insufficient_stock code and message the API sent", async () => {

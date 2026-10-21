@@ -28,6 +28,8 @@ function movement(overrides: Record<string, unknown> = {}) {
 		createdAt: "2026-10-21T12:00:00.000Z",
 		product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
+		customerId: null,
+		customer: null,
 		...overrides,
 	};
 }

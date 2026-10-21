@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel, StockMovement } from "@/lib/api/schemas";
+import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { useProducts } from "@/src/features/product/api/use-products";
 import { useMovements } from "../api/use-movements";
@@ -19,6 +20,10 @@ jest.mock("@/src/features/product/api/use-products", () => ({
 	useProducts: jest.fn(),
 }));
 
+jest.mock("@/src/features/client/api/use-customers", () => ({
+	useCustomers: jest.fn(),
+}));
+
 jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
 }));
@@ -30,6 +35,9 @@ const useMovementsMock = useMovements as jest.MockedFunction<
 	typeof useMovements
 >;
 const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
+const useCustomersMock = useCustomers as jest.MockedFunction<
+	typeof useCustomers
+>;
 const useRegisterMovementMock = useRegisterMovement as jest.MockedFunction<
 	typeof useRegisterMovement
 >;
@@ -45,6 +53,8 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
 		createdAt: "2026-10-21T12:00:00.000Z",
 		product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
 		actor: { id: "user-1", fullName: "Ana Pérez", email: "ana@empresa.com" },
+		customerId: null,
+		customer: null,
 		...overrides,
 	};
 }
@@ -98,6 +108,13 @@ function setup({
 		error: undefined,
 		refetch: jest.fn(),
 	} as unknown as ReturnType<typeof useProducts>);
+	useCustomersMock.mockReturnValue({
+		data: [],
+		isPending: false,
+		isError: false,
+		error: undefined,
+		refetch: jest.fn(),
+	} as unknown as ReturnType<typeof useCustomers>);
 	useRegisterMovementMock.mockReturnValue({
 		mutate: jest.fn(),
 		mutateAsync: jest.fn(),
@@ -141,6 +158,7 @@ describe("Movement", () => {
 			"SKU",
 			"Cantidad",
 			"Motivo",
+			"Cliente",
 			"Usuario",
 			"Fecha",
 		]);
@@ -177,6 +195,32 @@ describe("Movement", () => {
 
 		expect(screen.getByText("Sin usuario")).toBeTruthy();
 		expect(screen.getByText("Sin motivo")).toBeTruthy();
+	});
+
+	it("shows the customer of a sale", () => {
+		setup({
+			rows: [
+				movement({
+					type: "OUT",
+					reason: "Venta",
+					customerId: "cu1",
+					customer: { id: "cu1", name: "Almacén Sur" },
+				}),
+			],
+		});
+
+		render(<Movement />);
+
+		expect(screen.getByText("Almacén Sur")).toBeTruthy();
+	});
+
+	it("shows an em dash when the movement has no customer", () => {
+		setup({ rows: [movement()] });
+
+		render(<Movement />);
+
+		// Una entrada sin cliente no inventa un nombre: muestra el guión largo.
+		expect(screen.getByText("—")).toBeTruthy();
 	});
 
 	it("shows a meaningful empty state", () => {

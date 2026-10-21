@@ -573,6 +573,8 @@ function movement(overrides: Record<string, unknown> = {}) {
 		createdAt: "2026-10-21T12:00:00.000Z",
 		product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
+		customerId: null,
+		customer: null,
 		...overrides,
 	};
 }
@@ -604,6 +606,40 @@ describe("parseMovements", () => {
 
 	it("keeps the direction of the movement", () => {
 		expect(parseMovements([movement({ type: "OUT" })])[0].type).toBe("OUT");
+	});
+
+	it("accepts a sale without a customer", () => {
+		// Una venta sin cliente identificado sigue siendo válida (S3).
+		const parsed = parseMovements([movement({ type: "OUT" })]);
+
+		expect(parsed[0].customerId).toBeNull();
+		expect(parsed[0].customer).toBeNull();
+	});
+
+	it("resolves the customer of a sale", () => {
+		const parsed = parseMovements([
+			movement({
+				type: "OUT",
+				customerId: "cu1",
+				customer: { id: "cu1", name: "Almacén Sur" },
+			}),
+		]);
+
+		expect(parsed[0].customerId).toBe("cu1");
+		expect(parsed[0].customer?.name).toBe("Almacén Sur");
+	});
+
+	it("rejects a customer whose shape changed", () => {
+		// `customer` es parte del contrato del movimiento, no un extra opcional:
+		// si falta o viene incompleto, el límite falla antes de llegar a la tabla.
+		expect(() =>
+			parseMovements([movement({ customer: { id: "cu1" } })]),
+		).toThrow(/respuesta inesperada/);
+
+		const { customer: _customer, ...withoutCustomer } = movement();
+		expect(() => parseMovements([withoutCustomer])).toThrow(
+			/respuesta inesperada/,
+		);
 	});
 
 	it("rejects a quantity that is not a number", () => {

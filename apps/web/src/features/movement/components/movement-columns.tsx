@@ -10,13 +10,23 @@ const NO_REASON = "Sin motivo";
 const NO_ACTOR = "Sin usuario";
 
 /**
- * The history table: type, product, SKU, quantity, reason, user and date.
+ * Shown when the movement has no customer: an entry, or a sale without an
+ * identified customer. A sale does not stop being a sale because nobody was
+ * named, so the cell says "no customer" instead of hiding the column value.
+ */
+const NO_CUSTOMER = "—";
+
+/**
+ * The history table: type, product, SKU, quantity, reason, customer, user and
+ * date.
  *
  * The columns live in the feature, not in `src/utils/Columns.tsx`: those are the
  * mock tables, and a view only reads the columns it owns. Every cell reads from
- * the contract — the product comes resolved by the API (`product.name`/`sku`),
- * so the table never joins a cached catalogue that could be stale, and the date
- * is formatted without a locale so tests and the browser agree.
+ * the contract — the product and the customer come resolved by the API
+ * (`product.name`/`sku`, `customer.name`), so the table never joins a cached
+ * catalogue that could be stale, and a customer soft-deleted after the sale
+ * still shows the name the ledger recorded (MI-10). The date is formatted
+ * without a locale so tests and the browser agree.
  */
 export const movementColumns: Column<StockMovement>[] = [
 	{
@@ -44,6 +54,15 @@ export const movementColumns: Column<StockMovement>[] = [
 		render: (row) => (
 			<span className="block max-w-[20rem] truncate">
 				{row.reason ?? NO_REASON}
+			</span>
+		),
+	},
+	{
+		key: "customer",
+		header: "Cliente",
+		render: (row) => (
+			<span className="block max-w-[16rem] truncate">
+				{row.customer?.name ?? NO_CUSTOMER}
 			</span>
 		),
 	},

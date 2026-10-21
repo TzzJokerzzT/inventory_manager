@@ -504,6 +504,22 @@ export const movementProductSchema = object({
 export type MovementProduct = components["schemas"]["MovementProduct"];
 
 /**
+ * The customer a sale is associated with, as the history shows it.
+ *
+ * A reduced copy like {@link movementProductSchema}, and for the same reason: the
+ * movement is the audit trail of the stock (MOV-05), so a customer soft-deleted
+ * after the sale still shows the name the ledger recorded, instead of the row
+ * turning into a hole.
+ */
+export const movementCustomerSchema = object({
+	id: string(),
+	name: string(),
+});
+
+/** The customer of a movement, derived from the OpenAPI contract. */
+export type MovementCustomer = components["schemas"]["MovementCustomer"];
+
+/**
  * The fields every movement carries, shared by the history and the creation
  * response.
  *
@@ -513,6 +529,11 @@ export type MovementProduct = components["schemas"]["MovementProduct"];
  * decimal price. `reason` and `actor` are nullable: the reason is optional and a
  * user that cannot be resolved must never hide the movement, because the
  * movement is the audit trail of the stock (MOV-05).
+ *
+ * `customerId` and `customer` are both required and nullable (MI-10): the API
+ * resolves the customer on the server, so `customer` is `null` exactly when the
+ * movement has no association — an entry, or a sale without an identified
+ * customer — and the table never reads `customerId` to decide what to show.
  */
 const movementFields = {
 	id: string(),
@@ -524,6 +545,8 @@ const movementFields = {
 	createdAt: string(),
 	product: movementProductSchema,
 	actor: nullable(userSummarySchema),
+	customerId: nullable(string()),
+	customer: nullable(movementCustomerSchema),
 } as const;
 
 /** One stock movement exactly as the movements endpoints serialize it. */
@@ -542,7 +565,9 @@ export type MovementsResponse = components["schemas"]["StockMovement"][];
  * Body of `POST /companies/{companyId}/movements`, derived from the contract.
  *
  * The direction is a field, not a sign: an exit sends `quantity` positive with
- * `type: "OUT"`, which is exactly what the API expects.
+ * `type: "OUT"`, which is exactly what the API expects. `customerId` is optional
+ * and only meaningful on an exit (MI-10): an entry that carries a customer
+ * answers `400 customer_requires_exit`, so nothing builds one for `IN`.
  */
 export type RegisterMovementRequest =
 	components["schemas"]["RegisterMovementRequest"];

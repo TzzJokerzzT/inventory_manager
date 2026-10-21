@@ -5,13 +5,28 @@ import { Alert, AutoComplete, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
-import type { RegisterMovementResponse } from "@/lib/api/schemas";
+import type {
+	RegisterMovementRequest,
+	RegisterMovementResponse,
+} from "@/lib/api/schemas";
+import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useProducts } from "@/src/features/product/api/use-products";
 import { useRegisterMovement } from "./api/use-register-movement";
 import type { MovementType } from "./components/movement-type-badge";
 import { normalizeReason, validateMovement } from "./lib/validate-movement";
 
 const FALLBACK_ERROR = "No pudimos registrar el movimiento. Probá de nuevo.";
+
+/**
+ * The empty value of the customer selector, shown as "Sin cliente".
+ *
+ * A sale without an identified customer is valid (S3), so "none" has to be a
+ * real, selectable choice — not just the field left blank, which a person cannot
+ * tell apart from "did not get to it". The empty string maps to
+ * `customerId: null` on submit.
+ */
+const NO_CUSTOMER_VALUE = "";
+const NO_CUSTOMER_LABEL = "Sin cliente";
 
 const COPY = {
 	IN: {
@@ -40,6 +55,14 @@ function registrationErrorMessage(error: unknown): string | undefined {
 		if (error.code === "product_not_found") {
 			return "Ese producto ya no existe en el catálogo.";
 		}
+		if (error.code === "customer_not_found") {
+			// Ajeno, inexistente y dado de baja comparten código: el mensaje no
+			// distingue cuál fue, porque averiguarlo filtraría el padrón ajeno.
+			return "Ese cliente ya no existe en el padrón.";
+		}
+		if (error.code === "customer_requires_exit") {
+			return "Una entrada no puede llevar cliente: es una compra a proveedor, no una venta.";
+		}
 		return error.message;
 	}
 	return error ? FALLBACK_ERROR : undefined;
@@ -52,6 +75,55 @@ function registrationErrorMessage(error: unknown): string | undefined {
  */
 function successMessage(response: RegisterMovementResponse): string {
 	return `${response.quantity} unidades de ${response.product.name}. Stock disponible: ${response.stockQuantity}.`;
+}
+
+/**
+ * The optional customer of a sale (MI-10 / CLI-04).
+ *
+ * It is its own component because the hook only runs where the field is
+ * rendered: an entry is a purchase from a supplier, so the entry form never
+ * reads the padrón and never sends a customer. The options come from the real
+ * customer list (`useCustomers`), the same read the customers view uses, so a
+ * customer added there is selectable here without a reload.
+ */
+function MovementCustomerField({
+	companyId,
+	value,
+	onValueChange,
+	disabled,
+}: {
+	companyId: string | undefined;
+	value: string;
+	onValueChange: (value: string) => void;
+	disabled: boolean;
+}) {
+	const customers = useCustomers(companyId);
+
+	const options = [
+		{ value: NO_CUSTOMER_VALUE, label: NO_CUSTOMER_LABEL },
+		...(customers.data ?? []).map((customer) => ({
+			value: customer.id,
+			label: customer.name,
+		})),
+	];
+
+	return (
+		<div className="flex min-w-0 flex-col gap-2 md:col-span-full xl:col-span-1 2xl:col-span-full">
+			<AutoComplete
+				label="Cliente"
+				options={options}
+				name="customer"
+				placeholder="Buscá el cliente por nombre"
+				emptyMessage="No hay clientes que coincidan."
+				value={value}
+				onValueChange={onValueChange}
+				disabled={disabled}
+			/>
+			<p className="text-xs text-text-muted">
+				Opcional: una venta sin cliente identificado sigue siendo válida.
+			</p>
+		</div>
+	);
 }
 
 /**
@@ -68,6 +140,11 @@ function successMessage(response: RegisterMovementResponse): string {
  * up to 1.000.000, reason ≤ 300) so an invalid body never reaches the server. On
  * success the mutation invalidates the history and the catalogue, so the table
  * refreshes and the stock shown elsewhere updates without a reload.
+ *
+ * An exit also offers the optional customer of the sale (MI-10): the selector is
+ * only rendered for `OUT`, and the chosen customer — or `null` for "Sin cliente" —
+ * travels as `customerId`. An entry has no customer at all, so the field is not
+ * rendered and no key is sent.
  */
 export function MovementStockForm({
 	companyId,
@@ -82,6 +159,7 @@ export function MovementStockForm({
 	const [productId, setProductId] = useState("");
 	const [quantity, setQuantity] = useState("");
 	const [reason, setReason] = useState("");
+	const [customerId, setCustomerId] = useState(NO_CUSTOMER_VALUE);
 	const [attempted, setAttempted] = useState(false);
 	const quantityRef = useRef<HTMLInputElement>(null);
 
@@ -100,6 +178,7 @@ export function MovementStockForm({
 		setProductId("");
 		setQuantity("");
 		setReason("");
+		setCustomerId(NO_CUSTOMER_VALUE);
 		setAttempted(false);
 	}
 
@@ -115,15 +194,19 @@ export function MovementStockForm({
 			return;
 		}
 
-		register.mutate(
-			{
-				productId,
-				type,
-				quantity: Number(quantity),
-				reason: normalizeReason(reason),
-			},
-			{ onSuccess: reset },
-		);
+		const body: RegisterMovementRequest = {
+			productId,
+			type,
+			quantity: Number(quantity),
+			reason: normalizeReason(reason),
+		};
+		if (type === "OUT") {
+			// "Sin cliente" viaja como `null` explícito: la venta es anónima, no una
+			// asociación pendiente. Una entrada no lleva la clave.
+			body.customerId = customerId === NO_CUSTOMER_VALUE ? null : customerId;
+		}
+
+		register.mutate(body, { onSuccess: reset });
 	}
 
 	return (
@@ -177,6 +260,15 @@ export function MovementStockForm({
 				error={errors.reason}
 				disabled={register.isPending}
 			/>
+
+			{type === "OUT" ? (
+				<MovementCustomerField
+					companyId={companyId}
+					value={customerId}
+					onValueChange={setCustomerId}
+					disabled={register.isPending}
+				/>
+			) : null}
 
 			{errorMessage ? (
 				<div className="col-span-full">

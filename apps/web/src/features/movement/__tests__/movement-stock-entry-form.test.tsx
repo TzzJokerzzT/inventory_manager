@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel } from "@/lib/api/schemas";
+import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useProducts } from "@/src/features/product/api/use-products";
 import { useRegisterMovement } from "../api/use-register-movement";
 import { MovementEntryStockForm } from "../movement-stock-entry-form";
@@ -9,11 +10,18 @@ jest.mock("@/src/features/product/api/use-products", () => ({
 	useProducts: jest.fn(),
 }));
 
+jest.mock("@/src/features/client/api/use-customers", () => ({
+	useCustomers: jest.fn(),
+}));
+
 jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
 }));
 
 const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
+const useCustomersMock = useCustomers as jest.MockedFunction<
+	typeof useCustomers
+>;
 const useRegisterMovementMock = useRegisterMovement as jest.MockedFunction<
 	typeof useRegisterMovement
 >;
@@ -102,6 +110,14 @@ describe("MovementEntryStockForm", () => {
 			screen.getByRole("option", { name: "Café molido 500g · CAF-500" }),
 		).toBeTruthy();
 		expect(useProductsMock).toHaveBeenCalledWith("c1");
+	});
+
+	it("never offers the customer selector: an entry is a purchase, not a sale", () => {
+		render(<MovementEntryStockForm companyId="c1" />);
+
+		expect(screen.queryByLabelText("Cliente")).toBeNull();
+		// Tampoco se lee el padrón: la entrada no puede llevar cliente (S2).
+		expect(useCustomersMock).not.toHaveBeenCalled();
 	});
 
 	it("registers an IN movement with the chosen product, quantity and reason", () => {

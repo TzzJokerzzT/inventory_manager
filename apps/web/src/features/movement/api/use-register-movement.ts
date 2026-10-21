@@ -27,6 +27,11 @@ import { movementsQueryPrefix } from "./use-movements";
  * An exit larger than the available stock arrives as {@link ApiError} with
  * `code: "insufficient_stock"` and a message that states the stock available;
  * the form surfaces that message instead of pretending the movement succeeded.
+ *
+ * `customerId` is the optional customer of a sale (MI-10). It travels in the
+ * body **only when it is set**: an anonymous sale sends the same body it sent
+ * before the association existed, and an entry never sends it at all — the API
+ * answers `400 customer_requires_exit` if one arrives with `IN`.
  */
 export function useRegisterMovement(companyId: string | undefined) {
 	const queryClient = useQueryClient();
@@ -36,13 +41,16 @@ export function useRegisterMovement(companyId: string | undefined) {
 		unknown,
 		RegisterMovementRequest
 	>({
-		mutationFn: async (input) => {
+		mutationFn: async ({ customerId, ...movement }) => {
 			if (!companyId) {
 				throw new Error("No active company");
 			}
+			const body: RegisterMovementRequest = customerId
+				? { ...movement, customerId }
+				: movement;
 			const response = await getApiClient({ getAccessToken }).post(
 				`/companies/${companyId}/movements`,
-				input,
+				body,
 			);
 			return parseRegisterMovementResponse(response.data);
 		},

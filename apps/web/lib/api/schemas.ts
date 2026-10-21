@@ -392,6 +392,82 @@ export function parseProduct(data: unknown): Product {
 }
 
 /**
+ * One customer exactly as the customers endpoints serialize it.
+ *
+ * `email`, `phone` and `address` are nullable on purpose: they are optional
+ * contact fields and the API stores an empty value as `null`. `createdAt` and
+ * `updatedAt` are ISO strings, and a soft-deleted customer never reaches here —
+ * the contract has no `deletedAt` field, and a deleted id answers `404`.
+ */
+export const customerSchema = object({
+	id: string(),
+	companyId: string(),
+	name: string(),
+	email: nullable(string()),
+	phone: nullable(string()),
+	address: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+});
+
+/** One customer, derived from the OpenAPI contract. */
+export type Customer = components["schemas"]["Customer"];
+
+/** Body of `POST /companies/{companyId}/customers`, derived from the contract. */
+export type CreateCustomerRequest =
+	components["schemas"]["CreateCustomerRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/customers/{customerId}`, derived from
+ * the contract. Every field is optional on purpose: an absent field keeps its
+ * value, while an explicit `null` clears `email`, `phone` or `address`.
+ */
+export type UpdateCustomerRequest =
+	components["schemas"]["UpdateCustomerRequest"];
+
+/**
+ * Shape of `GET /companies/{companyId}/customers`: the company's customers,
+ * already ordered by `name` and then `id` by the API, which is why the list is
+ * shown in the order it arrives.
+ */
+export const customersResponseSchema = array(customerSchema);
+
+/** `GET /companies/{companyId}/customers` response, derived from the contract. */
+export type CustomersResponse = components["schemas"]["Customer"][];
+
+/**
+ * Validates the customer list at the boundary.
+ *
+ * Same contract as {@link parseProducts}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * table, and a numeric phone never reaches a cell.
+ */
+export function parseCustomers(data: unknown): CustomersResponse {
+	const result = safeParse(customersResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single customer: the detail read, the creation and the update.
+ *
+ * It exists so the customer the form receives back goes through the same
+ * boundary as the listed ones: a cast here would let a shape change reach a
+ * view unnoticed.
+ */
+export function parseCustomer(data: unknown): Customer {
+	const result = safeParse(customerSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
  * The upload contract `POST /companies/{companyId}/media/signature` returns:
  * the Cloudinary coordinates plus the limits the server already signed into
  * the signature. The browser validates the file against **these** values, not

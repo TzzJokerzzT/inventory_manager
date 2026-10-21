@@ -2,6 +2,8 @@ import { ApiError } from "./client";
 import {
 	parseCompaniesResponse,
 	parseCompany,
+	parseCustomer,
+	parseCustomers,
 	parseLoginResponse,
 	parseMediaUploadSignature,
 	parseMembership,
@@ -698,5 +700,76 @@ describe("parseMediaUploadSignature", () => {
 		expect(() =>
 			parseMediaUploadSignature(mediaSignature({ allowedFormats: "jpg" })),
 		).toThrow(/respuesta inesperada/);
+	});
+});
+
+function customer(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "cu1",
+		companyId: "c1",
+		name: "Distribuidora Pérez",
+		email: "ventas@perez.com",
+		phone: "+54 11 4321-9876",
+		address: "Av. Siempre Viva 742",
+		createdAt: "2026-10-22T12:00:00.000Z",
+		updatedAt: "2026-10-22T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+describe("parseCustomers", () => {
+	it("returns the customer list exactly as the API serializes it", () => {
+		const list = [customer()];
+
+		expect(parseCustomers(list)).toEqual(list);
+	});
+
+	it("accepts an empty list, the normal case for a company with no customers", () => {
+		expect(parseCustomers([])).toEqual([]);
+	});
+
+	it("accepts null contact fields without dropping the customer", () => {
+		const parsed = parseCustomers([
+			customer({ email: null, phone: null, address: null }),
+		]);
+
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0].email).toBeNull();
+		expect(parsed[0].phone).toBeNull();
+		expect(parsed[0].address).toBeNull();
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseCustomers({ customers: [] })).toThrow(ApiError);
+	});
+
+	it("rejects an entry whose fields are missing or mistyped", () => {
+		expect(() => parseCustomers([{ id: "cu1", name: "Pérez" }])).toThrow(
+			/respuesta inesperada/,
+		);
+
+		expect(() => parseCustomers([customer({ phone: 43219876 })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a null where the contract requires a value", () => {
+		expect(() => parseCustomers([customer({ name: null })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+});
+
+describe("parseCustomer", () => {
+	it("returns the customer of a read, a creation or an update", () => {
+		const parsed = parseCustomer(customer({ email: null }));
+
+		expect(parsed.id).toBe("cu1");
+		expect(parsed.name).toBe("Distribuidora Pérez");
+		expect(parsed.email).toBeNull();
+	});
+
+	it("rejects a customer whose shape changed", () => {
+		expect(() => parseCustomer({ id: "cu1" })).toThrow(ApiError);
 	});
 });

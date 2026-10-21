@@ -42,12 +42,12 @@ columna `customer_id` ya existe desde la migración inicial.
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | S4, S7 | parent | C1 |
-| T2 | Backend: entidad, puertos (`findByIds` de clientes), error y casos de uso | S2, S3, S5 | worker | C2 |
-| T3 | Backend: adaptadores Prisma/in-memory, validador, controller y tests | S2-S5 | worker | C3 |
-| T4 | Frontend: schemas, selector de cliente en salidas y columna en la tabla | S4, S6 | worker | C4 |
-| T5 | Verificación integral | S7 | parent | — |
-| T6 | Sincronizar README y `docs/Project.md` | S7 | parent | C5 |
+| T1 | Contrato OpenAPI + regenerar tipos web | S4, S7 | parent | `caa3355` (C2) |
+| T2 | Backend: entidad, puertos (`findByIds` de clientes), error y casos de uso | S2, S3, S5 | worker | `736d7cb` (C1) |
+| T3 | Backend: adaptadores Prisma/in-memory, validador, controller y tests | S2-S5 | worker | `caa3355` (C2; in-memory en C1) |
+| T4 | Frontend: schemas, selector de cliente en salidas y columna en la tabla | S4, S6 | worker | `1d24342` (C3) |
+| T5 | Verificación integral | S7 | parent | `—` (verificación, sin commit) |
+| T6 | Sincronizar README y `docs/Project.md` | S7 | parent | C4 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -62,3 +62,27 @@ inicial con `onDelete: Restrict`, así que la baja del cliente es lógica y el m
 
 L4. Decisión del orquestador: el resumen de compras por cliente (columnas "Compras"/"Total") no entra
 en MI-10; es una vista derivada del ledger y se aborda aparte si se pide.
+
+L5. Cierre. Tres slices sobre la rama `feat/refactor/product-frontend-create-product`; el push y el PR
+los decide el humano (no se hizo ninguno de los dos). Commits:
+
+- `736d7cb` — `feat(api): associate customers with stock exits` (C1): `customerId` en la entidad
+  `StockMovement`, `findByIds` de clientes en el puerto, `CustomerRequiresExitError` y los dos casos de
+  uso (alta e historial) con su doble in-memory.
+- `caa3355` — `feat(api): expose the customer association on movements` (C2): adaptadores Prisma,
+  validador del borde, mapeo del error a `400`/`404` en el error handler, contrato `openapi.yaml`
+  (`MovementCustomer`, `StockMovement.customerId`/`customer`, `RegisterMovementRequest.customerId` y
+  las descripciones de `400`/`404`) y tipos del frontend regenerados.
+- `1d24342` — `feat(web): pick a customer on stock exits and show it in the history` (C3): selector
+  opcional con "Sin cliente" en el formulario de salida y columna Cliente en la tabla de movimientos.
+
+Verificación (T5, sin commit): API 58 suites / 804 tests y web 92 suites / 649 tests en verde
+(baseline de S7: 58/773 y 92/634), `check-types` limpio en las dos apps, `biome check .` limpio, drift
+de OpenAPI en verde y una batería HTTP diferencial de 21 pasos contra el commit base con **ninguna
+diferencia** fuera de los dos campos nuevos del contrato (`customerId` y `customer`). Sin migración,
+como decidió L3.
+
+Scratch que los workers dejaron en `/tmp` y que el humano debería borrar (observado con `ls /tmp`):
+`mi10-*` (`mi10-base-gubtop/`, `mi10-base.norm`, `mi10-base.out`,
+`mi10-differential.scratch.test.ts`, `mi10-new.norm`, `mi10-new.out`, `mi10-new-UFmzlC/`) y `valibot-*`
+(`valibot-check-probe.mjs`, `valibot-probe2.mjs`).

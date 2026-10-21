@@ -67,8 +67,13 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 > stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
 > ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
 > por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
-> los roles leen el historial. `customerId` **no se expone** porque asociar clientes a las salidas es
-> CLI-04 y sigue pendiente (el padrón de clientes ya existe, ver § 5): la columna existe y queda nula.
+> los roles leen el historial. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede
+> asociarse a un cliente**: `customerId` se acepta opcional y nullable en el alta y se expone en el
+> historial ya resuelto (`customerId` más `customer: { id, name } | null`). La lectura por lote de
+> clientes incluye las filas con `deletedAt`, así que un movimiento **sigue mostrando el nombre del
+> cliente después de su baja lógica**: el ledger es la traza de auditoría de MOV-05 y dar de baja un
+> cliente no borra ni altera sus movimientos. Sin migración: `customer_id` existe desde la migración
+> inicial.
 
 ### 5. Gestión de Clientes
 
@@ -88,8 +93,17 @@ teléfono (subcadena, sin distinguir mayúsculas; orden por nombre y luego id). 
 edita y da de baja**, y todos los roles leen; el guard es el contexto de empresa, así que no hay una
 fila nueva en la matriz de autorización. `email`, `phone` y `address` son opcionales y un valor vacío
 se guarda como `null`; **no hay unicidad de email** porque el esquema no define índice único.
-**CLI-04 (asociar clientes a los movimientos de salida) sigue pendiente**: no hay campos de compras
-en la UI y `customerId` continúa nulo en los movimientos.
+**CLI-04 (asociar clientes a los movimientos de salida) está implementado** (MI-10,
+`odd/tasks/customer-links.md`): el alta de un movimiento acepta `customerId` **opcional y nullable**
+y **sólo con `type: "OUT"`** —una entrada con cliente responde `400 customer_requires_exit`, porque
+una compra a proveedor no es una venta del cliente—, y el cliente debe existir, estar activo y
+pertenecer a la empresa o el alta responde `404 customer_not_found` (idéntico para ajeno, inexistente
+y dado de baja). Las dos validaciones corren **antes** de la escritura atómica, así que el movimiento
+rechazado no registra fila ni mueve el stock. La asociación es **opcional**: una venta sin cliente
+identificado sigue siendo válida y se guarda con `customerId: null`. En la UI, el formulario de salida
+suma el selector opcional (con la opción "Sin cliente") y el historial suma la columna Cliente. **El
+resumen de compras por cliente (columnas "Compras"/"Total") no forma parte de MI-10** (decisión L4):
+el padrón sigue mostrando sólo los datos de contacto.
 
 ### 6. Gestión Multi-Empresa
 
@@ -206,7 +220,7 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 ### Fase 3 — Clientes y Alertas
 
 - [x] CRUD de Clientes
-- [ ] Vinculación de clientes a salidas
+- [x] Vinculación de clientes a salidas
 - [ ] Notificaciones de stock bajo en UI
 
 ### Fase 4 — Polish

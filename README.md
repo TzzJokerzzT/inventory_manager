@@ -30,9 +30,12 @@ terminados** (entradas y salidas con actualización atómica del stock, historia
 auditoría inmutable de usuario, fecha y motivo) y **el padrón de clientes está cerrado** (CRUD por
 empresa con baja lógica y búsqueda por nombre, email o teléfono), junto con el shell de la
 aplicación, la vista del dashboard y el design system. Los clientes se gestionan **por empresa y
-cualquier miembro activo** los crea, edita y da de baja; el **historial de compras** espera a que se
-asocien a las salidas de stock (CLI-04). Quedan pendientes **las notificaciones de stock bajo, los
-datos reales del dashboard y la recuperación de contraseña**.
+cualquier miembro activo** los crea, edita y da de baja, y **la vinculación de clientes a las salidas
+de stock (MI-10 / CLI-04) también está hecha**: una salida puede asociarse a un cliente —opcional,
+nunca una entrada— y el historial resuelve el nombre del lado del servidor, incluso después de que
+el cliente se dé de baja. Quedan pendientes **las notificaciones de stock bajo, los datos reales del
+dashboard y la recuperación de contraseña** (el resumen de compras por cliente, con sus columnas,
+sigue sin construirse).
 Cada movimiento y el cambio de stock ocurren en **una sola transacción** —una salida nunca puede
 superar el stock disponible: la perdedora de dos salidas concurrentes responde `409
 insufficient_stock` sin registrar nada— y los movimientos son **inmutables**, porque son la traza de
@@ -52,8 +55,8 @@ El repositorio y el stack de tests ya están en pie.
 | **Empresas** | ✅ alta con membership `OWNER` en una transacción, listado por membership y `GET /companies/{id}/context` |
 | **Miembros** | ✅ invitación, listado, cambio de rol, revocación y salida por empresa, más invitaciones y notificaciones en `/me` |
 | **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica y foto firmada a Cloudinary |
-| **Movimientos** | ✅ entradas y salidas con stock atómico (una transacción con guard `stockQuantity >= quantity`), historial por producto y auditoría de usuario/fecha/motivo |
-| **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE` |
+| **Movimientos** | ✅ entradas y salidas con stock atómico (una transacción con guard `stockQuantity >= quantity`), historial por producto, auditoría de usuario/fecha/motivo y cliente opcional en las salidas (MI-10) |
+| **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE` y las salidas pueden asociarse a un cliente (MI-10) |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
 | **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda y formulario) |
@@ -115,10 +118,21 @@ nunca puede superar el stock disponible**, porque la resta se hace con un update
 responde `409 insufficient_stock` con el stock disponible, sin registrar nada. Los movimientos son
 **inmutables** —no hay endpoints de edición ni de borrado— porque son la traza de auditoría del stock
 (MOV-05); `userId` y `createdAt` los pone el servidor y `reason` es opcional (≤300 caracteres).
-Cualquier membership `ACTIVE` registra y todos los roles leen el historial. `customerId` **no se
-expone** todavía: los clientes ya existen (MI-11), pero asociarlos a una salida es CLI-04 y sigue
-pendiente, así que la columna existe y queda nula. Las fotos de producto no cambian y
-`stockQuantity` sigue sin ser escribible desde los endpoints de productos.
+Cualquier membership `ACTIVE` registra y todos los roles leen el historial. **Una salida puede
+asociarse a un cliente** (MI-10 / CLI-04): el alta acepta un `customerId` **opcional y nullable** y
+cada movimiento del contrato lo expone resuelto (`customerId` más `customer: { id, name } | null`).
+Sólo vale para `OUT` —una entrada con cliente responde `400 customer_requires_exit`, porque una
+compra a proveedor no es una venta del cliente— y el cliente debe existir, estar activo y pertenecer
+a la empresa: un id ajeno, inexistente o dado de baja responde el mismo `404 customer_not_found`. Las
+dos validaciones corren **antes** de tocar el stock, así que un movimiento rechazado no registra
+fila ni mueve el stock. La asociación es opcional y **una venta sin cliente identificado sigue siendo
+válida**: se guarda con `customerId: null`. El historial resuelve el cliente en el servidor y **sigue
+mostrando su nombre después de la baja lógica**, porque la lectura por lote incluye las filas dadas
+de baja: el movimiento es la traza de auditoría. En la UI, el formulario de **salida** suma el
+selector opcional con la opción "Sin cliente" y la tabla suma la columna Cliente (nombre, o "—"),
+mientras el formulario de entrada no lo muestra. No hizo falta migración: `customer_id` existe desde
+la migración inicial. Las fotos de producto no cambian y `stockQuantity` sigue sin ser escribible
+desde los endpoints de productos.
 
 **Clientes.** Padrón por empresa en `/dashboard/clients`: listado con búsqueda, alta y edición en un
 formulario en la misma página, y baja con confirmación en dos pasos. `GET
@@ -132,9 +146,10 @@ contacto— y `DELETE` responde `204` con **baja lógica**: la fila queda, pero 
 del listado y de las lecturas, y un segundo `DELETE` responde `404 customer_not_found`. **No hay
 unicidad de email** porque el esquema no tiene índice único, así que dos clientes de la misma empresa
 pueden compartirlo. **Cualquier membership `ACTIVE`** crea, edita y da de baja, y todos los roles
-leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404`. La tabla **no**
-muestra columnas de "Compras"/"Total" porque dependen de asociar clientes a las salidas (CLI-04),
-que sigue fuera de alcance: por eso `customerId` continúa nulo en los movimientos.
+leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404`. Las salidas pueden
+asociarse a un cliente (MI-10, ver **Movimientos de stock**), pero **el resumen de compras por
+cliente no está construido**: el padrón no muestra columnas "Compras"/"Total" (decisión L4 de
+`odd/tasks/customer-links.md`), así que la tabla sigue mostrando sólo los datos de contacto.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
@@ -316,8 +331,8 @@ una membership `ACTIVE` (ver la sección siguiente).
 | `GET /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 429, 500 | Lee un producto; uno de otra empresa y uno dado de baja responden el mismo 404 |
 | `PATCH /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 409 (`sku_already_exists`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` limpia `description` o `photoUrl` |
 | `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
-| `GET /companies/{companyId}/movements?productId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId` y `type` filtran y `limit` va de `1` a `200` (default `50`) |
-| `POST /companies/{companyId}/movements` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante |
+| `GET /companies/{companyId}/movements?productId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId` y `type` filtran y `limit` va de `1` a `200` (default `50`). Cada movimiento trae el producto, el usuario y el cliente resueltos por la API: `customer` es `null` cuando no hay asociación y **sigue resolviéndose después de la baja lógica del cliente** |
+| `POST /companies/{companyId}/movements` | sí | 400 (`customer_requires_exit`), 401, 403 (`company_access_forbidden`), 404 (`product_not_found` / `customer_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante. Acepta un `customerId` opcional que **sólo es válido con `type: OUT`**; el cliente se valida antes de escribir, así que un rechazo no toca el stock |
 | `GET /companies/{companyId}/customers?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los clientes activos ordenados por nombre y luego por id; `search` compara por subcadena, sin distinguir mayúsculas, contra nombre, email o teléfono |
 | `POST /companies/{companyId}/customers` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Da de alta un cliente y responde `201`; escribe cualquier membership `ACTIVE` |
 | `GET /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Lee un cliente; uno de otra empresa y uno dado de baja responden el mismo 404 |
@@ -595,7 +610,8 @@ producto en sí**, no la infraestructura.
 
 - [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView`.
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
-- [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono. La vinculación a las salidas (CLI-04) sigue pendiente.
+- [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
+- [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.
 - [ ] **Notificaciones de stock bajo** — MI-12.
 
 ### Polish (Fase 4)

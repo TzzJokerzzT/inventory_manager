@@ -67,8 +67,8 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 > stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
 > ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
 > por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
-> los roles leen el historial. `customerId` **no se expone** porque la feature de clientes (MI-11)
-> todavía no existe: la columna existe y queda nula, así que CLI-04 sigue pendiente.
+> los roles leen el historial. `customerId` **no se expone** porque asociar clientes a las salidas es
+> CLI-04 y sigue pendiente (el padrón de clientes ya existe, ver § 5): la columna existe y queda nula.
 
 ### 5. Gestión de Clientes
 
@@ -79,6 +79,17 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | CLI-03 | Eliminación lógica de clientes | Media |
 | CLI-04 | Asociación de clientes a movimientos de salida (ventas) | Media |
 | CLI-05 | Listado y búsqueda de clientes | Media |
+
+> **Estado (MI-11, `odd/tasks/customers.md`):** CLI-01, CLI-02, CLI-03 y CLI-05 están implementados:
+alta, edición parcial y baja lógica de clientes, más el listado con búsqueda por nombre, email o
+teléfono (subcadena, sin distinguir mayúsculas; orden por nombre y luego id). La **baja es lógica**
+(`deletedAt`): el cliente desaparece del listado y de las lecturas, y un segundo `DELETE` responde
+`404`. La autorización es una decisión explícita del humano: **cualquier membership `ACTIVE` crea,
+edita y da de baja**, y todos los roles leen; el guard es el contexto de empresa, así que no hay una
+fila nueva en la matriz de autorización. `email`, `phone` y `address` son opcionales y un valor vacío
+se guarda como `null`; **no hay unicidad de email** porque el esquema no define índice único.
+**CLI-04 (asociar clientes a los movimientos de salida) sigue pendiente**: no hay campos de compras
+en la UI y `customerId` continúa nulo en los movimientos.
 
 ### 6. Gestión Multi-Empresa
 
@@ -194,7 +205,7 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 
 ### Fase 3 — Clientes y Alertas
 
-- [ ] CRUD de Clientes
+- [x] CRUD de Clientes
 - [ ] Vinculación de clientes a salidas
 - [ ] Notificaciones de stock bajo en UI
 

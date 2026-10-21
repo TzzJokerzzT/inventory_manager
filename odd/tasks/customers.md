@@ -67,12 +67,12 @@ S9. **Verificación.** Suites completas en verde (baseline actual: API 53 suites
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | S7, S9 | parent | C1 |
-| T2 | Backend: entity `Customer`, puerto, error y casos de uso | S1-S6 | worker | C2 |
-| T3 | Backend: adaptadores Prisma e in-memory, controller, validador, rutas y error handler | S5, S7 | worker | C3 |
-| T4 | Frontend: schemas, hooks y UI real de clientes | S7, S8 | worker | C4 |
-| T5 | Verificación integral | S9 | parent | — |
-| T6 | Sincronizar README y `docs/Project.md` | S9 | parent | C5 |
+| T1 | Contrato OpenAPI + regenerar tipos web | S7, S9 | parent | `c075410` (C2) |
+| T2 | Backend: entity `Customer`, puerto, error y casos de uso | S1-S6 | worker | `c96a3ab` (C1) |
+| T3 | Backend: adaptadores Prisma e in-memory, controller, validador, rutas y error handler | S5, S7 | worker | `c075410` (C2; el in-memory entró en C1) |
+| T4 | Frontend: schemas, hooks y UI real de clientes | S7, S8 | worker | `51263ed` (C3) |
+| T5 | Verificación integral | S9 | parent | — (verificación, sin commit) |
+| T6 | Sincronizar README y `docs/Project.md` | S9 | parent | C4 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -87,3 +87,24 @@ esa asociación.
 L4. Decisión del orquestador: no hay unicidad de email porque el esquema no la define
 (`@@index([companyId, deletedAt])` es lo único que hay); el email se normaliza a minúsculas para
 que la búsqueda y la comparación sean canónicas, pero dos clientes pueden compartirlo.
+
+L5. Cierre de la feature. Tres commits de código:
+
+| Commit | Contenido |
+| --- | --- |
+| `c96a3ab` | `feat(api): add the customer entity, repository port and use cases` — entity `Customer`, error `CustomerNotFoundError`, puerto, los cinco casos de uso, adaptador in-memory, los tests de dominio/aplicación y este documento de tarea |
+| `c075410` | `feat(api): expose the customers endpoints` — adaptador Prisma, controller, validador, rutas, error handler, el contrato OpenAPI con las cinco operaciones y los tipos regenerados del frontend |
+| `51263ed` | `feat(web): wire the customers list, form and search` — schemas y hooks de cliente, lista con búsqueda, formulario en la misma página, baja en dos pasos y limpieza del mock muerto |
+
+Verificación (T5): API 58 suites / 773 tests y web 92 suites / 634 tests en verde, `check-types`
+limpio en las dos apps, `biome check .` limpio y el test de drift de OpenAPI en verde.
+
+En `51263ed` se eliminó el bloque muerto `CustomerRow` + `customers` de
+`apps/web/src/utils/mockData.ts` (85 líneas): la UI lee datos reales y el mock ya no tenía quien lo
+consumiera.
+
+Entrega: la feature quedó en tres slices sobre la rama `feat/refactor/product-frontend-create-product`;
+el push y el PR los decide el humano.
+
+Pendiente del humano: la worker de backend dejó un directorio de scratch en `/tmp`, fuera del
+worktree; debe borrarlo el humano (esta tarea no borra archivos).

@@ -27,9 +27,12 @@ invitaciones y notificaciones), **la firma de subidas de media por empresa ya es
 **el catálogo de productos es el primer módulo de negocio terminado** (CRUD por empresa con SKU único,
 búsqueda, baja lógica y foto subida con firma), **los movimientos de stock también están
 terminados** (entradas y salidas con actualización atómica del stock, historial filtrable e
-auditoría inmutable de usuario, fecha y motivo), junto con el shell de la aplicación, la vista del
-dashboard y el design system. Quedan pendientes **clientes, notificaciones de stock bajo, los datos
-reales del dashboard y la recuperación de contraseña**.
+auditoría inmutable de usuario, fecha y motivo) y **el padrón de clientes está cerrado** (CRUD por
+empresa con baja lógica y búsqueda por nombre, email o teléfono), junto con el shell de la
+aplicación, la vista del dashboard y el design system. Los clientes se gestionan **por empresa y
+cualquier miembro activo** los crea, edita y da de baja; el **historial de compras** espera a que se
+asocien a las salidas de stock (CLI-04). Quedan pendientes **las notificaciones de stock bajo, los
+datos reales del dashboard y la recuperación de contraseña**.
 Cada movimiento y el cambio de stock ocurren en **una sola transacción** —una salida nunca puede
 superar el stock disponible: la perdedora de dos salidas concurrentes responde `409
 insufficient_stock` sin registrar nada— y los movimientos son **inmutables**, porque son la traza de
@@ -40,7 +43,7 @@ El repositorio y el stack de tests ya están en pie.
 | ------------ | -------- |
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 25 operaciones en `openapi.yaml` |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 32 operaciones en `openapi.yaml` |
 | **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
 | **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
@@ -50,9 +53,10 @@ El repositorio y el stack de tests ya están en pie.
 | **Miembros** | ✅ invitación, listado, cambio de rol, revocación y salida por empresa, más invitaciones y notificaciones en `/me` |
 | **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica y foto firmada a Cloudinary |
 | **Movimientos** | ✅ entradas y salidas con stock atómico (una transacción con guard `stockQuantity >= quantity`), historial por producto y auditoría de usuario/fecha/motivo |
+| **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE` |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición) y los movimientos (formulario e historial) |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda y formulario) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -77,9 +81,8 @@ no existe.**
 
 **Empresas.** Alta de empresa con la membership de dueño (`OWNER`) creada en la misma transacción;
 listado de las empresas del usuario (solo memberships `ACTIVE`); endpoint de contexto que resuelve
-la empresa y el rol del usuario; y switch de empresa en la barra superior. Clientes está solo en el
-esquema de datos —no hay endpoints de negocio ni pantallas todavía—, así que el aislamiento por
-empresa aplica hoy a lo que está construido (empresas, media, miembros, productos y movimientos).
+la empresa y el rol del usuario; y switch de empresa en la barra superior. El aislamiento por empresa
+cubre todo lo que está construido (empresas, media, miembros, productos, movimientos y clientes).
 
 **Miembros de la empresa.** Invitación por email, listado de miembros, cambio de rol, revocación y
 salida de la empresa, más el listado y la aceptación de invitaciones y las notificaciones del
@@ -113,9 +116,25 @@ responde `409 insufficient_stock` con el stock disponible, sin registrar nada. L
 **inmutables** —no hay endpoints de edición ni de borrado— porque son la traza de auditoría del stock
 (MOV-05); `userId` y `createdAt` los pone el servidor y `reason` es opcional (≤300 caracteres).
 Cualquier membership `ACTIVE` registra y todos los roles leen el historial. `customerId` **no se
-expone** porque la feature de clientes todavía no existe (MI-11): la columna existe y queda nula. Las
-fotos de producto no cambian y `stockQuantity` sigue sin ser escribible desde los endpoints de
-productos.
+expone** todavía: los clientes ya existen (MI-11), pero asociarlos a una salida es CLI-04 y sigue
+pendiente, así que la columna existe y queda nula. Las fotos de producto no cambian y
+`stockQuantity` sigue sin ser escribible desde los endpoints de productos.
+
+**Clientes.** Padrón por empresa en `/dashboard/clients`: listado con búsqueda, alta y edición en un
+formulario en la misma página, y baja con confirmación en dos pasos. `GET
+/companies/{id}/customers?search=` devuelve los clientes **activos** ordenados por nombre y luego por
+id, y `search` compara por subcadena y sin distinguir mayúsculas contra **nombre, email o teléfono**
+(el tope del contrato son 100 caracteres). Los campos son `name` (obligatorio, 1..120 tras trim) y
+tres contactos opcionales: `email` (se guarda en minúsculas, con el formato validado y ≤254),
+`phone` (≤40, sólo dígitos y `+ - ( ) . espacio`) y `address` (≤300); un valor vacío o sólo espacios
+se guarda como `null`. `PATCH` es **parcial** —un campo ausente no cambia y un `null` limpia el
+contacto— y `DELETE` responde `204` con **baja lógica**: la fila queda, pero el cliente desaparece
+del listado y de las lecturas, y un segundo `DELETE` responde `404 customer_not_found`. **No hay
+unicidad de email** porque el esquema no tiene índice único, así que dos clientes de la misma empresa
+pueden compartirlo. **Cualquier membership `ACTIVE`** crea, edita y da de baja, y todos los roles
+leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404`. La tabla **no**
+muestra columnas de "Compras"/"Total" porque dependen de asociar clientes a las salidas (CLI-04),
+que sigue fuera de alcance: por eso `customerId` continúa nulo en los movimientos.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
@@ -134,9 +153,6 @@ indicadores y la tabla son mock declarado.
 
 **Dashboard con datos reales.** Reemplazar los datos de muestra por los indicadores reales
 (MI-6/MI-9).
-
-**Gestión de clientes.** Alta, edición y baja con historial de compras alimentado por los
-movimientos de salida (MI-11; vista MI-24).
 
 **Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
 listado de reposición (MI-12).
@@ -206,6 +222,7 @@ apps/web/
 │       ├── member/               # invitaciones, roster de miembros y salida de la empresa
 │       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
 │       ├── movement/             # entradas y salidas de stock (formulario e historial)
+│       ├── client/               # padrón de clientes (lista, búsqueda, formulario y baja)
 │       ├── dashboard/            # vista del dashboard (datos de muestra)
 │       └── shell/                # el shell de la aplicación
 └── public/
@@ -258,7 +275,7 @@ rompió.
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
 comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
-(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (25 operaciones): métodos, seguridad
+(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (32 operaciones): métodos, seguridad
 y códigos de error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
 **genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
 `lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
@@ -269,8 +286,9 @@ caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build
 
 ### Endpoints de la API
 
-Las operaciones de autenticación, empresas, media, miembros, invitaciones, notificaciones, productos
-y movimientos del contrato (`apps/api/openapi.yaml`, 25 operaciones en total), servidas en `/docs`.
+Las operaciones de autenticación, empresas, media, miembros, invitaciones, notificaciones, productos,
+movimientos y clientes del contrato (`apps/api/openapi.yaml`, 32 operaciones en total), servidas en
+`/docs`.
 «Token» = cabecera `Authorization: Bearer <JWT>`; el `429` es el rate limit (el global aplica a todas
 las rutas, y login/register/refresh suman uno propio más estricto). Las rutas de empresa exigen además
 una membership `ACTIVE` (ver la sección siguiente).
@@ -300,6 +318,11 @@ una membership `ACTIVE` (ver la sección siguiente).
 | `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
 | `GET /companies/{companyId}/movements?productId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId` y `type` filtran y `limit` va de `1` a `200` (default `50`) |
 | `POST /companies/{companyId}/movements` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante |
+| `GET /companies/{companyId}/customers?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los clientes activos ordenados por nombre y luego por id; `search` compara por subcadena, sin distinguir mayúsculas, contra nombre, email o teléfono |
+| `POST /companies/{companyId}/customers` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Da de alta un cliente y responde `201`; escribe cualquier membership `ACTIVE` |
+| `GET /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Lee un cliente; uno de otra empresa y uno dado de baja responden el mismo 404 |
+| `PATCH /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` (o un valor en blanco) limpia `email`, `phone` o `address` |
+| `DELETE /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204`; un segundo `DELETE` responde `404` |
 | `GET /me/invitations` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las invitaciones pendientes del usuario autenticado; sin nada pendiente responde `200` con `[]` |
 | `POST /me/invitations/accept` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Acepta todas las invitaciones pendientes; es idempotente y no lleva body |
 | `GET /me/notifications` | sí | 401, 403 (`user_not_provisioned`), 429, 500 | Lista las notificaciones del usuario, más recientes primero; sin novedades responde `200` con `[]` |
@@ -316,15 +339,15 @@ completo del código de la aplicación**. Hoy hay tres piezas que lo materializa
   `ACTIVE` en la empresa del path (`/companies/:companyId/*`) y resuelve su rol. Un no-miembro y una
   empresa inexistente responden el mismo 403 (`company_access_forbidden`) para que los ids no se
   puedan enumerar.
-- **En cada consulta de producto**, el `companyId` viaja en el `WHERE` y nunca en un filtro posterior
-  sobre lo ya leído, y el repositorio excluye las filas con `deletedAt`: un producto de otra empresa
-  y uno inexistente responden el mismo `404 product_not_found`.
+- **En cada consulta de producto o de cliente**, el `companyId` viaja en el `WHERE` y nunca en un
+  filtro posterior sobre lo ya leído, y el repositorio excluye las filas con `deletedAt`: un producto
+  (o un cliente) de otra empresa y uno inexistente responden el mismo `404` (`product_not_found`,
+  `customer_not_found`).
 
 El límite honesto: esto cubre lo que está construido (empresas, contexto, firma de media, miembros,
-productos y movimientos). Los recursos por empresa que todavía no existen (clientes) **deberán
-colgarse del mismo sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo
-el mayor riesgo de seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer
-su test.
+productos, movimientos y clientes). Cualquier recurso nuevo por empresa **debe colgarse del mismo
+sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo el mayor riesgo de
+seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer su test.
 
 ---
 
@@ -572,7 +595,7 @@ producto en sí**, no la infraestructura.
 
 - [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView`.
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
-- [ ] **CRUD de clientes** — MI-11 (vista MI-24).
+- [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono. La vinculación a las salidas (CLI-04) sigue pendiente.
 - [ ] **Notificaciones de stock bajo** — MI-12.
 
 ### Polish (Fase 4)

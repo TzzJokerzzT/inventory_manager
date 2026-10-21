@@ -29,11 +29,12 @@ búsqueda, baja lógica y foto subida con firma), **los movimientos de stock tam
 terminados** (entradas y salidas con actualización atómica del stock, historial filtrable e
 auditoría inmutable de usuario, fecha y motivo) y **el padrón de clientes está cerrado** (CRUD por
 empresa con baja lógica y búsqueda por nombre, email o teléfono), junto con el shell de la
-aplicación, la vista del dashboard y el design system. Los clientes se gestionan **por empresa y
+aplicación, la vista del dashboard —que ya tiene **gráficos con datos reales** de la empresa activa
+(MI-14) mientras sus KPIs siguen pendientes— y el design system. Los clientes se gestionan **por empresa y
 cualquier miembro activo** los crea, edita y da de baja, y **la vinculación de clientes a las salidas
 de stock (MI-10 / CLI-04) también está hecha**: una salida puede asociarse a un cliente —opcional,
 nunca una entrada— y el historial resuelve el nombre del lado del servidor, incluso después de que
-el cliente se dé de baja. Quedan pendientes **las notificaciones de stock bajo, los datos reales del
+el cliente se dé de baja. Quedan pendientes **las notificaciones de stock bajo, los KPIs reales del
 dashboard y la recuperación de contraseña** (el resumen de compras por cliente, con sus columnas,
 sigue sin construirse).
 Cada movimiento y el cambio de stock ocurren en **una sola transacción** —una salida nunca puede
@@ -46,7 +47,7 @@ El repositorio y el stack de tests ya están en pie.
 | ------------ | -------- |
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 32 operaciones en `openapi.yaml` |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 33 operaciones en `openapi.yaml` |
 | **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
 | **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
@@ -59,7 +60,7 @@ El repositorio y el stack de tests ya están en pie.
 | **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE`, las salidas pueden asociarse a un cliente (MI-10) y el detalle de un cliente lista sus salidas |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard (gráficos con datos reales; KPIs, alertas y tabla de muestra), páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -168,9 +169,23 @@ principal sigue mostrando sólo los datos de contacto.
 nunca el cliente.
 
 **Shell y dashboard.** El shell de la aplicación (barra lateral con navegación, switch de empresa,
-logout y modo oscuro) y una vista de dashboard con KPIs, alertas y tabla de stock crítico **con
-datos de muestra**: el nombre de la empresa activa es real (viene de `GET /companies`), pero los
-indicadores y la tabla son mock declarado.
+logout y modo oscuro) y la vista de dashboard de la empresa activa, que mezcla datos reales y datos
+de muestra **y lo dice en pantalla**: la sección **Gráficos** son datos reales de la empresa activa
+(MI-14), mientras los KPIs, las alertas y la tabla de stock crítico siguen siendo números de ejemplo
+(MI-6/MI-9) —esos tres bloques son los que cubre el aviso "Datos de muestra"—. Los tres gráficos son:
+
+- **Distribución del stock** por **estado** (agotados contra con stock), no por categoría: DASH-02
+  pedía categorías, pero esa feature todavía no existe (el `categoryId` de todos los productos es
+  nulo), así que un gráfico por categoría mostraría una única porción "Sin categoría". Cuando las
+  categorías existan, reemplazan esta división; no se suma un cuarto gráfico.
+- **Valor del inventario**: `precio × stock` de cada producto, sumado en **centavos enteros** (el
+  precio es un string decimal y sumar floats mostraría un total que nadie puede reconciliar), con el
+  total de la empresa y las barras de los **8 productos de mayor valor**.
+- **Evolución de entradas y salidas**: barras apiladas por **día UTC** de los últimos 30 días, desde
+  `GET /companies/{id}/reports/movements?days=` (ventana de `1` a `90` días, `days` por defecto `30`,
+  días sin movimientos rellenados con cero y del más viejo al más nuevo).
+
+Los gráficos usan **Recharts** (ya estaba en el stack) y tienen estado de carga, de error y de vacío.
 
 **Design system.** Paleta de tokens (modo claro y oscuro), componentes base (`Button`, `Card`,
 `Spinner`, `Toast`) y componentes del design system (`Alert`, `DataTable`, `KpiCard`, `StockBadge`,
@@ -178,8 +193,9 @@ indicadores y la tabla son mock declarado.
 
 ### Planificado
 
-**Dashboard con datos reales.** Reemplazar los datos de muestra por los indicadores reales
-(MI-6/MI-9).
+**Dashboard con datos reales.** Reemplazar los datos de muestra de los KPIs, las alertas y la tabla
+de stock crítico por los indicadores reales (MI-6/MI-9). Los gráficos ya son reales (MI-14, ver
+**Shell y dashboard**).
 
 **Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
 listado de reposición (MI-12).
@@ -250,7 +266,7 @@ apps/web/
 │       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
 │       ├── movement/             # entradas y salidas de stock (formulario e historial)
 │       ├── client/               # padrón de clientes (lista, búsqueda, formulario, baja y detalle)
-│       ├── dashboard/            # vista del dashboard (datos de muestra)
+│       ├── dashboard/            # vista del dashboard (gráficos reales, KPIs de muestra)
 │       └── shell/                # el shell de la aplicación
 └── public/
 ```
@@ -276,8 +292,9 @@ apps/api/
 │   ├── application/              # casos de uso
 │   │   ├── ports/                # IdentityProvider, MediaUploadSigner
 │   │   └── use-cases/            # create-company, list-companies, login, register, refresh,
-│   │                             # productos (create/list/get/update/delete) y movimientos
-│   │                             # (register-stock-movement, list-stock-movements)
+│   │                             # productos (create/list/get/update/delete), movimientos
+│   │                             # (register-stock-movement, list-stock-movements) y el reporte
+│   │                             # del dashboard (get-movement-trend)
 │   ├── infrastructure/           # implementaciones de los puertos
 │   │   ├── database/             # Prisma: repositorios y mapeos
 │   │   ├── auth0/                # validación del JWT de Auth0 (JWKS)
@@ -302,7 +319,7 @@ rompió.
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
 comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
-(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (32 operaciones): métodos, seguridad
+(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (33 operaciones): métodos, seguridad
 y códigos de error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
 **genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
 `lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
@@ -314,8 +331,8 @@ caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build
 ### Endpoints de la API
 
 Las operaciones de autenticación, empresas, media, miembros, invitaciones, notificaciones, productos,
-movimientos y clientes del contrato (`apps/api/openapi.yaml`, 32 operaciones en total), servidas en
-`/docs`.
+movimientos, clientes y reportes del contrato (`apps/api/openapi.yaml`, 33 operaciones en total),
+servidas en `/docs`.
 «Token» = cabecera `Authorization: Bearer <JWT>`; el `429` es el rate limit (el global aplica a todas
 las rutas, y login/register/refresh suman uno propio más estricto). Las rutas de empresa exigen además
 una membership `ACTIVE` (ver la sección siguiente).
@@ -345,6 +362,7 @@ una membership `ACTIVE` (ver la sección siguiente).
 | `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
 | `GET /companies/{companyId}/movements?productId=&customerId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId`, `customerId` y `type` filtran (combinables entre sí) y `limit` va de `1` a `200` (default `50`). `customerId` es un filtro de lectura, no un recurso: un id de otra empresa no devuelve filas en vez de un `404`. Cada movimiento trae el producto, el usuario y el cliente resueltos por la API: `customer` es `null` cuando no hay asociación y **sigue resolviéndose después de la baja lógica del cliente** |
 | `POST /companies/{companyId}/movements` | sí | 400 (`customer_requires_exit`), 401, 403 (`company_access_forbidden`), 404 (`product_not_found` / `customer_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante. Acepta un `customerId` opcional que **sólo es válido con `type: OUT`**; el cliente se valida antes de escribir, así que un rechazo no toca el stock |
+| `GET /companies/{companyId}/reports/movements?days=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Reporte del dashboard: entradas y salidas **por día UTC**, del más viejo al más nuevo y con los días sin movimientos en cero; `days` va de `1` a `90` (default `30`) |
 | `GET /companies/{companyId}/customers?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los clientes activos ordenados por nombre y luego por id; `search` compara por subcadena, sin distinguir mayúsculas, contra nombre, email o teléfono |
 | `POST /companies/{companyId}/customers` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Da de alta un cliente y responde `201`; escribe cualquier membership `ACTIVE` |
 | `GET /companies/{companyId}/customers/{customerId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`customer_not_found`), 429, 500 | Lee un cliente; uno de otra empresa y uno dado de baja responden el mismo 404 |
@@ -372,7 +390,8 @@ completo del código de la aplicación**. Hoy hay tres piezas que lo materializa
   `customer_not_found`).
 
 El límite honesto: esto cubre lo que está construido (empresas, contexto, firma de media, miembros,
-productos, movimientos y clientes). Cualquier recurso nuevo por empresa **debe colgarse del mismo
+productos, movimientos, clientes y el reporte del dashboard, que lee con `where: { companyId,
+createdAt: { gte: since } }`). Cualquier recurso nuevo por empresa **debe colgarse del mismo
 sub-router protegido**, no inventar un camino nuevo a la membership. Sigue siendo el mayor riesgo de
 seguridad del proyecto: cada consulta nueva debe filtrar por `company_id` y traer su test.
 
@@ -620,7 +639,7 @@ producto en sí**, no la infraestructura.
 
 ### Core de inventario (Fase 2 y 3)
 
-- [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView`.
+- [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView` (KPIs, alertas y tabla de stock crítico). Los gráficos ya son reales (MI-14).
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
 - [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
 - [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.
@@ -629,7 +648,7 @@ producto en sí**, no la infraestructura.
 ### Polish (Fase 4)
 
 - [ ] **Recuperación de contraseña** — MI-16.
-- [ ] **Gráficos** — MI-14.
+- [x] **Gráficos** — MI-14 (DASH-02): tres gráficos con datos reales de la empresa activa en Recharts —distribución del stock por estado, valor del inventario en centavos enteros y evolución de entradas/salidas por día UTC desde `GET /companies/{id}/reports/movements?days=`—. El desglose por categoría espera la feature de categorías.
 - [ ] **Filtros y búsqueda** — MI-15.
 - [ ] **Notificaciones por email** — MI-13.
 

@@ -50,11 +50,11 @@ S7. **Verificación.** Suites completas en verde (baseline: API 58 suites/819 te
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | S3, S7 | parent | C1 |
-| T2 | Backend: puerto `findSince`, caso de uso del reporte, controller, validador y tests | S3, S6 | worker | C1 |
-| T3 | Frontend: schemas, hook y los tres gráficos con Recharts en el dashboard | S2, S4, S5 | worker | C2 |
-| T4 | Verificación integral | S7 | parent | — |
-| T5 | Sincronizar README y `docs/Project.md` | S7 | parent | C3 |
+| T1 | Contrato OpenAPI + regenerar tipos web | S3, S7 | parent | `b79eef9` (C1) |
+| T2 | Backend: puerto `findSince`, caso de uso del reporte, controller, validador y tests | S3, S6 | worker | `b79eef9` (C1) |
+| T3 | Frontend: schemas, hook y los tres gráficos con Recharts en el dashboard | S2, S4, S5 | worker | `e9a5032` (C2) |
+| T4 | Verificación integral | S7 | parent | — (verificación, sin commit) |
+| T5 | Sincronizar README y `docs/Project.md` | S7 | parent | C3 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -77,3 +77,39 @@ creciera, el siguiente paso es un `GROUP BY` en SQL, no un cambio de contrato.
 
 L6. Decisión del orquestador: días UTC, no locales, para que el agregado sea determinístico y no
 dependa de la zona del servidor ni del navegador.
+
+L7. Cierre de MI-14. **Commits:**
+
+- `b79eef9` — `feat(api): add the daily movement trend report` (C1, T1+T2): el contrato
+  (`GET /companies/{companyId}/reports/movements` con `days` de `1` a `90` y default `30`,
+  `MovementTrendPoint` y `MovementTrendResponse`), el puerto `findSince` con sus dos adaptadores
+  (Prisma y memoria), el caso de uso `get-movement-trend.ts` (agregado por día UTC, relleno de ceros y
+  suma de cantidades), el controller, la ruta, el validador, sus tests, y los tipos web regenerados
+  (`apps/web/lib/api/openapi.d.ts`).
+- `e9a5032` — `feat(web): add real-data charts to the dashboard` (C2, T3): los schemas Valibot del
+  reporte, el hook `use-movement-trend`, `chart-shell` con carga/error/vacío y los tres gráficos
+  (estado del stock, valor del inventario y evolución), las libs `inventory-value.ts` y
+  `stock-status.ts` con sus tests, el aviso "Datos de muestra" acotado a KPIs, alertas y tabla, y un
+  mock de Recharts para los tests.
+
+**Verificación (T4, sin commit):** API **59 suites / 844 tests** y web **99 suites / 730 tests** en
+verde, `check-types` limpio en las dos apps, `biome check .` limpio y el test de drift de OpenAPI en
+verde. Sin migración. Contrastado al escribir la documentación: `jest --listTests` sigue listando 59
+archivos en `apps/api` y 99 en `apps/web`, y `openapi.yaml` declara 33 operaciones (el reporte es la
+nueva, y el README se corrigió de 32 a 33).
+
+**Corrección del padre en C2:** `apps/web/src/layout/__tests__/dashboard-page.test.tsx` renderizaba el
+dashboard real sin un `QueryClient` (y sin la API); el padre lo ajustó en el mismo commit stubeando
+los dos hooks de los gráficos (`useProducts` y `useMovementTrend`) y el módulo `recharts`, así que ese
+test sigue siendo de integración de ruta y shell, no de los gráficos.
+
+**Entrega:** dos slices sobre `feat/refactor/product-frontend-create-product`. El push y el PR los
+decide el humano.
+
+**Restos de scratch en `/tmp`** (fuera del worktree, nunca versionados) que el humano debería borrar:
+`base-jest.json` y `new-jest.json` (la corrida diferencial del endpoint de movimientos, 4 suites
+73 → 88 tests) más el directorio `customer-detail-diff.lOQICF`, todos con fecha del 2026-10-21, dentro
+de la ventana de este slice —la atribución es sólo por fecha: `/tmp` arrastra además restos de tareas
+anteriores (`mi10-*`, `mi10-differential.scratch.test.ts`, `products-base-*`, `products-base-dir.txt`,
+`movement-combobox-probe.test.tsx`, `probe.test.tsx`, `served-openapi.json`)—. Ninguno se conserva a
+propósito y ninguno afecta al repo.

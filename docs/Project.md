@@ -26,6 +26,22 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | DASH-04 | Indicador de valor total del inventario | Media |
 | DASH-05 | Filtrado por empresa (si el usuario tiene múltiples) | Alta |
 
+> **Estado (MI-14, `odd/tasks/dashboard-charts.md`):** el dashboard ya tiene **tres gráficos con
+datos reales** de la empresa activa, pero **el dashboard no es real**: los KPIs, las alertas y la
+tabla de stock crítico siguen siendo datos de muestra (MI-6/MI-9), y el aviso "Datos de muestra" se
+acotó a esos tres bloques. Los gráficos son: **distribución del stock por estado** (agotados contra
+con stock) —**no por categoría**: la feature de categorías no existe y el `categoryId` de todos los
+productos es nulo, así que un gráfico por categoría mostraría una sola porción "Sin categoría". El
+**desglose por categoría de DASH-02 queda pendiente de esa feature** y la reemplazará, no se sumará
+como cuarto gráfico—; **valor del inventario** (DASH-04), calculado en el cliente en **centavos
+enteros** desde el precio decimal por el stock, con el total de la empresa y los 8 productos de mayor
+valor: el valor es real **en el gráfico**, mientras la tarjeta de KPI de ese mismo indicador sigue
+siendo mock; y **evolución de entradas/salidas** por **día UTC**, del más viejo al más nuevo y con los
+días sin movimientos en cero, desde `GET /companies/{companyId}/reports/movements?days=` (`days`
+entero de `1` a `90`, default `30`). **DASH-01** (total de productos activos) y **DASH-03** (tabla de
+stock crítico) siguen con datos de muestra; **DASH-05** lo resuelve el contexto de empresa (la empresa
+activa), no un gráfico. Librería: **Recharts**, que ya estaba en el stack.
+
 ### 3. Gestión de Productos
 
 | ID | Requerimiento | Prioridad |
@@ -240,7 +256,7 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 
 ### Fase 4 — Polish
 
-- [ ] Gráficos en el dashboard
+- [x] Gráficos en el dashboard (MI-14: distribución del stock por estado, valor del inventario y evolución de entradas/salidas por día UTC)
 - [ ] Filtros y búsquedas avanzadas
 - [ ] Recuperación de contraseña
 - [ ] Notificaciones por email

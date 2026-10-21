@@ -26,21 +26,29 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | DASH-04 | Indicador de valor total del inventario | Media |
 | DASH-05 | Filtrado por empresa (si el usuario tiene múltiples) | Alta |
 
-> **Estado (MI-14, `odd/tasks/dashboard-charts.md`):** el dashboard ya tiene **tres gráficos con
-datos reales** de la empresa activa, pero **el dashboard no es real**: los KPIs, las alertas y la
-tabla de stock crítico siguen siendo datos de muestra (MI-6/MI-9), y el aviso "Datos de muestra" se
-acotó a esos tres bloques. Los gráficos son: **distribución del stock por estado** (agotados contra
-con stock) —**no por categoría**: la feature de categorías no existe y el `categoryId` de todos los
-productos es nulo, así que un gráfico por categoría mostraría una sola porción "Sin categoría". El
-**desglose por categoría de DASH-02 queda pendiente de esa feature** y la reemplazará, no se sumará
-como cuarto gráfico—; **valor del inventario** (DASH-04), calculado en el cliente en **centavos
-enteros** desde el precio decimal por el stock, con el total de la empresa y los 8 productos de mayor
-valor: el valor es real **en el gráfico**, mientras la tarjeta de KPI de ese mismo indicador sigue
-siendo mock; y **evolución de entradas/salidas** por **día UTC**, del más viejo al más nuevo y con los
-días sin movimientos en cero, desde `GET /companies/{companyId}/reports/movements?days=` (`days`
-entero de `1` a `90`, default `30`). **DASH-01** (total de productos activos) y **DASH-03** (tabla de
-stock crítico) siguen con datos de muestra; **DASH-05** lo resuelve el contexto de empresa (la empresa
-activa), no un gráfico. Librería: **Recharts**, que ya estaba en el stack.
+> **Estado (MI-6, `odd/tasks/dashboard-metrics.md`; gráficos en MI-14):** el dashboard ya **no muestra
+datos de muestra**: los cuatro KPIs, las alertas y la tabla de stock crítico se derivan de dos
+lecturas de la empresa activa —`GET /companies/{companyId}/products`, que devuelve el catálogo
+completo sin paginar, y el reporte de evolución de los últimos 30 días— **sin endpoint nuevo**. El
+aviso "Datos de muestra" se eliminó porque ya no era cierto. **DASH-01** (total de productos activos)
+es real (el tamaño del catálogo); **DASH-03** (tabla de stock crítico) es real y usa el predicado
+`stockQuantity <= lowStockThreshold` —hoy el umbral es siempre 0, así que la tabla son los
+**agotados**; cuando MI-12 permita editarlo, la misma regla cubre el stock bajo sin tocar el
+dashboard—, ordenada por unidades ascendente y luego por nombre, con las columnas Producto, SKU,
+Categoría (**—** mientras no exista la feature), Precio, Unidades y Estado (`StockBadge`); **DASH-04**
+(valor del inventario) es real **en la tarjeta y en el gráfico**, ambos calculados en el cliente en
+**centavos enteros** desde el precio decimal por el stock con el mismo helper, así que muestran el
+mismo total; **DASH-05** lo resuelve el contexto de empresa (la empresa activa: el catálogo y el
+reporte ya vienen filtrados por `companyId`), no un filtro nuevo. **DASH-02** se cumple
+**parcialmente**: el gráfico de distribución del stock es por **estado** (agotados contra con stock),
+**no por categoría**, porque la feature de categorías no existe y el `categoryId` de todos los
+productos es nulo —un gráfico por categoría mostraría una sola porción "Sin categoría"—; el
+**desglose por categoría queda pendiente de esa feature** y la reemplazará, no se sumará como cuarto
+gráfico. Librería: **Recharts**, que ya estaba en el stack. Los tres gráficos son: **distribución del
+stock por estado**; **valor del inventario**, con el total de la empresa y las barras de los 8
+productos de mayor valor; y **evolución de entradas/salidas** por **día UTC**, del más viejo al más
+nuevo y con los días sin movimientos en cero, desde
+`GET /companies/{companyId}/reports/movements?days=` (`days` entero de `1` a `90`, default `30`).
 
 ### 3. Gestión de Productos
 
@@ -244,7 +252,7 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 ### Fase 2 — Core de Inventario
 
 - [x] CRUD de Productos (con SKU y foto)
-- [ ] Dashboard con métricas básicas
+- [x] Dashboard con métricas básicas (MI-6: cuatro KPIs, alertas y tabla de stock crítico con datos reales)
 - [x] Entradas y salidas de stock
 - [x] Historial de movimientos
 

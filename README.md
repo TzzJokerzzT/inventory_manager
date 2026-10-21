@@ -29,14 +29,14 @@ búsqueda, baja lógica y foto subida con firma), **los movimientos de stock tam
 terminados** (entradas y salidas con actualización atómica del stock, historial filtrable e
 auditoría inmutable de usuario, fecha y motivo) y **el padrón de clientes está cerrado** (CRUD por
 empresa con baja lógica y búsqueda por nombre, email o teléfono), junto con el shell de la
-aplicación, la vista del dashboard —que ya tiene **gráficos con datos reales** de la empresa activa
-(MI-14) mientras sus KPIs siguen pendientes— y el design system. Los clientes se gestionan **por empresa y
-cualquier miembro activo** los crea, edita y da de baja, y **la vinculación de clientes a las salidas
-de stock (MI-10 / CLI-04) también está hecha**: una salida puede asociarse a un cliente —opcional,
-nunca una entrada— y el historial resuelve el nombre del lado del servidor, incluso después de que
-el cliente se dé de baja. Quedan pendientes **las notificaciones de stock bajo, los KPIs reales del
-dashboard y la recuperación de contraseña** (el resumen de compras por cliente, con sus columnas,
-sigue sin construirse).
+aplicación, **la vista del dashboard, que ya es enteramente real** —cuatro KPIs, alertas, tabla de
+stock crítico y los gráficos, todos derivados de la empresa activa (MI-6 y MI-14)— y el design
+system. Los clientes se gestionan **por empresa y cualquier miembro activo** los crea, edita y da de
+baja, y **la vinculación de clientes a las salidas de stock (MI-10 / CLI-04) también está hecha**:
+una salida puede asociarse a un cliente —opcional, nunca una entrada— y el historial resuelve el
+nombre del lado del servidor, incluso después de que el cliente se dé de baja. Quedan pendientes
+**las notificaciones de stock bajo y la recuperación de contraseña** (el resumen de compras por
+cliente, con sus columnas, sigue sin construirse).
 Cada movimiento y el cambio de stock ocurren en **una sola transacción** —una salida nunca puede
 superar el stock disponible: la perdedora de dos salidas concurrentes responde `409
 insufficient_stock` sin registrar nada— y los movimientos son **inmutables**, porque son la traza de
@@ -60,7 +60,7 @@ El repositorio y el stack de tests ya están en pie.
 | **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE`, las salidas pueden asociarse a un cliente (MI-10) y el detalle de un cliente lista sus salidas |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), dashboard (gráficos con datos reales; KPIs, alertas y tabla de muestra), páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard con datos reales (cuatro KPIs, alertas, tabla de stock crítico y los gráficos de MI-14, todo derivado de la empresa activa), páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -169,10 +169,32 @@ principal sigue mostrando sólo los datos de contacto.
 nunca el cliente.
 
 **Shell y dashboard.** El shell de la aplicación (barra lateral con navegación, switch de empresa,
-logout y modo oscuro) y la vista de dashboard de la empresa activa, que mezcla datos reales y datos
-de muestra **y lo dice en pantalla**: la sección **Gráficos** son datos reales de la empresa activa
-(MI-14), mientras los KPIs, las alertas y la tabla de stock crítico siguen siendo números de ejemplo
-(MI-6/MI-9) —esos tres bloques son los que cubre el aviso "Datos de muestra"—. Los tres gráficos son:
+logout y modo oscuro) y la vista de dashboard de la empresa activa, **toda con datos reales**: los
+cuatro KPIs, las alertas y la tabla de stock crítico (MI-6) más los tres gráficos (MI-14). Los datos
+salen de dos lecturas de la empresa activa —`GET /companies/{id}/products`, que ya devuelve el
+catálogo completo sin paginar, y el reporte de evolución de los últimos 30 días—, así que **no hay
+endpoint de métricas** ni datos de muestra: el aviso "Datos de muestra" se eliminó porque ya no era
+cierto. Los cuatro KPIs son:
+
+1. **Total de productos** — el tamaño del catálogo activo de la empresa (DASH-01).
+2. **Valor del inventario** — `precio × stock` de todo el catálogo, sumado en **centavos enteros** con
+   el mismo helper del gráfico de valor, así que la tarjeta y el gráfico muestran el mismo total
+   (DASH-04).
+3. **Productos con stock crítico** — los productos donde `stockQuantity <= lowStockThreshold`. Hoy el
+   umbral es siempre 0, así que son los **agotados**; cuando MI-12 permita editarlo, la misma regla
+   cubre el stock bajo sin tocar el dashboard.
+4. **Unidades movidas hoy (UTC)** — `entries + exits` del último punto del reporte de 30 días. Es UTC
+   y así se rotula, porque el reporte agrega por **día UTC**: el número no es "hoy" en el calendario
+   del navegador.
+
+La **tabla de stock crítico** usa ese mismo predicado —el KPI, las alertas y la tabla no pueden
+discrepar— y ordena por unidades ascendente y luego por nombre, con las columnas Producto, SKU,
+Categoría, Precio, Unidades y Estado (`StockBadge`); la Categoría es **—** mientras no exista la
+feature de categorías. Las **alertas** salen de los mismos números: una de peligro si hay agotados,
+una de advertencia si hay críticos que todavía tienen unidades y una informativa cuando no hay
+ninguna. Mientras las lecturas no responden los KPIs muestran **—** (nunca un cero que nadie
+calculó), un fallo de lectura se muestra como una sola alerta y sin productos críticos la tabla lo
+dice. Los tres gráficos son:
 
 - **Distribución del stock** por **estado** (agotados contra con stock), no por categoría: DASH-02
   pedía categorías, pero esa feature todavía no existe (el `categoryId` de todos los productos es
@@ -192,10 +214,6 @@ Los gráficos usan **Recharts** (ya estaba en el stack) y tienen estado de carga
 `FormField`, `Checkbox`), con una página de referencia en `/design-system`.
 
 ### Planificado
-
-**Dashboard con datos reales.** Reemplazar los datos de muestra de los KPIs, las alertas y la tabla
-de stock crítico por los indicadores reales (MI-6/MI-9). Los gráficos ya son reales (MI-14, ver
-**Shell y dashboard**).
 
 **Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
 listado de reposición (MI-12).
@@ -266,7 +284,7 @@ apps/web/
 │       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
 │       ├── movement/             # entradas y salidas de stock (formulario e historial)
 │       ├── client/               # padrón de clientes (lista, búsqueda, formulario, baja y detalle)
-│       ├── dashboard/            # vista del dashboard (gráficos reales, KPIs de muestra)
+│       ├── dashboard/            # vista del dashboard (KPIs, alertas, tabla y gráficos reales)
 │       └── shell/                # el shell de la aplicación
 └── public/
 ```
@@ -639,7 +657,7 @@ producto en sí**, no la infraestructura.
 
 ### Core de inventario (Fase 2 y 3)
 
-- [ ] **Dashboard con datos reales** — MI-6/MI-9: reemplazar los datos de muestra de `DashboardView` (KPIs, alertas y tabla de stock crítico). Los gráficos ya son reales (MI-14).
+- [x] **Dashboard con datos reales** — MI-6: los cuatro KPIs (total de productos, valor del inventario, productos con stock crítico y unidades movidas hoy en UTC), las alertas y la tabla de stock crítico se derivan de `GET /companies/{id}/products` y del reporte de evolución, y el aviso "Datos de muestra" se eliminó porque ya no había datos de muestra. Los gráficos ya eran reales (MI-14). MI-9 nombra el **historial de movimientos**, que está construido desde MI-8 (`/dashboard/movements`): no queda nada mockeado en el dashboard.
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
 - [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
 - [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.

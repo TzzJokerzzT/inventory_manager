@@ -53,10 +53,10 @@ migración.
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Documento de feature | — | parent | C1 |
-| T2 | Frontend: KPIs, alertas y tabla reales; quitar los mocks del dashboard | S2-S6 | worker | C1 |
-| T3 | Verificación integral | S7 | parent | — |
-| T4 | Sincronizar README y `docs/Project.md` | S7 | parent | C2 |
+| T1 | Documento de feature | — | parent | `52635ad` (C1) |
+| T2 | Frontend: KPIs, alertas y tabla reales; quitar los mocks del dashboard | S2-S6 | worker | `52635ad` (C1) |
+| T3 | Verificación integral | S7 | parent | — (verificación, sin commit) |
+| T4 | Sincronizar README y `docs/Project.md` | S7 | parent | C2 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -73,3 +73,36 @@ no `=== 0`, para que MI-12 lo herede sin tocar el dashboard. Hoy el umbral es si
 L5. Decisión del orquestador: no se agrega endpoint. `GET /products` ya devuelve el catálogo completo
 (sin paginar) y el reporte de evolución ya trae el día de hoy; un endpoint de métricas duplicaría
 lecturas y contrato.
+
+L6. Cierre de MI-6. **Commit:**
+
+- `52635ad` — `feat(web): derive the dashboard metrics from real data` (C1, T1+T2): el documento de
+  feature, `dashboard-metrics.ts` (predicado `isCritical` con `stockQuantity <= lowStockThreshold`,
+  conteo de críticos/agotados/críticos con unidades, `unitsToday` del último punto de la serie y las
+  filas ordenadas por unidades y luego por nombre), los cuatro KPIs reales (`KPIs.tsx`),
+  `StockAlerts` derivado de los mismos números y `stockColumns.tsx` sobre el contrato real del
+  producto; el dashboard deja de importar `@/src/utils/mockData` y **el aviso "Datos de muestra"
+  desaparece**. Los gráficos de MI-14 quedan intactos.
+
+**Bloqueante que resolvió el padre:** el worker no podía cerrar S5 sin tocar archivos fuera de su
+superficie de edición, así que el padre borró el `apps/web/src/utils/Columns.tsx` que había quedado
+muerto (sin importadores) y recortó `apps/web/src/utils/mockData.ts` a `formatDate`, que es lo único
+que el resto de la UI usa (miembros y usuario).
+
+**Verificación (T3, sin commit; reportada por el orquestador sobre `52635ad`):** API **59 suites /
+844 tests** y web **103 suites / 761 tests** en verde, `check-types` limpio en las dos apps,
+`biome check .` limpio y el test de drift de OpenAPI en verde (sin cambios de contrato). Sin
+migración: MI-6 no toca el esquema.
+
+**Entrega:** un slice de código sobre `feat/refactor/product-frontend-create-product`; el push y el PR
+los decide el humano.
+
+**Restos de scratch en `/tmp`** (fuera del worktree, nunca versionados) que el humano debería borrar:
+`/tmp/inv-base-bzPYkY` (copia del árbol base del commit anterior, todavía con `Columns.tsx` y el
+`mockData.ts` completo, usada para la comparación diferencial) y `/tmp/tmp.pSgewGjogN` (archivo
+vacío). La atribución es **sólo por fecha** (2026-10-21, dentro de la ventana de este slice): en la
+misma ventana hay restos que no son de esta tarea —`vtest.mjs`, `vb-check.mjs`,
+`valibot-probe2.mjs`, `valibot-check-probe.mjs`, `customer-detail-diff.lOQICF`— y `/tmp` arrastra
+además restos de tareas anteriores (`mi10-*`, `products-base-*`, `base-jest.json`, `new-jest.json`,
+`movement-combobox-probe.test.tsx`, `probe.test.tsx`, `served-openapi.json`). Ninguno se conserva a
+propósito y ninguno afecta al repo.

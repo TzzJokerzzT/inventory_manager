@@ -263,9 +263,11 @@ describe("DashboardView", () => {
 			"Valor del inventario",
 			"Evolución de entradas y salidas",
 		]);
+		// One caption per chart: each chart states its own source, so the
+		// section-level caption the dashboard used to render is not needed.
 		expect(
 			within(charts).getAllByText(/datos reales de la empresa activa/i),
-		).toHaveLength(4);
+		).toHaveLength(3);
 	});
 
 	it("keeps feeding the charts with the catalogue and the series", () => {

@@ -60,11 +60,14 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 > **Estado (MI-8, `odd/tasks/movements.md`):** MOV-01 a MOV-05 están implementados. El alta (`POST
 > /companies/{companyId}/movements`) registra una entrada (`IN`) o una salida (`OUT`) y responde `201`
 > con el movimiento y el `stockQuantity` del producto **después** de él (MOV-01, MOV-02); el historial
-> (`GET /companies/{companyId}/movements?productId=&type=&limit=`, más recientes primero) cubre
-> MOV-03. La escritura del movimiento y el cambio de stock van en **una sola transacción** (MOV-04) y
-> la salida se aplica con un update guardado por `stockQuantity >= quantity`, así que dos salidas
-> concurrentes no pueden dejar stock negativo: la perdedora responde `409 insufficient_stock` con el
-> stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
+> (`GET /companies/{companyId}/movements?productId=&customerId=&type=&limit=`, más recientes primero)
+> cubre MOV-03. `customerId` es un **filtro de lectura** opcional y combinable con `productId`, `type` y
+> `limit`: un id que no pertenece a la empresa no devuelve filas en vez de responder `404`, y el
+> `companyId` sigue siendo obligatorio en la consulta. Ese filtro es el que alimenta el detalle de un
+> cliente (ver la nota de la sección 5). La escritura del movimiento y el cambio de stock van en **una
+> sola transacción** (MOV-04) y la salida se aplica con un update guardado por `stockQuantity >=
+> quantity`, así que dos salidas concurrentes no pueden dejar stock negativo: la perdedora responde
+> `409 insufficient_stock` con el stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
 > ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
 > por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
 > los roles leen el historial. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede
@@ -104,6 +107,18 @@ identificado sigue siendo válida y se guarda con `customerId: null`. En la UI, 
 suma el selector opcional (con la opción "Sin cliente") y el historial suma la columna Cliente. **El
 resumen de compras por cliente (columnas "Compras"/"Total") no forma parte de MI-10** (decisión L4):
 el padrón sigue mostrando sólo los datos de contacto.
+
+> **Estado (vista de detalle, `odd/tasks/customer-detail.md`):** en `/dashboard/clients` la acción
+> **Detalle** abre un panel **en la misma página** con los datos de contacto y la tabla de **sus
+> salidas** (`type=OUT`) —fecha, producto, SKU, cantidad, motivo y usuario—, más el conteo de salidas y
+> el total de unidades **de las salidas listadas** (el panel aclara "Se muestran las salidas más
+> recientes", porque el endpoint pagina el historial: no promete un total histórico) y **no calcula
+> montos**, porque un movimiento no guarda precio. No es un requerimiento nuevo: es una **vista sobre
+> CLI-03/CLI-05/MOV-03**. No agrega endpoints —reutiliza `GET /companies/{companyId}/movements` con
+> `customerId`, un filtro de lectura que en un cliente de otra empresa devuelve `[]` en vez de
+> `404`— ni filas a `can()`, porque leer clientes y movimientos ya está permitido a cualquier
+> membership `ACTIVE`. La página de Movimientos queda igual: el detalle es adicional y de solo
+> lectura, y el resumen de compras por cliente sigue fuera de alcance.
 
 ### 6. Gestión Multi-Empresa
 

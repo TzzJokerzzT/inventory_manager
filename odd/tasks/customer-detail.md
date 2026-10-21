@@ -42,11 +42,11 @@ Sin endpoints nuevos y sin cambios en la forma de `StockMovement`.
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | T2 | parent | C1 |
-| T2 | Backend: filtro `customerId` en puerto, casos de uso, adaptadores y validador | S2 | worker | C1 |
-| T3 | Frontend: hook con el filtro y panel de detalle con las salidas | S3, S4 | worker | C2 |
-| T4 | Verificación integral | S6 | parent | — |
-| T5 | Sincronizar README y `docs/Project.md` | S6 | parent | C3 |
+| T1 | Contrato OpenAPI + regenerar tipos web | T2 | parent | `93b058b` (C1) |
+| T2 | Backend: filtro `customerId` en puerto, casos de uso, adaptadores y validador | S2 | worker | `93b058b` (C1) |
+| T3 | Frontend: hook con el filtro y panel de detalle con las salidas | S3, S4 | worker | `3497a1d` (C2) |
+| T4 | Verificación integral | S6 | parent | `—` (verificación, sin commit) |
+| T5 | Sincronizar README y `docs/Project.md` | S6 | parent | `C3` (commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -59,3 +59,31 @@ endpoint nuevo duplicaría la lectura y el aislamiento por empresa.
 L3. Decisión del orquestador: el detalle muestra solo salidas (`type=OUT`) y no calcula montos,
 porque el movimiento no guarda precio; sí muestra conteo y total de unidades. El panel vive en la
 misma página (como el formulario de alta/edición), sin ruta nueva.
+
+L4. Cierre y entrega (T5). Dos commits, ambos sobre `feat/refactor/product-frontend-create-product`:
+
+- `93b058b` — `feat(api): filter stock movements by customer` (C1, T1+T2): suma el parámetro
+  `customerId` al `GET /companies/{companyId}/movements` en `openapi.yaml` y regenera
+  `apps/web/lib/api/openapi.d.ts`; lo propaga por el puerto del repositorio
+  (`StockMovementFilters`), el caso de uso `list-stock-movements`, los repositorios en memoria y
+  Prisma —donde entra en el `WHERE` junto al `companyId`, nunca como filtro posterior— y el
+  validador de la query.
+- `3497a1d` — `feat(web): show each customer's sales in a detail panel` (C2, T3): `useMovements`
+  acepta `customerId` en el filtro y en la clave de caché, `CustomerDetailPanel` muestra el
+  contacto y la tabla de salidas, y `Client` abre el panel con la acción **Detalle**.
+
+Verificación de T4 (S6), corrida por el orquestador: suites completas en verde —API **58 suites /
+819 tests**, web **93 suites / 665 tests** (baseline del arranque: 58/804 y 92/649)—, `check-types`
+limpio en las dos apps, `biome check .` limpio y el test de drift de OpenAPI en verde.
+
+Alcance del resumen: el conteo y el total de unidades describen **las salidas listadas**, no la vida
+del cliente, porque el endpoint pagina el historial (`limit`, default `50`) y no hay agregado por
+cliente ni endpoint nuevo; por eso el panel dice "Se muestran las salidas más recientes". Tampoco
+hay montos: el movimiento no guarda precio.
+
+Entrega: dos slices (backend C1, frontend C2) sobre `feat/refactor/product-frontend-create-product`.
+**Push y PR los decide el humano**, igual que este commit de docs (C3), que no se commitea al cerrar
+la tarea.
+
+Restos que el humano debe borrar: los directorios de scratch en `/tmp` que dejaron los workers
+(`inv-base-*`, copia del commit base para el chequeo diferencial, y `customer-detail-diff.*`).

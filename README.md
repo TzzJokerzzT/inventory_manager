@@ -56,10 +56,10 @@ El repositorio y el stack de tests ya están en pie.
 | **Miembros** | ✅ invitación, listado, cambio de rol, revocación y salida por empresa, más invitaciones y notificaciones en `/me` |
 | **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica y foto firmada a Cloudinary |
 | **Movimientos** | ✅ entradas y salidas con stock atómico (una transacción con guard `stockQuantity >= quantity`), historial por producto, auditoría de usuario/fecha/motivo y cliente opcional en las salidas (MI-10) |
-| **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE` y las salidas pueden asociarse a un cliente (MI-10) |
+| **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE`, las salidas pueden asociarse a un cliente (MI-10) y el detalle de un cliente lista sus salidas |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda y formulario) |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard, páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -110,12 +110,17 @@ categoría de PROD-04 **no** está implementado.
 selector de producto real, cantidad y motivo opcional, más una tabla con tipo, producto, cantidad,
 motivo, usuario y fecha. `POST /companies/{id}/movements` responde `201` con el movimiento y el
 `stockQuantity` del producto **después** del movimiento, y `GET /companies/{id}/movements` lista el
-historial de la empresa más reciente primero, con los filtros `productId` y `type` y `limit` de `1` a
-`200` (default `50`). El movimiento y el cambio de stock van en **una sola transacción**: una entrada
-suma, una salida resta y, si el movimiento no se puede registrar, el stock no cambia. **Una salida
-nunca puede superar el stock disponible**, porque la resta se hace con un update guardado
-(`stockQuantity >= quantity`): dos salidas concurrentes no pueden dejar stock negativo y la perdedora
-responde `409 insufficient_stock` con el stock disponible, sin registrar nada. Los movimientos son
+historial de la empresa más reciente primero, con los filtros `productId`, `customerId` y `type`, y
+`limit` de `1` a `200` (default `50`). `customerId` es un **filtro de lectura** combinable con los
+otros: un cliente de otra empresa no devuelve filas en vez de responder `404`, y el `companyId`
+sigue siendo obligatorio en la consulta. Ese filtro es el que usa el detalle de un cliente (ver
+**Clientes**) para mostrar sus salidas, así que la página de movimientos **queda como está**: el
+detalle es una vista adicional y de solo lectura. El movimiento y el cambio de stock van en **una
+sola transacción**: una entrada suma, una salida resta y, si el movimiento no se puede registrar, el
+stock no cambia. **Una salida nunca puede superar el stock disponible**, porque la resta se hace con
+un update guardado (`stockQuantity >= quantity`): dos salidas concurrentes no pueden dejar stock
+negativo y la perdedora responde `409 insufficient_stock` con el stock disponible, sin registrar
+nada. Los movimientos son
 **inmutables** —no hay endpoints de edición ni de borrado— porque son la traza de auditoría del stock
 (MOV-05); `userId` y `createdAt` los pone el servidor y `reason` es opcional (≤300 caracteres).
 Cualquier membership `ACTIVE` registra y todos los roles leen el historial. **Una salida puede
@@ -147,9 +152,16 @@ del listado y de las lecturas, y un segundo `DELETE` responde `404 customer_not_
 unicidad de email** porque el esquema no tiene índice único, así que dos clientes de la misma empresa
 pueden compartirlo. **Cualquier membership `ACTIVE`** crea, edita y da de baja, y todos los roles
 leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404`. Las salidas pueden
-asociarse a un cliente (MI-10, ver **Movimientos de stock**), pero **el resumen de compras por
-cliente no está construido**: el padrón no muestra columnas "Compras"/"Total" (decisión L4 de
-`odd/tasks/customer-links.md`), así que la tabla sigue mostrando sólo los datos de contacto.
+asociarse a un cliente (MI-10, ver **Movimientos de stock**). Cada fila suma además la acción
+**Detalle**, que abre un panel **en la misma página** con los datos de contacto del cliente y la tabla
+de **sus salidas** (`type=OUT`): fecha, producto, SKU, cantidad, motivo y usuario, más el conteo de
+salidas y el total de unidades **de las salidas listadas**. El panel aclara que son las más recientes
+porque el endpoint pagina el historial: informa lo que recibió, nunca un total histórico. Es de solo
+lectura, no tiene ruta propia ni endpoint nuevo —reutiliza `GET /companies/{id}/movements` con
+`customerId` (ver **Movimientos de stock**)— y **no muestra montos de dinero**, porque un movimiento
+no guarda precio. **El resumen de compras por cliente sigue sin construirse**: el padrón no muestra
+columnas "Compras"/"Total" (decisión L4 de `odd/tasks/customer-links.md`), así que la tabla
+principal sigue mostrando sólo los datos de contacto.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
@@ -237,7 +249,7 @@ apps/web/
 │       ├── member/               # invitaciones, roster de miembros y salida de la empresa
 │       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
 │       ├── movement/             # entradas y salidas de stock (formulario e historial)
-│       ├── client/               # padrón de clientes (lista, búsqueda, formulario y baja)
+│       ├── client/               # padrón de clientes (lista, búsqueda, formulario, baja y detalle)
 │       ├── dashboard/            # vista del dashboard (datos de muestra)
 │       └── shell/                # el shell de la aplicación
 └── public/
@@ -331,7 +343,7 @@ una membership `ACTIVE` (ver la sección siguiente).
 | `GET /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 429, 500 | Lee un producto; uno de otra empresa y uno dado de baja responden el mismo 404 |
 | `PATCH /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 409 (`sku_already_exists`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` limpia `description` o `photoUrl` |
 | `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
-| `GET /companies/{companyId}/movements?productId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId` y `type` filtran y `limit` va de `1` a `200` (default `50`). Cada movimiento trae el producto, el usuario y el cliente resueltos por la API: `customer` es `null` cuando no hay asociación y **sigue resolviéndose después de la baja lógica del cliente** |
+| `GET /companies/{companyId}/movements?productId=&customerId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId`, `customerId` y `type` filtran (combinables entre sí) y `limit` va de `1` a `200` (default `50`). `customerId` es un filtro de lectura, no un recurso: un id de otra empresa no devuelve filas en vez de un `404`. Cada movimiento trae el producto, el usuario y el cliente resueltos por la API: `customer` es `null` cuando no hay asociación y **sigue resolviéndose después de la baja lógica del cliente** |
 | `POST /companies/{companyId}/movements` | sí | 400 (`customer_requires_exit`), 401, 403 (`company_access_forbidden`), 404 (`product_not_found` / `customer_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante. Acepta un `customerId` opcional que **sólo es válido con `type: OUT`**; el cliente se valida antes de escribir, así que un rechazo no toca el stock |
 | `GET /companies/{companyId}/customers?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los clientes activos ordenados por nombre y luego por id; `search` compara por subcadena, sin distinguir mayúsculas, contra nombre, email o teléfono |
 | `POST /companies/{companyId}/customers` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Da de alta un cliente y responde `201`; escribe cualquier membership `ACTIVE` |

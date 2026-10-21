@@ -136,6 +136,18 @@ export class PrismaProductRepository implements ProductRepository {
 		return this.toDomain(row);
 	}
 
+	async findByIds(companyId: string, ids: string[]): Promise<Product[]> {
+		// No `deletedAt` filter: this is the history read of the stock
+		// movements (MOV-05), so a soft-deleted product of the company must
+		// still resolve. The `companyId` stays in the WHERE clause, so the
+		// isolation is the query's, not a post-filter's.
+		const rows = await this.prisma.product.findMany({
+			where: { companyId, id: { in: ids } },
+		});
+
+		return rows.map((row) => this.toDomain(row));
+	}
+
 	async list(companyId: string, search?: string): Promise<Product[]> {
 		const needle = search?.trim();
 

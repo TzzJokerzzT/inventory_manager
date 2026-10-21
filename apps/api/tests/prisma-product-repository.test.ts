@@ -308,3 +308,29 @@ describe("PrismaProductRepository price mapping", () => {
 		expect(found?.price).toBe("1500.00");
 	});
 });
+
+describe("PrismaProductRepository.findByIds", () => {
+	it("reads the requested ids of the company in one query, without the deletedAt filter", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([
+			row(),
+			row({ id: "product-2", deletedAt: new Date("2026-10-22") }),
+		]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const found = await repository.findByIds("company-1", [
+			"product-1",
+			"product-2",
+		]);
+
+		// No `deletedAt: null`: this is the history read of the stock
+		// movements (MOV-05), so a deleted product must stay resolvable.
+		expect(findMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", id: { in: ["product-1", "product-2"] } },
+		});
+		expect(found.map((product) => product.id)).toEqual([
+			"product-1",
+			"product-2",
+		]);
+	});
+});

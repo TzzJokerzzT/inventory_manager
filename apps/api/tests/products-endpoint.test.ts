@@ -124,6 +124,7 @@ describe("product endpoints", () => {
 				companyRepository,
 			}),
 			mediaUploadSigner: {} as never,
+			movements: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

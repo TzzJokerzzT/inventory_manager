@@ -8,6 +8,10 @@ import {
 	INSUFFICIENT_ROLE_CODE,
 	InsufficientRoleError,
 } from "../../../domain/errors/insufficient-role-error.js";
+import {
+	INSUFFICIENT_STOCK_CODE,
+	InsufficientStockError,
+} from "../../../domain/errors/insufficient-stock-error.js";
 import { InvalidCredentialsError } from "../../../domain/errors/invalid-credentials-error.js";
 import {
 	LAST_ACTIVE_OWNER_CODE,
@@ -105,6 +109,16 @@ export const errorHandler: ErrorRequestHandler = (
 		// not a member". The code is what lets the client tell them apart.
 		response.status(StatusCodes.FORBIDDEN).json({
 			error: { message: error.message, code: INSUFFICIENT_ROLE_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof InsufficientStockError) {
+		// 409, not 400: the body is well formed and the caller may register the
+		// movement, the product simply does not have that much stock. Nothing was
+		// recorded and the stock did not change (MOV-04).
+		response.status(StatusCodes.CONFLICT).json({
+			error: { message: error.message, code: INSUFFICIENT_STOCK_CODE },
 		});
 		return;
 	}

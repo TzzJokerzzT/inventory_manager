@@ -129,6 +129,7 @@ describe("POST /me/invitations/accept", () => {
 				createUploadSignature: () => ({ signed: true }),
 			} as never,
 			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

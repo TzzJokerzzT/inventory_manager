@@ -21,9 +21,11 @@ import type { ListMembersUseCase } from "../../application/use-cases/list-member
 import type { ListNotificationsUseCase } from "../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../application/use-cases/list-pending-invitations.js";
 import type { ListProductsUseCase } from "../../application/use-cases/list-products.js";
+import type { ListStockMovementsUseCase } from "../../application/use-cases/list-stock-movements.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
+import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
@@ -35,6 +37,7 @@ import {
 import { createCompanyController } from "./controllers/company-controller.js";
 import { createMeController } from "./controllers/me-controller.js";
 import { createProductController } from "./controllers/product-controller.js";
+import { createStockMovementController } from "./controllers/stock-movement-controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { notFoundHandler } from "./middlewares/not-found.js";
 import { apiRateLimiter } from "./middlewares/rate-limit.js";
@@ -96,6 +99,14 @@ export interface AppDependencies {
 		update: UpdateProductUseCase;
 		remove: DeleteProductUseCase;
 	};
+	/**
+	 * The stock movement slice of MI-8. One field, not two, because both routes
+	 * are mounted together on the company-scoped router.
+	 */
+	movements: {
+		register: RegisterStockMovementUseCase;
+		list: ListStockMovementsUseCase;
+	};
 	authCookieOptions: AuthCookieOptions;
 	/**
 	 * Browser origin allowed to call the API. It has to be an explicit origin
@@ -135,6 +146,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 		buildRoutes({
 			company: createCompanyController(dependencies),
 			products: createProductController(dependencies.products),
+			movements: createStockMovementController(dependencies.movements),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,
 				updateUserFullName: dependencies.updateUserFullName,

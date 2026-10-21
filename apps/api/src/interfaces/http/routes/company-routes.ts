@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { CompanyController } from "../controllers/company-controller.js";
 import type { ProductController } from "../controllers/product-controller.js";
+import type { StockMovementController } from "../controllers/stock-movement-controller.js";
 
 /**
  * Company routes.
@@ -14,6 +15,7 @@ import type { ProductController } from "../controllers/product-controller.js";
 export function companyRoutes(
 	controller: CompanyController,
 	products: ProductController,
+	movements: StockMovementController,
 ): Router {
 	const router = Router();
 	router.post("/companies", controller.create);
@@ -50,6 +52,13 @@ export function companyRoutes(
 	companyScoped.get("/products/:productId", products.get);
 	companyScoped.patch("/products/:productId", products.update);
 	companyScoped.delete("/products/:productId", products.remove);
+	// Stock movement routes. They share the protected sub-router, so they
+	// inherit `requireCompanyContext`: any ACTIVE membership registers and reads
+	// (S6), and the company comes from the path, never from the body. There is
+	// no edit or delete route on purpose -- a movement is the audit trail of the
+	// stock (MOV-05).
+	companyScoped.get("/movements", movements.list);
+	companyScoped.post("/movements", movements.create);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

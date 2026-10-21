@@ -132,6 +132,7 @@ describe("member management endpoints", () => {
 			markNotificationsRead: {} as never,
 			mediaUploadSigner: {} as never,
 			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

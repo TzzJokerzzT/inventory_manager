@@ -19,6 +19,7 @@ tags:
   - name: auth
   - name: companies
   - name: products
+  - name: movements
   - name: me
 
 paths:
@@ -983,6 +984,157 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/movements:
+    get:
+      tags: [movements]
+      summary: List the company's stock movements
+      description: |
+        Lists the stock movements of the company the caller has context for,
+        newest first. The history is the audit trail of the stock (MOV-05), so
+        movements are immutable: there is no update or delete operation.
+
+        `productId` narrows the history of one product (MOV-03) and `type`
+        narrows it to entries or exits. The product and the actor of each
+        movement are resolved server-side; `actor` is null when the user row
+        cannot be resolved, which never hides the movement.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: query
+          required: false
+          description: Only the movements of this product.
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          required: false
+          description: Only entries (`IN`) or only exits (`OUT`).
+          schema:
+            type: string
+            enum: [IN, OUT]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of movements, newest first.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: The company's movements, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockMovement"
+        "400":
+          description: The company id is not a UUID, or a filter is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: [movements]
+      summary: Register a stock movement
+      description: |
+        Registers an entry (`IN`) or an exit (`OUT`) and applies the resulting
+        stock in the same transaction (MOV-04): an entry adds, an exit
+        subtracts, and if the movement cannot be recorded the stock does not
+        change.
+
+        An exit can never take the stock below zero: the decrement is guarded by
+        `stockQuantity >= quantity`, so two concurrent exits cannot both win;
+        the loser answers `409 insufficient_stock` with the stock available.
+
+        Any ACTIVE membership of the company may register movements. The
+        product must be active (not soft-deleted) and belong to the company.
+        `userId` and `createdAt` are server-side: the caller cannot name the
+        actor or backdate a movement.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterMovementRequest"
+      responses:
+        "201":
+          description: |
+            The recorded movement plus the product's stock after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterMovementResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist, belongs to another company, or was
+            soft-deleted; the `code` is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            An exit larger than the available stock; the `code` is
+            `insufficient_stock` and the message states the stock available.
+            Nothing was recorded and the stock did not change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /me:
     get:
       tags: [me]
@@ -1517,6 +1669,97 @@ components:
           type: string
           maxLength: 2048
           nullable: true
+
+    StockMovement:
+      type: object
+      required:
+        [id, companyId, productId, type, quantity, reason, createdAt, product, actor]
+      description: |
+        One immutable stock movement -- the audit trail of the inventory
+        (MOV-05). `type` is `IN` for an entry and `OUT` for an exit, and
+        `quantity` is always positive: the direction lives in `type`, never in
+        the sign of the number. `product` and `actor` are resolved by the API;
+        `actor` is null when the user row cannot be resolved.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [IN, OUT]
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        reason:
+          type: string
+          maxLength: 300
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        product:
+          $ref: "#/components/schemas/MovementProduct"
+        actor:
+          description: |
+            Who registered the movement, or `null` when the user could not be
+            resolved. A missing actor never hides the movement.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/UserSummary"
+
+    MovementProduct:
+      type: object
+      required: [id, name, sku]
+      description: The product a movement refers to, as the history shows it.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        sku:
+          type: string
+          maxLength: 64
+
+    RegisterMovementRequest:
+      type: object
+      required: [productId, type, quantity]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [IN, OUT]
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        reason:
+          type: string
+          maxLength: 300
+          nullable: true
+
+    RegisterMovementResponse:
+      allOf:
+        - $ref: "#/components/schemas/StockMovement"
+        - type: object
+          required: [stockQuantity]
+          description: |
+            The movement plus the product's stock **after** it. The stock is a
+            consequence of the movement, never an input.
+          properties:
+            stockQuantity:
+              type: integer
+              minimum: 0
 
     MeResponse:
       type: object

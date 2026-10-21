@@ -58,8 +58,12 @@ export interface CompanyController {
  * The resolved user the company routes are guaranteed to have: `requireUser`
  * runs before this controller, so a missing user is a programming error and
  * not something to work around by inventing one.
+ *
+ * Exported because the stock movement controller is mounted on the same
+ * `companyScoped` router and needs the caller for the audit trail (MOV-05); a
+ * second copy of this accessor would be a second place to forget the check.
  */
-function resolvedUser(request: Request): User {
+export function resolvedUser(request: Request): User {
 	const user = request.user;
 	if (user === undefined) {
 		throw new Error(

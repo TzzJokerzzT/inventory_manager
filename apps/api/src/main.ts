@@ -13,9 +13,11 @@ import { ListMembersUseCase } from "./application/use-cases/list-members.js";
 import { ListNotificationsUseCase } from "./application/use-cases/list-notifications.js";
 import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
 import { ListProductsUseCase } from "./application/use-cases/list-products.js";
+import { ListStockMovementsUseCase } from "./application/use-cases/list-stock-movements.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notifications-read.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
+import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
@@ -27,6 +29,7 @@ import { PrismaCompanyRepository } from "./infrastructure/database/prisma-compan
 import { PrismaMembershipRepository } from "./infrastructure/database/prisma-membership-repository.js";
 import { PrismaNotificationRepository } from "./infrastructure/database/prisma-notification-repository.js";
 import { PrismaProductRepository } from "./infrastructure/database/prisma-product-repository.js";
+import { PrismaStockMovementRepository } from "./infrastructure/database/prisma-stock-movement-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { CloudinaryUploadSigner } from "./infrastructure/storage/cloudinary-upload-signer.js";
 import { buildApp } from "./interfaces/http/app.js";
@@ -47,6 +50,7 @@ const userRepository = new PrismaUserRepository({ prisma });
 const membershipRepository = new PrismaMembershipRepository({ prisma });
 const notificationRepository = new PrismaNotificationRepository({ prisma });
 const productRepository = new PrismaProductRepository({ prisma });
+const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
 // but both the login endpoint and the protected routes cannot work without
@@ -153,6 +157,17 @@ const app = buildApp({
 		get: new GetProductUseCase({ productRepository }),
 		update: new UpdateProductUseCase({ productRepository }),
 		remove: new DeleteProductUseCase({ productRepository }),
+	},
+	movements: {
+		register: new RegisterStockMovementUseCase({
+			productRepository,
+			stockMovementRepository,
+		}),
+		list: new ListStockMovementsUseCase({
+			stockMovementRepository,
+			productRepository,
+			userRepository,
+		}),
 	},
 	mediaUploadSigner,
 	authCookieOptions,

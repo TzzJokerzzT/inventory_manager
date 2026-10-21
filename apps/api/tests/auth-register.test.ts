@@ -103,6 +103,7 @@ function createTestApp(provider: IdentityProvider) {
 		revokeMember: {} as never,
 		updateUserFullName: {} as never,
 		products: {} as never,
+		movements: {} as never,
 		authCookieOptions: defaultCookieOptions,
 		corsOrigin: "http://localhost:3000",
 	});

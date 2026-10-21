@@ -152,6 +152,19 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
 		return rows.map((row) => this.toDomain(row));
 	}
 
+	async findSince(companyId: string, since: Date): Promise<StockMovement[]> {
+		const rows = await this.prisma.stockMovement.findMany({
+			// The whole range lives in the WHERE, scoped by the company: it is a
+			// range read for the trend report, not a page of the history.
+			where: { companyId, createdAt: { gte: since } },
+			// Oldest first, with the id as the tie-break, so the aggregate of two
+			// reads of the same state cannot differ.
+			orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+		});
+
+		return rows.map((row) => this.toDomain(row));
+	}
+
 	/** Maps a raw Prisma row back into the domain entity. */
 	private toDomain(row: StockMovementModel): StockMovement {
 		return StockMovement.create({

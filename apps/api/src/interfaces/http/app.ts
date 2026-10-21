@@ -16,6 +16,7 @@ import type { DeleteCustomerUseCase } from "../../application/use-cases/delete-c
 import type { DeleteProductUseCase } from "../../application/use-cases/delete-product.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
 import type { GetCustomerUseCase } from "../../application/use-cases/get-customer.js";
+import type { GetMovementTrendUseCase } from "../../application/use-cases/get-movement-trend.js";
 import type { GetProductUseCase } from "../../application/use-cases/get-product.js";
 import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
 import type { LeaveCompanyUseCase } from "../../application/use-cases/leave-company.js";
@@ -117,12 +118,13 @@ export interface AppDependencies {
 		remove: DeleteCustomerUseCase;
 	};
 	/**
-	 * The stock movement slice of MI-8. One field, not two, because both routes
-	 * are mounted together on the company-scoped router.
+	 * The stock movement slice of MI-8. One field, because every route is mounted
+	 * together on the company-scoped router.
 	 */
 	movements: {
 		register: RegisterStockMovementUseCase;
 		list: ListStockMovementsUseCase;
+		trend: GetMovementTrendUseCase;
 	};
 	authCookieOptions: AuthCookieOptions;
 	/**

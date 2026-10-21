@@ -350,3 +350,55 @@ describe("PrismaStockMovementRepository.findByCompany", () => {
 		expect(found?.customerId).toBe("customer-1");
 	});
 });
+
+describe("PrismaStockMovementRepository.findSince", () => {
+	const SINCE = new Date("2026-09-22T00:00:00.000Z");
+
+	it("reads the company's movements from the given date on, oldest first", async () => {
+		const { delegate, stockMovementFindMany } = buildFakeDelegate();
+		stockMovementFindMany.mockResolvedValue([movementRow()]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const found = await repository.findSince("company-1", SINCE);
+
+		// The range read is company-scoped in the WHERE and ascending, with the
+		// id as the tie-break so two reads of the same state agree.
+		expect(stockMovementFindMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", createdAt: { gte: SINCE } },
+			orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+		});
+		expect(found.map((row) => row.id)).toEqual(["movement-1"]);
+	});
+
+	it("maps the rows back into domain entities", async () => {
+		const { delegate, stockMovementFindMany } = buildFakeDelegate();
+		stockMovementFindMany.mockResolvedValue([
+			movementRow({ type: "OUT", quantity: 2 }),
+		]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const [found] = await repository.findSince("company-1", SINCE);
+
+		expect(found).toBeInstanceOf(StockMovement);
+		expect(found?.toJSON()).toEqual({
+			id: "movement-1",
+			companyId: "company-1",
+			productId: "product-1",
+			type: "OUT",
+			quantity: 2,
+			reason: null,
+			userId: "user-1",
+			customerId: null,
+			createdAt: "2026-10-21T12:00:00.000Z",
+		});
+	});
+
+	it("answers no rows when the range has no movements", async () => {
+		const { delegate, stockMovementFindMany } = buildFakeDelegate();
+		stockMovementFindMany.mockResolvedValue([]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+
+		await expect(repository.findSince("company-1", SINCE)).resolves.toEqual([]);
+	});
+});

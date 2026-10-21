@@ -8,6 +8,7 @@ import { DeleteCustomerUseCase } from "./application/use-cases/delete-customer.j
 import { DeleteProductUseCase } from "./application/use-cases/delete-product.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
 import { GetCustomerUseCase } from "./application/use-cases/get-customer.js";
+import { GetMovementTrendUseCase } from "./application/use-cases/get-movement-trend.js";
 import { GetProductUseCase } from "./application/use-cases/get-product.js";
 import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
 import { LeaveCompanyUseCase } from "./application/use-cases/leave-company.js";
@@ -184,6 +185,8 @@ const app = buildApp({
 			userRepository,
 			customerRepository,
 		}),
+		// No clock is injected in production: the trend ends on today's UTC day.
+		trend: new GetMovementTrendUseCase({ stockMovementRepository }),
 	},
 	mediaUploadSigner,
 	authCookieOptions,

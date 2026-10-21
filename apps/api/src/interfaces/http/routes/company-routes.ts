@@ -70,6 +70,11 @@ export function companyRoutes(
 	// stock (MOV-05).
 	companyScoped.get("/movements", movements.list);
 	companyScoped.post("/movements", movements.create);
+	// Dashboard report routes. The trend is a read of the same ledger, so it
+	// hangs off the same protected sub-router and inherits
+	// `requireCompanyContext`: any ACTIVE membership reads it (S6) and the
+	// company comes from the path, never from the query.
+	companyScoped.get("/reports/movements", movements.trend);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

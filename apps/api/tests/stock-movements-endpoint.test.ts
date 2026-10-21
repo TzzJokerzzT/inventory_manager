@@ -1,4 +1,5 @@
 import request from "supertest";
+import { GetMovementTrendUseCase } from "../src/application/use-cases/get-movement-trend.js";
 import { ListProductsUseCase } from "../src/application/use-cases/list-products.js";
 import { ListStockMovementsUseCase } from "../src/application/use-cases/list-stock-movements.js";
 import { RegisterStockMovementUseCase } from "../src/application/use-cases/register-stock-movement.js";
@@ -9,6 +10,7 @@ import {
 	type MembershipRole,
 } from "../src/domain/entities/membership.js";
 import { Product } from "../src/domain/entities/product.js";
+import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryCustomerRepository } from "../src/infrastructure/database/in-memory-customer-repository.js";
@@ -39,6 +41,12 @@ const OWNER_SUB = "auth0|owner";
 const ADMIN_SUB = "auth0|admin";
 const MEMBER_SUB = "auth0|member";
 const OUTSIDER_SUB = "auth0|outsider";
+
+/**
+ * The trend report is defined per UTC day, so its clock is fixed: a suite that
+ * read the machine's clock would change its expected dates every UTC midnight.
+ */
+const TREND_NOW = new Date("2026-10-21T12:00:00.000Z");
 
 describe("stock movement endpoints", () => {
 	let issuer: LocalIssuer;
@@ -143,6 +151,10 @@ describe("stock movement endpoints", () => {
 					userRepository,
 					customerRepository,
 				}),
+				trend: new GetMovementTrendUseCase({
+					stockMovementRepository,
+					now: () => TREND_NOW,
+				}),
 			},
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
@@ -172,6 +184,7 @@ describe("stock movement endpoints", () => {
 			outsider,
 			productRepository,
 			customerRepository,
+			stockMovementRepository,
 			seedMembership,
 			seedRoster: () => {
 				seedMembership({ userId: owner.id, role: "OWNER" });
@@ -969,6 +982,174 @@ describe("stock movement endpoints", () => {
 			expect(outsider.status).toBe(403);
 			expect(outsider.body.error.code).toBe("company_access_forbidden");
 			expect(badCompany.status).toBe(400);
+		});
+	});
+
+	describe("GET /companies/:companyId/reports/movements", () => {
+		/**
+		 * Seeds a movement straight into the ledger: the report reads the range,
+		 * so the fixture needs movements with a `createdAt` of its own instead of
+		 * whatever the register endpoint stamps.
+		 */
+		function seedMovement(
+			repository: InMemoryStockMovementRepository,
+			overrides: Partial<Parameters<typeof StockMovement.create>[0]> = {},
+		) {
+			const row = StockMovement.create({
+				companyId: COMPANY,
+				productId: "aaaaaaaa-1111-4111-8111-111111111111",
+				userId: "user-1",
+				type: "IN",
+				quantity: 1,
+				createdAt: new Date("2026-10-21T08:00:00.000Z"),
+				...overrides,
+			});
+
+			repository.save(row);
+
+			return row;
+		}
+
+		it("answers 200 with the zero-filled series ending on today's UTC date", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/reports/movements`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(200);
+			// The contract's default of 30 days, oldest first.
+			expect(response.body.days).toBe(30);
+			expect(response.body.series).toHaveLength(30);
+			expect(response.body.series[0]).toEqual({
+				date: "2026-09-22",
+				entries: 0,
+				exits: 0,
+			});
+			expect(response.body.series[29]).toEqual({
+				date: "2026-10-21",
+				entries: 0,
+				exits: 0,
+			});
+		});
+
+		it("honours ?days=7 and sums the quantities of each UTC day", async () => {
+			const { app, seedRoster, stockMovementRepository } = createTestApp();
+			seedRoster();
+			seedMovement(stockMovementRepository, {
+				type: "IN",
+				quantity: 5,
+				createdAt: new Date("2026-10-20T08:00:00.000Z"),
+			});
+			seedMovement(stockMovementRepository, {
+				type: "IN",
+				quantity: 3,
+				createdAt: new Date("2026-10-20T18:00:00.000Z"),
+			});
+			seedMovement(stockMovementRepository, {
+				type: "OUT",
+				quantity: 2,
+				createdAt: new Date("2026-10-21T00:01:00.000Z"),
+			});
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/reports/movements?days=7`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(response.body).toEqual({
+				days: 7,
+				series: [
+					{ date: "2026-10-15", entries: 0, exits: 0 },
+					{ date: "2026-10-16", entries: 0, exits: 0 },
+					{ date: "2026-10-17", entries: 0, exits: 0 },
+					{ date: "2026-10-18", entries: 0, exits: 0 },
+					{ date: "2026-10-19", entries: 0, exits: 0 },
+					{ date: "2026-10-20", entries: 8, exits: 0 },
+					{ date: "2026-10-21", entries: 0, exits: 2 },
+				],
+			});
+		});
+
+		it.each([
+			["a days of 0", "days=0"],
+			["a days above 90", "days=91"],
+			["a non-integer days", "days=1.5"],
+			["a non-numeric days", "days=abc"],
+		])("answers 400 for %s", async (_label, query) => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/reports/movements?${query}`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(400);
+		});
+
+		it("answers 403 for a non-member", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/reports/movements`)
+				.set("authorization", authorization(OUTSIDER_SUB));
+
+			expect(response.status).toBe(403);
+			expect(response.body.error.code).toBe("company_access_forbidden");
+		});
+
+		it("answers 400 for a malformed company id", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get("/companies/not-a-uuid/reports/movements")
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(400);
+		});
+
+		it("never counts another company's movements", async () => {
+			const testApp = createTestApp();
+			testApp.seedRoster();
+			// The owner belongs to both companies, so the other company's ledger
+			// can be read there and the isolation is observable.
+			testApp.seedMembership({
+				userId: testApp.owner.id,
+				role: "OWNER",
+				companyId: OTHER_COMPANY,
+			});
+			seedMovement(testApp.stockMovementRepository, {
+				companyId: OTHER_COMPANY,
+				type: "IN",
+				quantity: 10,
+				createdAt: new Date("2026-10-21T09:00:00.000Z"),
+			});
+			seedMovement(testApp.stockMovementRepository, {
+				type: "OUT",
+				quantity: 4,
+				createdAt: new Date("2026-10-21T10:00:00.000Z"),
+			});
+
+			const ours = await request(testApp.app)
+				.get(`/companies/${COMPANY}/reports/movements?days=1`)
+				.set("authorization", authorization(OWNER_SUB));
+			const theirs = await request(testApp.app)
+				.get(`/companies/${OTHER_COMPANY}/reports/movements?days=1`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(ours.status).toBe(200);
+			expect(ours.body.series).toEqual([
+				{ date: "2026-10-21", entries: 0, exits: 4 },
+			]);
+			// The other company does have a movement that day, so the empty
+			// entries above are the company scoping and not an empty ledger.
+			expect(theirs.status).toBe(200);
+			expect(theirs.body.series).toEqual([
+				{ date: "2026-10-21", entries: 10, exits: 0 },
+			]);
 		});
 	});
 });

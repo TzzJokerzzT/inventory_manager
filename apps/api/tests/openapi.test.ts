@@ -201,6 +201,7 @@ function buildRoutesForEnumeration(): Router {
 		movements: {
 			list: noop,
 			create: noop,
+			trend: noop,
 		},
 		me: {
 			get: noop,

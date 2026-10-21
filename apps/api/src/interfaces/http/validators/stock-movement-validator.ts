@@ -1,4 +1,9 @@
 import * as v from "valibot";
+import {
+	DEFAULT_MOVEMENT_TREND_DAYS,
+	MAX_MOVEMENT_TREND_DAYS,
+	MIN_MOVEMENT_TREND_DAYS,
+} from "../../../application/use-cases/get-movement-trend.js";
 import { CustomerRequiresExitError } from "../../../domain/errors/customer-requires-exit-error.js";
 
 /**
@@ -100,4 +105,36 @@ export const listStockMovementsQuerySchema = v.object({
 	),
 	type: v.optional(typeSchema),
 	limit: v.optional(limitSchema, "50"),
+});
+
+/**
+ * The window of the trend report, in UTC days. It mirrors `limit`: the query
+ * value arrives as a string, so it is parsed and then validated as the
+ * contract's integer, and a malformed value (`abc`, `1.5`, `0`, `91`) is a 400
+ * instead of a silently clamped range.
+ */
+const daysSchema = v.pipe(
+	v.string(),
+	v.transform((value) => Number(value)),
+	v.number(),
+	v.integer("days must be an integer"),
+	v.minValue(
+		MIN_MOVEMENT_TREND_DAYS,
+		`days must be between ${MIN_MOVEMENT_TREND_DAYS} and ${MAX_MOVEMENT_TREND_DAYS}`,
+	),
+	v.maxValue(
+		MAX_MOVEMENT_TREND_DAYS,
+		`days must be between ${MIN_MOVEMENT_TREND_DAYS} and ${MAX_MOVEMENT_TREND_DAYS}`,
+	),
+);
+
+/**
+ * Request schema for `GET /companies/:companyId/reports/movements`.
+ *
+ * An absent `days` is the contract's default window, not "all the days there
+ * are". The default is written as the raw query string the schema receives and
+ * valibot parses it into the integer the use case expects.
+ */
+export const movementTrendQuerySchema = v.object({
+	days: v.optional(daysSchema, String(DEFAULT_MOVEMENT_TREND_DAYS)),
 });

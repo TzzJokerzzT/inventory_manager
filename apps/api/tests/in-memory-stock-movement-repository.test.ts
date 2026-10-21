@@ -338,3 +338,73 @@ describe("InMemoryStockMovementRepository.findByCompany", () => {
 		).resolves.toEqual([]);
 	});
 });
+
+describe("InMemoryStockMovementRepository.findSince", () => {
+	const SINCE = new Date("2026-10-20T00:00:00.000Z");
+
+	/**
+	 * Three movements of our company around the boundary of the range and one of
+	 * another company inside it, so both the date and the company are observable.
+	 */
+	async function seeded() {
+		const { repository } = build();
+
+		repository.save(
+			movement({
+				id: "m-1",
+				quantity: 2,
+				createdAt: new Date("2026-10-21T10:00:00.000Z"),
+			}),
+		);
+		repository.save(
+			movement({
+				id: "m-2",
+				quantity: 3,
+				createdAt: new Date("2026-10-20T00:00:00.000Z"),
+			}),
+		);
+		repository.save(
+			movement({
+				id: "m-3",
+				quantity: 4,
+				createdAt: new Date("2026-10-19T23:59:59.000Z"),
+			}),
+		);
+		repository.save(
+			movement({
+				id: "m-4",
+				companyId: OTHER_COMPANY,
+				quantity: 6,
+				createdAt: new Date("2026-10-21T10:30:00.000Z"),
+			}),
+		);
+
+		return { repository };
+	}
+
+	it("returns the company's movements from the given date on, oldest first", async () => {
+		const { repository } = await seeded();
+
+		const found = await repository.findSince(COMPANY, SINCE);
+
+		// `m-3` is one second before the range and stays out; `m-2` sits exactly
+		// on the boundary and is included.
+		expect(found.map((row) => row.id)).toEqual(["m-2", "m-1"]);
+	});
+
+	it("never returns another company's movements, even when they are in the range", async () => {
+		const { repository } = await seeded();
+
+		const found = await repository.findSince(OTHER_COMPANY, SINCE);
+
+		expect(found.map((row) => row.id)).toEqual(["m-4"]);
+	});
+
+	it("answers no rows when the range has no movements", async () => {
+		const { repository } = await seeded();
+
+		await expect(
+			repository.findSince(COMPANY, new Date("2026-12-01T00:00:00.000Z")),
+		).resolves.toEqual([]);
+	});
+});

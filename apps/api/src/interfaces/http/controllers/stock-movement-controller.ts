@@ -1,23 +1,27 @@
 import type { RequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import * as v from "valibot";
+import type { GetMovementTrendUseCase } from "../../../application/use-cases/get-movement-trend.js";
 import type { ListStockMovementsUseCase } from "../../../application/use-cases/list-stock-movements.js";
 import type { RegisterStockMovementUseCase } from "../../../application/use-cases/register-stock-movement.js";
 import type { User } from "../../../domain/entities/user.js";
 import {
 	createStockMovementSchema,
 	listStockMovementsQuerySchema,
+	movementTrendQuerySchema,
 } from "../validators/stock-movement-validator.js";
 import { resolvedCompanyContext, resolvedUser } from "./company-controller.js";
 
 export interface StockMovementControllerDependencies {
 	register: RegisterStockMovementUseCase;
 	list: ListStockMovementsUseCase;
+	trend: GetMovementTrendUseCase;
 }
 
 export interface StockMovementController {
 	list: RequestHandler;
 	create: RequestHandler;
+	trend: RequestHandler;
 }
 
 /**
@@ -26,8 +30,9 @@ export interface StockMovementController {
  * The controller is mounted on the `companyScoped` router, so every handler
  * runs after `requireCompanyContext`: the company comes from the path and the
  * membership, never from the body, and the actor comes from the token through
- * `requireUser`. Any ACTIVE membership may register (S6), which is exactly what
- * the context already proved, so there is no extra role check here.
+ * `requireUser`. Any ACTIVE membership may register and read the trend report
+ * (S6), which is exactly what the context already proved, so there is no extra
+ * role check here.
  *
  * The dependencies are read **inside** each handler, never destructured at
  * factory time: the test suites build an app with inert fixtures, and
@@ -74,6 +79,23 @@ export function createStockMovementController(
 					...result.movement,
 					stockQuantity: result.stockQuantity,
 				});
+			} catch (error) {
+				next(error);
+			}
+		},
+		trend: async (request, response, next) => {
+			try {
+				const context = resolvedCompanyContext(request);
+				const query = v.parse(movementTrendQuerySchema, request.query);
+
+				// The range is computed by the use case from the injected clock, so
+				// the client chooses how many days, never which days.
+				const report = await dependencies.trend.execute(
+					{ days: query.days },
+					{ companyId: context.companyId },
+				);
+
+				response.status(StatusCodes.OK).json(report);
 			} catch (error) {
 				next(error);
 			}

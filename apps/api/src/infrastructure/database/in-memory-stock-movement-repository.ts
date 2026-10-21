@@ -99,6 +99,20 @@ export class InMemoryStockMovementRepository
 			.slice(0, filters.limit);
 	}
 
+	async findSince(companyId: string, since: Date): Promise<StockMovement[]> {
+		// Same WHERE and order as the Prisma adapter's range read: the company is
+		// part of the filter and the boundary is inclusive (`createdAt >= since`),
+		// oldest first with the id as the tie-break.
+		return Array.from(this.movements.values())
+			.filter((movement) => movement.companyId === companyId)
+			.filter((movement) => movement.createdAt.getTime() >= since.getTime())
+			.sort(
+				(a, b) =>
+					a.createdAt.getTime() - b.createdAt.getTime() ||
+					a.id.localeCompare(b.id),
+			);
+	}
+
 	/** Adapter-specific: lets the test suite insert movements directly. */
 	save(movement: StockMovement): void {
 		this.movements.set(movement.id, movement);

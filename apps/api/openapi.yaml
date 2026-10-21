@@ -21,6 +21,7 @@ tags:
   - name: products
   - name: movements
   - name: customers
+  - name: reports
   - name: me
 
 paths:
@@ -1440,6 +1441,67 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/reports/movements:
+    get:
+      tags: [reports]
+      summary: Stock movement trend for the dashboard
+      description: |
+        Aggregates the company's stock movements by **UTC day** for the last
+        `days` days, oldest first, with zero-filled days for the ones without
+        movements. `entries` and `exits` are the sum of the quantities of the
+        `IN` and `OUT` movements of that day.
+
+        The range is computed server-side and the read filters by `companyId`
+        and `createdAt >= since`, so a company never sees another company's
+        movements. Any ACTIVE member may read it: the company context is the
+        guard.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: days
+          in: query
+          required: false
+          description: Number of UTC days in the series, ending today.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 30
+      responses:
+        "200":
+          description: The daily series, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovementTrendResponse"
+        "400":
+          description: The company id is not a UUID, or `days` is out of range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /me:
     get:
       tags: [me]
@@ -2186,6 +2248,40 @@ components:
           type: string
           maxLength: 300
           nullable: true
+
+    MovementTrendPoint:
+      type: object
+      required: [date, entries, exits]
+      description: |
+        One UTC day of the trend. `entries` and `exits` are quantities (not
+        movement counts) and are zero when there was no movement that day.
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-10-21"
+        entries:
+          type: integer
+          minimum: 0
+        exits:
+          type: integer
+          minimum: 0
+
+    MovementTrendResponse:
+      type: object
+      required: [days, series]
+      description: |
+        The movement trend the dashboard draws: one point per UTC day, oldest
+        first, including the days without movements.
+      properties:
+        days:
+          type: integer
+          minimum: 1
+          maximum: 90
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovementTrendPoint"
 
     MeResponse:
       type: object

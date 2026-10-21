@@ -67,4 +67,18 @@ export interface StockMovementRepository {
 		companyId: string,
 		filters: StockMovementFilters,
 	): Promise<StockMovement[]>;
+
+	/**
+	 * Reads every movement of the company created at or after `since`, oldest
+	 * first.
+	 *
+	 * It is the **range read for aggregation**: the dashboard's trend report
+	 * needs all the movements of a window, not one bounded page of them, so the
+	 * range lives in the WHERE (`companyId` + `createdAt >= since`) and the
+	 * caller aggregates the rows. Like every other read it is company-scoped, so
+	 * a company never sees another company's trail; the order is ascending with
+	 * the id as the tie-break, so two reads of the same state answer the same
+	 * array.
+	 */
+	findSince(companyId: string, since: Date): Promise<StockMovement[]>;
 }

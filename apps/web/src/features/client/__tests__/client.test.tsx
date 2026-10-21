@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
-import type { Customer } from "@/lib/api/schemas";
+import type { Customer, StockMovement } from "@/lib/api/schemas";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
+import { useMovements } from "@/src/features/movement/api/use-movements";
 import { useCreateCustomer } from "../api/use-create-customer";
 import { useCustomer } from "../api/use-customer";
 import { useCustomers } from "../api/use-customers";
@@ -33,6 +34,10 @@ jest.mock("../api/use-delete-customer", () => ({
 	useDeleteCustomer: jest.fn(),
 }));
 
+jest.mock("@/src/features/movement/api/use-movements", () => ({
+	useMovements: jest.fn(),
+}));
+
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;
@@ -49,6 +54,9 @@ const useUpdateCustomerMock = useUpdateCustomer as jest.MockedFunction<
 const useDeleteCustomerMock = useDeleteCustomer as jest.MockedFunction<
 	typeof useDeleteCustomer
 >;
+const useMovementsMock = useMovements as jest.MockedFunction<
+	typeof useMovements
+>;
 
 const deleteMutate = jest.fn();
 const createMutate = jest.fn();
@@ -64,6 +72,23 @@ function customer(overrides: Partial<Customer> = {}): Customer {
 		address: "Av. Siempre Viva 742",
 		createdAt: "2026-10-22T12:00:00.000Z",
 		updatedAt: "2026-10-22T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+function sale(overrides: Partial<StockMovement> = {}): StockMovement {
+	return {
+		id: "m1",
+		companyId: "c1",
+		productId: "p1",
+		type: "OUT",
+		quantity: 4,
+		reason: "Venta mostrador",
+		createdAt: "2026-10-21T12:00:00.000Z",
+		product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
+		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
+		customerId: "cu1",
+		customer: { id: "cu1", name: "Distribuidora Pérez" },
 		...overrides,
 	};
 }
@@ -124,6 +149,12 @@ function setup({
 			typeof useDeleteCustomer
 		>,
 	);
+	useMovementsMock.mockReturnValue({
+		data: [sale()],
+		isPending: false,
+		isError: false,
+		error: undefined,
+	} as unknown as ReturnType<typeof useMovements>);
 }
 
 describe("Client", () => {
@@ -268,6 +299,57 @@ describe("Client", () => {
 		expect(
 			screen.getByText("Ese cliente ya no existe en esta empresa."),
 		).toBeTruthy();
+	});
+
+	it("opens the detail of the selected customer on the same page", () => {
+		setup();
+
+		render(<Client />);
+
+		expect(screen.queryByText("Detalle del cliente")).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
+
+		expect(useMovementsMock).toHaveBeenCalledWith("c1", {
+			customerId: "cu1",
+			type: "OUT",
+		});
+		expect(
+			screen.getByRole("heading", { name: "Detalle del cliente" }),
+		).toBeTruthy();
+		expect(screen.getByText("Café molido 500g")).toBeTruthy();
+	});
+
+	it("closes the detail and returns to the list", () => {
+		setup();
+
+		render(<Client />);
+		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
+		fireEvent.click(screen.getByRole("button", { name: "Volver al listado" }));
+
+		expect(screen.queryByText("Detalle del cliente")).toBeNull();
+		expect(screen.getByText("Distribuidora Pérez")).toBeTruthy();
+		// El listado conserva sus acciones después de cerrar el detalle.
+		expect(screen.getByRole("button", { name: "Editar" })).toBeTruthy();
+	});
+
+	it("keeps only one panel open at a time", () => {
+		setup();
+
+		render(<Client />);
+
+		fireEvent.click(screen.getByRole("button", { name: /Nuevo Cliente/ }));
+		expect(screen.getByLabelText("Nombre del cliente")).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
+		expect(screen.queryByLabelText("Nombre del cliente")).toBeNull();
+		expect(
+			screen.getByRole("heading", { name: "Detalle del cliente" }),
+		).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+		expect(screen.queryByText("Detalle del cliente")).toBeNull();
+		expect(screen.getByLabelText("Nombre del cliente")).toBeTruthy();
 	});
 
 	it("deletes a customer only after the two-step confirmation", () => {

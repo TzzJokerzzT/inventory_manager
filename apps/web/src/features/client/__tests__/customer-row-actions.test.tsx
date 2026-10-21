@@ -14,6 +14,7 @@ const useDeleteCustomerMock = useDeleteCustomer as jest.MockedFunction<
 
 const deleteMutate = jest.fn();
 const onEdit = jest.fn();
+const onDetail = jest.fn();
 
 function stubMutation(state: Record<string, unknown> = {}) {
 	return {
@@ -41,7 +42,12 @@ function customer(overrides: Partial<Customer> = {}): Customer {
 
 function renderActions() {
 	return render(
-		<CustomerRowActions companyId="c1" customer={customer()} onEdit={onEdit} />,
+		<CustomerRowActions
+			companyId="c1"
+			customer={customer()}
+			onEdit={onEdit}
+			onDetail={onDetail}
+		/>,
 	);
 }
 
@@ -88,6 +94,14 @@ describe("CustomerRowActions", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Editar" }));
 
 		expect(onEdit).toHaveBeenCalledWith(customer());
+	});
+
+	it("opens the detail of that customer", () => {
+		renderActions();
+
+		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
+
+		expect(onDetail).toHaveBeenCalledWith(customer());
 	});
 
 	it("surfaces the API message when the deletion fails", () => {

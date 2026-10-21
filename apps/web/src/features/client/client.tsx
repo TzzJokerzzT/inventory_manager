@@ -13,6 +13,7 @@ import { LazyMotionTag } from "@/src/shared/components/Animation";
 import { SectionTitle } from "@/src/shared/components/SectionTitle";
 import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { useCustomers } from "./api/use-customers";
+import { CustomerDetailPanel } from "./components/customer-detail-panel";
 import { CustomerFormPanel } from "./components/customer-form-panel";
 import { CustomerRowActions } from "./components/customer-row-actions";
 import { CustomerSearch } from "./components/customer-search";
@@ -34,7 +35,11 @@ const EMPTY_VALUE = "—";
  * Writing happens **on this page**: «Nuevo Cliente» and «Editar» open the same
  * inline form panel above the table, so there is no route to navigate to and no
  * round-trip through the router state. The form reads the customer it edits with
- * `useCustomer`, which keeps it correct with a cold cache.
+ * `useCustomer`, which keeps it correct with a cold cache. «Detalle» opens a
+ * read-only panel in the same slot with the customer's exits, which narrows the
+ * movements history with `customerId` instead of adding a route or an endpoint.
+ * Only one panel is open at a time: opening any of the three closes the others,
+ * so the page never stacks two forms over the same list.
  *
  * The search box is debounced so each keystroke does not fire a request; the
  * query key includes the term, so a filtered read never overwrites the
@@ -46,6 +51,9 @@ export function Client() {
 	const [search, setSearch] = useState("");
 	const [isFormOpen, setIsFormOpen] = useState(false);
 	const [editingId, setEditingId] = useState<string | undefined>(undefined);
+	const [detailCustomer, setDetailCustomer] = useState<
+		CustomerModel | undefined
+	>(undefined);
 	const debouncedSearch = useDebouncedValue(search, 300);
 
 	const companyId = company?.id;
@@ -54,11 +62,13 @@ export function Client() {
 	const rows = customers.data ?? [];
 
 	function openCreateForm() {
+		setDetailCustomer(undefined);
 		setEditingId(undefined);
 		setIsFormOpen(true);
 	}
 
 	function openEditForm(customer: CustomerModel) {
+		setDetailCustomer(undefined);
 		setEditingId(customer.id);
 		setIsFormOpen(true);
 	}
@@ -66,6 +76,15 @@ export function Client() {
 	function closeForm() {
 		setIsFormOpen(false);
 		setEditingId(undefined);
+	}
+
+	function openDetail(customer: CustomerModel) {
+		closeForm();
+		setDetailCustomer(customer);
+	}
+
+	function closeDetail() {
+		setDetailCustomer(undefined);
 	}
 
 	const columns: Column<CustomerModel>[] = [
@@ -101,6 +120,7 @@ export function Client() {
 					companyId={companyId}
 					customer={row}
 					onEdit={openEditForm}
+					onDetail={openDetail}
 				/>
 			),
 		});
@@ -143,6 +163,14 @@ export function Client() {
 					companyId={companyId}
 					customerId={editingId}
 					onDone={closeForm}
+				/>
+			) : null}
+
+			{detailCustomer && companyId ? (
+				<CustomerDetailPanel
+					companyId={companyId}
+					customer={detailCustomer}
+					onClose={closeDetail}
 				/>
 			) : null}
 

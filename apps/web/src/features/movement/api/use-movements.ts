@@ -5,9 +5,13 @@ import { getApiClient } from "@/lib/api/client";
 import { type MovementsResponse, parseMovements } from "@/lib/api/schemas";
 import { getAccessToken } from "@/src/features/auth/api/get-access-token";
 
-/** The filters the history endpoint accepts: one product, one direction. */
+/**
+ * The filters the history endpoint accepts: one product, one customer, one
+ * direction.
+ */
 export type MovementFilters = {
 	productId?: string;
+	customerId?: string;
 	type?: "IN" | "OUT";
 };
 
@@ -17,7 +21,7 @@ export type MovementFilters = {
  * The registration invalidates this, not a single filter: a new movement changes
  * the history of the company whatever the list is currently narrowing, and
  * React Query matches by prefix, so `["movements", "c1"]` covers
- * `["movements", "c1", "", ""]` and `["movements", "c1", "p1", "OUT"]`.
+ * `["movements", "c1", "", "", ""]` and `["movements", "c1", "p1", "", "OUT"]`.
  */
 export function movementsQueryPrefix(companyId: string | undefined) {
 	return ["movements", companyId] as const;
@@ -36,6 +40,7 @@ export function movementsQueryKey(
 		"movements",
 		companyId,
 		filters.productId ?? "",
+		filters.customerId ?? "",
 		filters.type ?? "",
 	] as const;
 }
@@ -46,26 +51,35 @@ export function movementsQueryKey(
  *
  * Disabled while there is no active company: the endpoint needs one and the view
  * shows its own empty state in that case. A filter travels as a query parameter
- * only when it is set — an absent `productId` or `type` must produce the same
- * request and the same cache key as no filter at all, and never `undefined=` in
- * the URL. The response is validated at the boundary like every other read.
+ * only when it is set — an absent `productId`, `customerId` or `type` must
+ * produce the same request and the same cache key as no filter at all, and never
+ * `undefined=` in the URL. `customerId` is also a read filter, not a resource:
+ * the customer detail view narrows the history with it instead of adding an
+ * endpoint. The response is validated at the boundary like every other read.
  */
 export function useMovements(
 	companyId: string | undefined,
 	filters: MovementFilters = {},
 ) {
-	const { productId, type } = filters;
+	const { productId, customerId, type } = filters;
 
 	return useQuery<MovementsResponse>({
-		queryKey: movementsQueryKey(companyId, { productId, type }),
+		queryKey: movementsQueryKey(companyId, { productId, customerId, type }),
 		enabled: companyId !== undefined,
 		queryFn: async () => {
 			if (!companyId) {
 				return [];
 			}
-			const params: { productId?: string; type?: "IN" | "OUT" } = {};
+			const params: {
+				productId?: string;
+				customerId?: string;
+				type?: "IN" | "OUT";
+			} = {};
 			if (productId) {
 				params.productId = productId;
+			}
+			if (customerId) {
+				params.customerId = customerId;
 			}
 			if (type) {
 				params.type = type;

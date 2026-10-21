@@ -44,16 +44,18 @@ function mockGet(data: unknown) {
 
 describe("movementsQueryKey", () => {
 	it("scopes every cached read to its company and its filters", () => {
-		expect(movementsQueryKey("c1")).toEqual(["movements", "c1", "", ""]);
+		expect(movementsQueryKey("c1")).toEqual(["movements", "c1", "", "", ""]);
 		expect(movementsQueryKey("c1", { productId: "p1" })).toEqual([
 			"movements",
 			"c1",
 			"p1",
 			"",
+			"",
 		]);
 		expect(movementsQueryKey("c1", { type: "OUT" })).toEqual([
 			"movements",
 			"c1",
+			"",
 			"",
 			"OUT",
 		]);
@@ -61,8 +63,18 @@ describe("movementsQueryKey", () => {
 			"movements",
 			"c2",
 			"p1",
+			"",
 			"IN",
 		]);
+	});
+
+	it("keeps the sales of one customer in their own cache entry", () => {
+		expect(movementsQueryKey("c1", { customerId: "cu1", type: "OUT" })).toEqual(
+			["movements", "c1", "", "cu1", "OUT"],
+		);
+		expect(movementsQueryKey("c1", { customerId: "cu2" })).not.toEqual(
+			movementsQueryKey("c1", { customerId: "cu1" }),
+		);
 	});
 });
 
@@ -113,6 +125,38 @@ describe("useMovements", () => {
 		});
 		expect(get).toHaveBeenCalledWith("/companies/c1/movements", {
 			params: { type: "IN" },
+		});
+	});
+
+	it("sends the customer filter, alone and combined with the direction", async () => {
+		const get = mockGet([]);
+
+		const { result } = renderHook(
+			() => useMovements("c1", { customerId: "cu1", type: "OUT" }),
+			{ wrapper },
+		);
+
+		await waitFor(() => {
+			expect(result.current.isSuccess).toBe(true);
+		});
+		expect(get).toHaveBeenCalledWith("/companies/c1/movements", {
+			params: { customerId: "cu1", type: "OUT" },
+		});
+	});
+
+	it("does not send an unset customer filter", async () => {
+		const get = mockGet([]);
+
+		const { result } = renderHook(
+			() => useMovements("c1", { customerId: undefined, type: "OUT" }),
+			{ wrapper },
+		);
+
+		await waitFor(() => {
+			expect(result.current.isSuccess).toBe(true);
+		});
+		expect(get).toHaveBeenCalledWith("/companies/c1/movements", {
+			params: { type: "OUT" },
 		});
 	});
 

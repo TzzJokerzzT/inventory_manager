@@ -23,8 +23,9 @@ function deleteErrorMessage(error: unknown): string | undefined {
 }
 
 /**
- * The actions column: edit opens the inline form, delete sits behind a
- * two-step confirmation rendered in place.
+ * The actions column: detail opens the read-only panel for that customer's
+ * sales, edit opens the inline form and delete sits behind a two-step
+ * confirmation rendered in place.
  *
  * `window.confirm` is never used: a native dialog blocks the page and cannot be
  * driven by a test. The confirmation is local state, so the mutation only runs
@@ -35,10 +36,12 @@ export function CustomerRowActions({
 	companyId,
 	customer,
 	onEdit,
+	onDetail,
 }: {
 	companyId: string;
 	customer: Customer;
 	onEdit: (customer: Customer) => void;
+	onDetail: (customer: Customer) => void;
 }) {
 	const [confirming, setConfirming] = useState(false);
 	const remove = useDeleteCustomer(companyId);
@@ -80,6 +83,14 @@ export function CustomerRowActions({
 
 	return (
 		<div className="flex items-center justify-end gap-2">
+			<Button
+				type="button"
+				size="sm"
+				variant="ghost"
+				onClick={() => onDetail(customer)}
+			>
+				Detalle
+			</Button>
 			<Button
 				type="button"
 				size="sm"

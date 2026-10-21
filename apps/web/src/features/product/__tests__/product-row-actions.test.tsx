@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel } from "@/lib/api/schemas";
 import { useDeleteProduct } from "../api/use-delete-product";
@@ -44,6 +44,12 @@ function renderActions() {
 	return render(<ProductRowActions companyId="c1" product={product()} />);
 }
 
+/** Opens the confirmation dialog from the trash button in the row. */
+function openDialog() {
+	fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+	return screen.getByRole("dialog", { name: "Eliminar producto" });
+}
+
 describe("ProductRowActions", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -58,36 +64,66 @@ describe("ProductRowActions", () => {
 		).toBe("/dashboard/products/p1/edit");
 	});
 
-	it("asks for confirmation before deleting", () => {
+	it("opens the confirmation dialog naming the product and the soft delete", () => {
 		renderActions();
 
-		fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+		const dialog = openDialog();
 
+		expect(within(dialog).getByText(/Café molido 500g/)).toBeTruthy();
+		expect(within(dialog).getByText(/catálogo/i)).toBeTruthy();
+		expect(
+			within(dialog).getByRole("button", { name: "Cancelar" }),
+		).toBeTruthy();
 		expect(mutate).not.toHaveBeenCalled();
-		expect(screen.getByRole("button", { name: "Confirmar" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "Cancelar" })).toBeTruthy();
 	});
 
-	it("deletes only after the confirmation", () => {
+	it("deletes only after confirming in the dialog", () => {
 		renderActions();
 
-		fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
-		fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+		const dialog = openDialog();
+		fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar" }));
 
-		expect(mutate).toHaveBeenCalledWith({ productId: "p1" });
+		expect(mutate).toHaveBeenCalledTimes(1);
+		const [variables, options] = mutate.mock.calls[0];
+		expect(variables).toEqual({ productId: "p1" });
+		expect(typeof options?.onSuccess).toBe("function");
 	});
 
-	it("keeps the product when the confirmation is cancelled", () => {
+	it("closes the dialog once the deletion succeeds", () => {
 		renderActions();
 
-		fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
-		fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+		const dialog = openDialog();
+		fireEvent.click(within(dialog).getByRole("button", { name: "Eliminar" }));
+
+		act(() => {
+			mutate.mock.calls[0][1].onSuccess();
+		});
+
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("keeps the product when the dialog is cancelled", () => {
+		renderActions();
+
+		const dialog = openDialog();
+		fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
 
 		expect(mutate).not.toHaveBeenCalled();
+		expect(screen.queryByRole("dialog")).toBeNull();
 		expect(screen.getByRole("button", { name: "Eliminar" })).toBeTruthy();
 	});
 
-	it("shows the API message when the role cannot delete", () => {
+	it("keeps the product when the dialog is dismissed with Escape", () => {
+		renderActions();
+
+		const dialog = openDialog();
+		fireEvent.keyDown(dialog, { key: "Escape" });
+
+		expect(mutate).not.toHaveBeenCalled();
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("shows the API message inside the dialog when the role cannot delete", () => {
 		mockDelete({
 			isError: true,
 			error: new ApiError(
@@ -98,9 +134,9 @@ describe("ProductRowActions", () => {
 		});
 		renderActions();
 
-		fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+		const dialog = openDialog();
 
-		expect(screen.getByRole("alert").textContent).toContain(
+		expect(within(dialog).getByRole("alert").textContent).toContain(
 			"Tu rol no permite esta acción.",
 		);
 	});
@@ -109,11 +145,11 @@ describe("ProductRowActions", () => {
 		mockDelete({ isPending: true });
 		renderActions();
 
-		fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+		const dialog = openDialog();
 
 		expect(
-			screen
-				.getByRole("button", { name: "Confirmar" })
+			within(dialog)
+				.getByRole("button", { name: "Eliminar" })
 				.hasAttribute("disabled"),
 		).toBe(true);
 	});

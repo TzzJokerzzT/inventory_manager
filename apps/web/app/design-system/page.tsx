@@ -14,6 +14,7 @@ import {
 	TextField,
 } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
+import { ModalDemo } from "./modal-demo";
 
 export const metadata: Metadata = {
 	title: "Design System — Inventory Manager",
@@ -342,6 +343,22 @@ export default function DesignSystemPage() {
 					rows={productRows}
 					getRowKey={(row) => row.sku}
 				/>
+			</Section>
+
+			<Section index={9} title="Modal">
+				<ModalDemo />
+				<div className="mt-4">
+					<Note>
+						Modal de confirmación reutilizable y accesible: es controlado
+						(recibe
+						<b className="font-semibold">open</b> y{" "}
+						<b className="font-semibold">onOpenChange</b>), toma el nombre
+						accesible del título y deja en el primitivo el foco atrapado, el
+						cierre con Escape, el clic en el fondo y el bloqueo del scroll.
+						Reemplaza a <span className="font-semibold">window.confirm</span>,
+						que bloquea la página y no se puede probar.
+					</Note>
+				</div>
 			</Section>
 		</main>
 	);

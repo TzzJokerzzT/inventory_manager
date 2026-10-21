@@ -6,6 +6,8 @@ export { DataTable } from "./data-table";
 export { DropzoneField } from "./dropzone";
 export { AutoComplete, SelectField, TextField } from "./form-field";
 export { KpiCard } from "./kpi-card";
+export type { ModalProps } from "./modal";
+export { Modal } from "./modal";
 export type { StockStatus } from "./stock-badge";
 export { StockBadge, stockStatus } from "./stock-badge";
 export { TextareaField } from "./textarea";

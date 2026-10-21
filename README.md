@@ -210,8 +210,8 @@ dice. Los tres gráficos son:
 Los gráficos usan **Recharts** (ya estaba en el stack) y tienen estado de carga, de error y de vacío.
 
 **Design system.** Paleta de tokens (modo claro y oscuro), componentes base (`Button`, `Card`,
-`Spinner`, `Toast`) y componentes del design system (`Alert`, `DataTable`, `KpiCard`, `StockBadge`,
-`FormField`, `Checkbox`), con una página de referencia en `/design-system`.
+`Spinner`, `Toast`) y componentes del design system (`Alert`, `DataTable`, `KpiCard`, `Modal`,
+`StockBadge`, `FormField`, `Checkbox`), con una página de referencia en `/design-system`.
 
 ### Planificado
 

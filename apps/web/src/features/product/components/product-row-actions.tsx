@@ -1,8 +1,10 @@
 "use client";
 
 import { cn } from "cn";
+import { SquarePen, Trash } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { Modal } from "@/components/design-system";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import type { Product } from "@/lib/api/schemas";
@@ -25,13 +27,12 @@ function deleteErrorMessage(error: unknown): string | undefined {
 }
 
 /**
- * The actions column: edit and delete, the delete behind a two-step
- * confirmation rendered inline.
+ * The actions column: edit and delete, the delete behind a confirmation modal.
  *
  * `window.confirm` is never used: a native dialog blocks the page and cannot be
- * driven by a test. The confirmation is local state, so the mutation only runs
- * after the second click, and the row re-renders from the invalidated catalogue
- * instead of a local copy.
+ * driven by a test. The confirmation is `Modal`'s `open` state, so the mutation
+ * only runs from the dialog's confirm button and the row re-renders from the
+ * invalidated catalogue instead of a local copy.
  */
 export function ProductRowActions({
 	companyId,
@@ -44,57 +45,65 @@ export function ProductRowActions({
 	const remove = useDeleteProduct(companyId);
 	const error = deleteErrorMessage(remove.error);
 
-	if (confirming) {
-		return (
-			<div className="flex flex-col items-end gap-1">
-				<div className="flex items-center gap-2">
-					<span className="text-xs text-text-secondary">
-						¿Eliminar {product.name}?
-					</span>
-					<Button
-						type="button"
-						size="xs"
-						variant="danger"
-						disabled={remove.isPending}
-						onClick={() => remove.mutate({ productId: product.id })}
-					>
-						Confirmar
-					</Button>
-					<Button
-						type="button"
-						size="xs"
-						variant="ghost"
-						onClick={() => setConfirming(false)}
-					>
-						Cancelar
-					</Button>
-				</div>
+	return (
+		<>
+			<div className="flex items-center justify-end gap-2">
+				<Link
+					href={`/dashboard/products/${product.id}/edit`}
+					aria-label="Editar"
+					className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
+				>
+					<SquarePen size={30} />
+				</Link>
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					aria-label="Eliminar"
+					className="text-danger-text hover:bg-danger-soft"
+					onClick={() => setConfirming(true)}
+				>
+					<Trash size={30} />
+				</Button>
+			</div>
+			<Modal
+				open={confirming}
+				onOpenChange={setConfirming}
+				title="Eliminar producto"
+				description={`${product.name} se quitará del catálogo. El producto no se borra de forma definitiva: deja de aparecer en el listado.`}
+				footer={
+					<>
+						<Button
+							type="button"
+							size="sm"
+							variant="ghost"
+							onClick={() => setConfirming(false)}
+						>
+							Cancelar
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant="danger"
+							disabled={remove.isPending}
+							onClick={() =>
+								remove.mutate(
+									{ productId: product.id },
+									{ onSuccess: () => setConfirming(false) },
+								)
+							}
+						>
+							Eliminar
+						</Button>
+					</>
+				}
+			>
 				{error ? (
-					<p role="alert" className="text-xs text-danger-text">
+					<p role="alert" className="text-sm text-danger-text">
 						{error}
 					</p>
 				) : null}
-			</div>
-		);
-	}
-
-	return (
-		<div className="flex items-center justify-end gap-2">
-			<Link
-				href={`/dashboard/products/${product.id}/edit`}
-				className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
-			>
-				Editar
-			</Link>
-			<Button
-				type="button"
-				size="sm"
-				variant="ghost"
-				className="text-danger-text hover:bg-danger-soft"
-				onClick={() => setConfirming(true)}
-			>
-				Eliminar
-			</Button>
-		</div>
+			</Modal>
+		</>
 	);
 }

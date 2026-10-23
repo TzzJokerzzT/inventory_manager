@@ -82,10 +82,22 @@ nuevo y con los días sin movimientos en cero, desde
 > product_not_deleted` (la papelera es un estado, no un flag); uno de otra empresa responde el mismo
 > `404` que uno inexistente. El SKU **sigue reservado** mientras el producto está dado de baja —el
 > índice único cubre las filas con `deletedAt`—, así que recrearlo responde `409 sku_already_exists`
-> y **restaurar es la forma de reutilizarlo**. La **purga física** (borrado definitivo) **no está
-> implementada** y es una **decisión aparte**: OWNER-only, con modal de confirmación y bloqueada
-> cuando el producto tiene movimientos, porque `stock_movements.product_id` es `ON DELETE RESTRICT` y
-> el ledger es la traza de auditoría (MOV-05). Nada del roadmap la marca como hecha.
+> y **restaurar es la forma de reutilizarlo** mientras la fila siga en la papelera.
+>
+> **La purga física está implementada** (`odd/tasks/product-purge.md`): `DELETE
+> /companies/{companyId}/products/{productId}/permanent` borra la fila y responde `204`; es la segunda
+> mitad de la papelera —restaurar o purgar— y la única forma de **liberar el SKU**, porque la fila y su
+> índice único desaparecen, así que un producto nuevo puede volver a usar ese código. Es **solo para el
+> `OWNER`**: `purge_products` es una fila propia de la matriz, separada de `manage_products` porque la
+> operación es irreversible, y un `ADMIN` recibe `403 insufficient_role` aunque pueda dar de baja y
+> restaurar. Solo se permite sobre un producto **ya dado de baja** (`409 product_not_deleted`, la
+> papelera es el único punto de entrada) y **sin movimientos** (`409 product_has_movements`, con el
+> conteo): el ledger es la traza de auditoría (MOV-05) y **no se borra nunca**, y
+> `stock_movements.product_id` es `ON DELETE RESTRICT`, la última guarda —un movimiento creado entre el
+> conteo y el `DELETE` también responde ese `409`, nunca un `500`—. En la UI, la papelera ofrece
+> **Eliminar definitivamente** junto a **Restaurar** únicamente al `OWNER`, detrás del `Modal` de
+> confirmación (danger) que advierte que es irreversible y que solo se permite sin movimientos; el
+> `409` se muestra adentro del diálogo con el mensaje de la API.
 
 ### 4. Entradas y Salidas de Inventario
 

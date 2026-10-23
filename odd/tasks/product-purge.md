@@ -36,11 +36,11 @@ S7. **Verificación.** Suites completas en verde (baseline: API 59 suites/882 te
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos | S2-S4, S7 | parent | C1 |
-| T2 | Backend: `purge_products`, conteo de movimientos, purga y errores | S2-S4 | worker | C1 |
-| T3 | Frontend: purga en la papelera con el Modal | S5 | worker | C2 |
-| T4 | Verificación integral | S7 | parent | — |
-| T5 | Sincronizar README y `docs/Project.md` | S7 | parent | C3 |
+| T1 | Contrato OpenAPI + regenerar tipos | S2-S4, S7 | parent | `b41af2b` (C1) |
+| T2 | Backend: `purge_products`, conteo de movimientos, purga y errores | S2-S4 | worker | `b41af2b` (C1) |
+| T3 | Frontend: purga en la papelera con el Modal | S5 | worker | `da02c55` (C2) |
+| T4 | Verificación integral | S7 | parent | — (verificación, sin commit) |
+| T5 | Sincronizar README y `docs/Project.md` | S7 | parent | C3 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -55,3 +55,29 @@ saltaría el paso de baja y haría que el `DELETE` normal pierda sentido.
 
 L4. Decisión del orquestador: el conteo previo de movimientos da un 409 legible sin intentar el
 borrado; el `P2003` del adaptador cubre la carrera. No se borra ningún movimiento.
+
+L5. Entrega en **dos slices** sobre `feat/refactor/product-frontend-create-product`; el push y el PR
+los decide el humano. Los dos commits:
+
+- **C1 `b41af2b` — `feat(api): purge soft-deleted products without movements`**: la fila
+  `purge_products` de la matriz (solo `OWNER`) y el caso de uso `purge-product.ts` (permiso primero,
+  conteo con `countByProduct` antes del borrado, `409 product_has_movements` con el conteo); el
+  `ProductRepository.purge` que devuelve la unión `purged | not_found | not_deleted | has_movements`
+  (el `deleteMany` con `deletedAt: { not: null }` en el `WHERE`, así que el guard va dentro del
+  `DELETE`); la traducción de `P2003` a `has_movements` con re-conteo para no mentir en el mensaje; el
+  endpoint `DELETE /companies/{companyId}/products/{productId}/permanent` (`204`) con sus errores
+  `400/401/403/404/409/429/500` y el contrato OpenAPI (con los tipos del frontend regenerados en
+  `apps/web/lib/api/openapi.d.ts`).
+- **C2 `da02c55` — `feat(web): permanently delete a product from the trash`**: `canPurgeProducts`
+  (OWNER, rol desconocido denegado) cableado en la papelera, el botón **Eliminar definitivamente**
+  junto a **Restaurar** y el `Modal` (danger) que advierte que es irreversible y que solo se permite
+  sin movimientos, con el `409` de la API adentro del diálogo y toast al confirmar.
+
+Verificación de T4, evidencia reportada por el orquestador (no la re-corrió el worker de docs): API
+**59 suites / 916 tests** y web **106 suites / 806 tests** en verde, `check-types` limpio en las dos
+apps, `biome check .` limpio y drift de OpenAPI en verde. Los números de S7 (882/787 y 105) eran el
+baseline de arranque: crecieron con los tests nuevos de la purga.
+
+Nota de entrega: los workers de esta tarea (T2, T3, T5) no crearon directorios scratch fuera del
+worktree; el árbol de trabajo quedó sin cachés ni rutas temporales (T5 solo tocó `README.md`,
+`docs/Project.md` y este archivo).

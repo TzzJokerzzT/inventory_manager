@@ -1,0 +1,15 @@
+{
+	"$schema": "https://openapi.vercel.sh/vercel.json",
+	"buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then bun run db:deploy; else echo \"preview/development build: skipping migrations\"; fi",
+	"rewrites": [
+		{
+			"source": "/(.*)",
+			"destination": "/api"
+		}
+	],
+	"functions": {
+		"api/index.ts": {
+			"includeFiles": "openapi.yaml"
+		}
+	}
+}

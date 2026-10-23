@@ -16,8 +16,15 @@ export const DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES = 15;
  */
 export const SESSION_IDLE_WARNING_LEAD_MS = 2 * 60 * 1000;
 
-/** Resolution of the monitor. One tick per second is what the countdown shows. */
-const SESSION_IDLE_TICK_MS = 1000;
+/**
+ * Resolution of the monitor. One tick per second is what the countdown shows.
+ *
+ * It is a default, not a constant of the design: the suite injects a coarser
+ * tick so a fifteen-minute window is a dozen simulated ticks instead of nine
+ * hundred, which is the difference between a fast test and one that times out
+ * on a loaded machine. Production never passes it.
+ */
+export const SESSION_IDLE_TICK_MS = 1000;
 
 /**
  * Reads the configured idle window, in minutes.
@@ -126,7 +133,13 @@ export interface IdleSession {
  * that hook owns `POST /auth/logout`, clearing the store and landing on
  * `/login`, and this monitor only decides *when*.
  */
-export function useIdleSession(): IdleSession {
+export interface IdleSessionOptions {
+	/** Resolution of the monitor, in milliseconds. Defaults to one second. */
+	tickMs?: number;
+}
+
+export function useIdleSession(options: IdleSessionOptions = {}): IdleSession {
+	const tickMs = options.tickMs ?? SESSION_IDLE_TICK_MS;
 	const accessToken = useSessionStore((state) => state.accessToken);
 	const sessionLive = accessToken !== undefined;
 	const logout = useLogout();
@@ -135,6 +148,11 @@ export function useIdleSession(): IdleSession {
 	const lastSharedWriteRef = useRef(0);
 	const loggedOutRef = useRef(false);
 	const [warningOpen, setWarningOpen] = useState(false);
+	// Mirrors the state so the tick can skip scheduling an update that would not
+	// change anything: an unconditional `setWarningOpen` on every one-second tick
+	// keeps the render loop busy for the whole idle window (and, under fake
+	// timers, live-locks the suite).
+	const warningOpenRef = useRef(false);
 	const [secondsRemaining, setSecondsRemaining] = useState(0);
 
 	// `useLogout` hands back a new closure on every render, while the interval
@@ -145,6 +163,16 @@ export function useIdleSession(): IdleSession {
 	useEffect(() => {
 		logoutRef.current = logout;
 	}, [logout]);
+
+	/** Sets the warning only when its value actually changes. */
+	const applyWarning = useCallback((open: boolean) => {
+		if (warningOpenRef.current === open) {
+			return;
+		}
+
+		warningOpenRef.current = open;
+		setWarningOpen(open);
+	}, []);
 
 	/**
 	 * Milliseconds left before the deadline. Negative once it passed.
@@ -177,11 +205,11 @@ export function useIdleSession(): IdleSession {
 		}
 
 		loggedOutRef.current = true;
-		setWarningOpen(false);
+		applyWarning(false);
 		void logoutRef.current();
 
 		return true;
-	}, [remainingMs]);
+	}, [remainingMs, applyWarning]);
 
 	/**
 	 * The answer to the warning, and also the answer to any interaction.
@@ -218,7 +246,7 @@ export function useIdleSession(): IdleSession {
 	// from another tab or a dead refresh cookie never leaves it on screen.
 	useEffect(() => {
 		if (!sessionLive) {
-			setWarningOpen(false);
+			applyWarning(false);
 			clearSharedActivity();
 			return;
 		}
@@ -227,7 +255,7 @@ export function useIdleSession(): IdleSession {
 		lastSharedWriteRef.current = now;
 		writeSharedActivityAt(now);
 		loggedOutRef.current = false;
-	}, [sessionLive]);
+	}, [sessionLive, applyWarning]);
 
 	useEffect(() => {
 		if (!sessionLive) {
@@ -278,6 +306,8 @@ export function useIdleSession(): IdleSession {
 			// Rounded up so the last second reads `0:01` while the session is still
 			// alive, and no-op updates are skipped to keep re-renders to one per
 			// second.
+			// The countdown always reads in seconds, whatever the tick resolution
+			// is, so the number on screen never depends on the test seam.
 			setSecondsRemaining((previous) => {
 				const next = Math.ceil(remaining / SESSION_IDLE_TICK_MS);
 				return previous === next ? previous : next;
@@ -285,11 +315,11 @@ export function useIdleSession(): IdleSession {
 
 			// Inside the lead the warning opens; back outside it — because another
 			// tab just interacted — a warning already on screen is stale and closes.
-			setWarningOpen(remaining <= SESSION_IDLE_WARNING_LEAD_MS);
-		}, SESSION_IDLE_TICK_MS);
+			applyWarning(remaining <= SESSION_IDLE_WARNING_LEAD_MS);
+		}, tickMs);
 
 		return () => clearInterval(interval);
-	}, [sessionLive, expireIfDue, remainingMs]);
+	}, [sessionLive, expireIfDue, remainingMs, applyWarning, tickMs]);
 
 	return {
 		warningOpen,

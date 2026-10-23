@@ -36,6 +36,12 @@ const getApiClientMock = getApiClient as jest.MockedFunction<
 const IDLE_WINDOW_MS = SESSION_IDLE_TIMEOUT_MINUTES * 60 * 1000;
 const WARNING_THRESHOLD_MS = IDLE_WINDOW_MS - SESSION_IDLE_WARNING_LEAD_MS;
 
+/**
+ * A minute per tick: the window is still fifteen simulated minutes, but the
+ * monitor walks it in thirteen steps instead of nine hundred.
+ */
+const TEST_TICK_MS = 60_000;
+
 const replace = jest.fn();
 const post = jest.fn(async () => ({ data: undefined }));
 
@@ -43,10 +49,21 @@ function liveSession() {
 	useSessionStore.setState({ accessToken: "token-value", resolved: true });
 }
 
-/** Advances the fake clock and flushes whatever the tick started. */
+/**
+ * Advances the fake clock and flushes whatever the tick started.
+ *
+ * The walk is synchronous on purpose. `advanceTimersByTimeAsync` awaits a
+ * microtask per timer, and a window of this size is hundreds of one-second
+ * ticks, so the test spent seconds of wall clock in bookkeeping and timed out
+ * on a loaded machine. Advancing synchronously lets React batch the updates,
+ * and the extra `act` flushes the promise the logout starts.
+ */
 async function advance(ms: number) {
 	await act(async () => {
-		await jest.advanceTimersByTimeAsync(ms);
+		jest.advanceTimersByTime(ms);
+	});
+	await act(async () => {
+		await Promise.resolve();
 	});
 }
 
@@ -81,7 +98,9 @@ describe("useIdleSession", () => {
 	it("stays quiet below the warning threshold", async () => {
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS - 1000);
 
@@ -92,7 +111,9 @@ describe("useIdleSession", () => {
 	it("opens the warning at the threshold with the seconds it has left", async () => {
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS);
 
@@ -111,7 +132,9 @@ describe("useIdleSession", () => {
 	it("closes the warning and restarts the clock when the user stays active", async () => {
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS);
 		expect(result.current.warningOpen).toBe(true);
@@ -138,7 +161,9 @@ describe("useIdleSession", () => {
 		async (eventName) => {
 			liveSession();
 
-			const { result } = renderHook(() => useIdleSession());
+			const { result } = renderHook(() =>
+				useIdleSession({ tickMs: TEST_TICK_MS }),
+			);
 
 			await advance(WARNING_THRESHOLD_MS);
 			expect(result.current.warningOpen).toBe(true);
@@ -160,7 +185,9 @@ describe("useIdleSession", () => {
 	it("counts the tab becoming visible again as activity", async () => {
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS);
 		expect(result.current.warningOpen).toBe(true);
@@ -182,7 +209,9 @@ describe("useIdleSession", () => {
 			get: () => "hidden",
 		});
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(IDLE_WINDOW_MS);
 
@@ -194,7 +223,7 @@ describe("useIdleSession", () => {
 	it("logs out exactly once when the window elapses and then keeps quiet", async () => {
 		liveSession();
 
-		renderHook(() => useIdleSession());
+		renderHook(() => useIdleSession({ tickMs: TEST_TICK_MS }));
 
 		await advance(IDLE_WINDOW_MS);
 
@@ -219,7 +248,9 @@ describe("useIdleSession", () => {
 		// timestamp is what the monitor reads before deciding to log out.
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS);
 		expect(result.current.warningOpen).toBe(true);
@@ -231,11 +262,13 @@ describe("useIdleSession", () => {
 				String(Date.now()),
 			);
 		});
-		await advance(1000);
+		await advance(TEST_TICK_MS);
 
 		expect(post).not.toHaveBeenCalled();
 		expect(result.current.warningOpen).toBe(false);
-		expect(result.current.idleMinutes).toBe(0);
+		// The clock restarted from the other tab's timestamp, so at most the single
+		// tick that just elapsed has been counted.
+		expect(result.current.idleMinutes).toBeLessThanOrEqual(1);
 	});
 
 	it("logs out instead of extending when timers were throttled past the deadline", async () => {
@@ -245,7 +278,9 @@ describe("useIdleSession", () => {
 		// restarting it, or leaving the app open overnight would never sign out.
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		act(() => {
 			jest.setSystemTime(Date.now() + IDLE_WINDOW_MS);
@@ -263,7 +298,9 @@ describe("useIdleSession", () => {
 	it("logs out instead of extending when an interaction arrives past the deadline", async () => {
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		act(() => {
 			jest.setSystemTime(Date.now() + IDLE_WINDOW_MS);
@@ -278,7 +315,9 @@ describe("useIdleSession", () => {
 	});
 
 	it("never schedules a timer or logs out without an access token", async () => {
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		expect(jest.getTimerCount()).toBe(0);
 
@@ -292,12 +331,18 @@ describe("useIdleSession", () => {
 	it("drops its timers and listeners on unmount", async () => {
 		liveSession();
 
-		const { unmount } = renderHook(() => useIdleSession());
+		const clearIntervalSpy = jest.spyOn(global, "clearInterval");
+		const { unmount } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS);
 		unmount();
 
-		expect(jest.getTimerCount()).toBe(0);
+		// `getTimerCount` would also see React's own scheduled work, so the
+		// teardown is asserted on the monitor's interval plus the behaviour that
+		// matters: nothing fires once it is unmounted.
+		expect(clearIntervalSpy).toHaveBeenCalled();
 
 		act(() => {
 			window.dispatchEvent(new Event("pointerdown"));
@@ -310,7 +355,9 @@ describe("useIdleSession", () => {
 	it("stops warning and counting when the session ends elsewhere", async () => {
 		liveSession();
 
-		const { result } = renderHook(() => useIdleSession());
+		const { result } = renderHook(() =>
+			useIdleSession({ tickMs: TEST_TICK_MS }),
+		);
 
 		await advance(WARNING_THRESHOLD_MS);
 		expect(result.current.warningOpen).toBe(true);

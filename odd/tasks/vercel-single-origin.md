@@ -46,6 +46,22 @@ way. `vercel.app` is a public suffix, so the two hosts are different sites and `
 The fallback (`SameSite=None`) needs third-party cookies, which Safari/iOS and Firefox block by default, so
 it is not an option for a real user base. Consolidation into one origin is the free fix.
 
+L5 (review): lineage `review-4997a01054c26638` (medium, lenses risk + resilience) went through the refuter
+and came back `correction_required` with a single BLOCKER, `R4-EXPRESS-TYPES`, claiming that passing
+`NextApiRequest`/`NextApiResponse` to the Express `Application` is a type error and that `next build` cannot
+deploy. **The claim is false**, and it was measured instead of obeyed:
+- `@types/express` v5 declares the application call signature as
+  `(req: Request | http.IncomingMessage, res: Response | http.ServerResponse): any`;
+- `NextApiRequest extends http.IncomingMessage` and `NextApiResponse extends http.ServerResponse`, which is
+  exactly the accepted shape;
+- `bunx tsc --noEmit -p tsconfig.check.json --listFiles` lists `pages/api/[...path].ts` **in the program** and
+  the same run reports zero errors with `"strict": true`;
+- `bun run build` (next build) exits 0 and prints the route as `ƒ /api/[...path]`.
+
+No code was changed for it: inventing an `as unknown as` cast to satisfy a non-defect would make the handler
+worse. The lineage stays open at `correction_required` because the only offered route is a correction for
+something the compiler disproves; that needs a provider-side fix or a fresh review, not a code change.
+
 L4 (measurement, why a Pages API route and not a route handler): App Router handlers expose the Web
 `Request`/`Response`, so Express would need a `node:http` shim. The Pages Router still exposes Node
 `req`/`res`, which is exactly the contract `app(req, res)` expects — zero adapter, zero new dependency.

@@ -1,10 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel } from "@/lib/api/schemas";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { useMe } from "@/src/features/user/api/use-me";
 import { useDeleteProduct } from "../api/use-delete-product";
 import { useProducts } from "../api/use-products";
+import { usePurgeProduct } from "../api/use-purge-product";
 import { useRestoreProduct } from "../api/use-restore-product";
 import { Product } from "../product";
 
@@ -28,6 +35,10 @@ jest.mock("../api/use-restore-product", () => ({
 	useRestoreProduct: jest.fn(),
 }));
 
+jest.mock("../api/use-purge-product", () => ({
+	usePurgeProduct: jest.fn(),
+}));
+
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;
@@ -39,7 +50,11 @@ const useDeleteProductMock = useDeleteProduct as jest.MockedFunction<
 const useRestoreProductMock = useRestoreProduct as jest.MockedFunction<
 	typeof useRestoreProduct
 >;
+const usePurgeProductMock = usePurgeProduct as jest.MockedFunction<
+	typeof usePurgeProduct
+>;
 const restoreMutate = jest.fn();
+const purgeMutate = jest.fn();
 
 function product(overrides: Partial<ProductModel> = {}): ProductModel {
 	return {
@@ -119,6 +134,10 @@ function setup({
 		...stubMutation(),
 		mutate: restoreMutate,
 	} as unknown as ReturnType<typeof useRestoreProduct>);
+	usePurgeProductMock.mockReturnValue({
+		...stubMutation(),
+		mutate: purgeMutate,
+	} as unknown as ReturnType<typeof usePurgeProduct>);
 }
 
 describe("Product", () => {
@@ -266,6 +285,63 @@ describe("Product", () => {
 		expect(useRestoreProductMock).toHaveBeenCalledWith("c1");
 		expect(restoreMutate).toHaveBeenCalledTimes(1);
 		expect(restoreMutate.mock.calls[0][0]).toEqual({ productId: "p1" });
+	});
+
+	it("hides the purge from an ADMIN in the trash", () => {
+		setup({ role: "ADMIN", rows: [product()] });
+
+		render(<Product />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+
+		expect(screen.getByRole("button", { name: "Restaurar" })).toBeTruthy();
+		expect(
+			screen.queryByRole("button", { name: "Eliminar definitivamente" }),
+		).toBeNull();
+	});
+
+	it("offers the purge to an OWNER in the trash, and only there", () => {
+		setup({ role: "OWNER", rows: [product()] });
+
+		render(<Product />);
+
+		expect(
+			screen.queryByRole("button", { name: "Eliminar definitivamente" }),
+		).toBeNull();
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+
+		expect(usePurgeProductMock).toHaveBeenCalledWith("c1");
+		expect(
+			screen.getByRole("button", { name: "Eliminar definitivamente" }),
+		).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Restaurar" })).toBeTruthy();
+	});
+
+	it("purges a product from the trash through the confirmation dialog", () => {
+		setup({ role: "OWNER", rows: [product()] });
+
+		render(<Product />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+		fireEvent.click(
+			screen.getByRole("button", { name: "Eliminar definitivamente" }),
+		);
+
+		const dialog = screen.getByRole("dialog", {
+			name: "Eliminar definitivamente",
+		});
+		expect(purgeMutate).not.toHaveBeenCalled();
+
+		fireEvent.click(
+			within(dialog).getByRole("button", {
+				name: "Eliminar definitivamente",
+			}),
+		);
+
+		expect(purgeMutate).toHaveBeenCalledTimes(1);
+		expect(purgeMutate.mock.calls[0][0]).toEqual({ productId: "p1" });
+		expect(restoreMutate).not.toHaveBeenCalled();
 	});
 
 	it("shows the trash empty state, distinct from the active one", () => {

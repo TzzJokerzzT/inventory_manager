@@ -17,7 +17,11 @@ import { useMe } from "../user/api/use-me";
 import { useProducts } from "./api/use-products";
 import { ProductRowActions } from "./components/product-row-actions";
 import { formatPrice } from "./lib/format-price";
-import { canManageProducts, roleForCompany } from "./lib/product-permissions";
+import {
+	canManageProducts,
+	canPurgeProducts,
+	roleForCompany,
+} from "./lib/product-permissions";
 import { useDebouncedValue } from "./lib/use-debounced-value";
 import { ProductSearch } from "./product-search";
 
@@ -37,7 +41,9 @@ const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
  * read with `deleted=true`). In the trash every row offers Restaurar, which asks
  * for no confirmation because it is safe and reversible, and the catalogue's
  * create/edit/delete are hidden: they belong to the active catalogue, not to a
- * product that is already deleted.
+ * product that is already deleted. The irreversible purge — Eliminar
+ * definitivamente — is offered there too, but only to an OWNER
+ * ({@link canPurgeProducts}), behind its own confirmation modal.
  *
  * The search box is debounced so each keystroke does not fire a request; the
  * query key includes the term and the mode, so a filtered read never overwrites
@@ -58,6 +64,7 @@ export function Product() {
 		showTrash ? { deleted: true } : undefined,
 	);
 	const canManage = canManageProducts(roleForCompany(me, companyId));
+	const canPurge = canPurgeProducts(roleForCompany(me, companyId));
 	const rows = products.data ?? [];
 
 	const columns: Column<ProductModel>[] = [
@@ -101,6 +108,7 @@ export function Product() {
 						companyId={companyId}
 						product={row}
 						mode={showTrash ? "trash" : "active"}
+						canPurge={canPurge}
 					/>
 				) : null,
 		});

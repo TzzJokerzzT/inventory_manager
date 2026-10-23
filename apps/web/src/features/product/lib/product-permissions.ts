@@ -15,12 +15,25 @@ export function canManageProducts(role: ProductRole | undefined): boolean {
 }
 
 /**
+ * Whether the caller may permanently delete a product from the trash.
+ *
+ * It is separate from {@link canManageProducts} on purpose: the purge is
+ * **irreversible** and the ledger is the audit trail, so the server keeps it
+ * OWNER-only (`purge_products`) even though an ADMIN may soft-delete. Like the
+ * other rule it only decides what the UI offers — the API is the guard — and an
+ * unknown role is treated as "not allowed".
+ */
+export function canPurgeProducts(role: ProductRole | undefined): boolean {
+	return role === "OWNER";
+}
+
+/**
  * The caller's role in the active company, read from `GET /me`'s memberships.
  *
  * `undefined` means "not known yet" (no identity loaded, no active company, or
  * no membership in it) and is treated as read-only by
- * {@link canManageProducts}: the API is the real guard, so the safe default is
- * to offer nothing.
+ * {@link canManageProducts} and {@link canPurgeProducts}: the API is the real
+ * guard, so the safe default is to offer nothing.
  */
 export function roleForCompany(
 	me: MeResponse | undefined,

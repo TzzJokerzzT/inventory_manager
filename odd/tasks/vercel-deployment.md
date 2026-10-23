@@ -56,6 +56,14 @@ L4 (decision): the function entry is `apps/api/api/index.ts` with an extensionle
 bundler Vercel uses for functions resolves the TypeScript file; putting the file in the TS project would
 force a suffix the bundler cannot follow. The entry is four lines whose only contract is "export the app".
 
+L6 (review, approved): lineage `review-cdf9233f124be543` reviewed this range with the resilience and
+readability lenses and **approved** it; the receipt was acknowledged and burned. Four findings came back as
+advisory, and one of them was worth acting on immediately: `R4-preview-migrations` (and its duplicate
+`R2-002`) warned that a build command that always migrates turns every preview deployment into a migration
+of the shared database. The build now gates on `VERCEL_ENV=production`, so previews neither migrate nor need
+`DIRECT_URL`. The remaining advisories (`R2-001` on the composition split, `R4-rewrite-drops-path`, which the
+refuter refuted) are informational.
+
 L5 (open, from the review engine): the previous lineage `review-a9440184bf56a3e9` sits at
 `provider_refuter_required` for the landing-page range. It was not continued because the human redirected the
 work to deployment; the candidate is committed and the lineage stays open rather than being force-closed.

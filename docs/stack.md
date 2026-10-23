@@ -208,7 +208,9 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
   vez no se pisan.
 - **Excepción — serverless:** un deploy como función (Vercel) **no ejecuta `start`**, así que ahí las
   migraciones van en el **build** del proyecto del API: `apps/api/vercel.json` declara
-  `"buildCommand": "bun run db:deploy"`, que necesita `DIRECT_URL` en el entorno de build (ver §5.9).
+  `"buildCommand"` que corre `db:deploy` **sólo cuando `VERCEL_ENV=production`** (un preview
+  apunta a la misma base: migrarla desde un preview sería migrar producción sin querer), y que
+  necesita `DIRECT_URL` en el entorno de build (ver §5.9).
   El job `migrations` de CI sigue aplicando `db:deploy` contra un Postgres **efímero**
   (`postgres:17`), nunca contra el proyecto de Supabase.
 - **Por qué esto muerde:** una migración sin aplicar no rompe los tests. El modelo está en el schema,
@@ -706,7 +708,7 @@ proyectos** del mismo repositorio, cada uno con su *Root Directory* (`apps/web` 
 | Clave | Para qué |
 | --- | --- |
 | `"rewrites": [{ "source": "/(.*)", "destination": "/api" }]` | Toda ruta entra por la función, así `/auth/refresh` sigue estando en la raíz y la cookie con `Path=/auth` viaja |
-| `"buildCommand": "bun run db:deploy"` | Las migraciones corren **en el deploy** (Vercel nunca ejecuta `start`); `migrate deploy` toma un advisory lock, así que dos builds simultáneos no se pisan |
+| `"buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then bun run db:deploy; ..."` | Las migraciones corren **en el deploy de producción** (Vercel nunca ejecuta `start`) y **no** en previews, que apuntan a la misma base; `migrate deploy` toma un advisory lock, así que dos builds simultáneos no se pisan |
 | `"includeFiles": "openapi.yaml"` | El contrato viaja con la función para que `/docs` no responda 500 |
 
 `apps/api/api/index.ts` importa **sin sufijo `.js`** y queda fuera de `tsconfig.check.json`: el

@@ -55,6 +55,7 @@ describe("useIdleSession", () => {
 		jest.useFakeTimers();
 		jest.clearAllMocks();
 		useSessionStore.setState({ accessToken: undefined, resolved: false });
+		window.localStorage.clear();
 		useRouterMock.mockReturnValue({
 			replace,
 			push: jest.fn(),
@@ -99,7 +100,11 @@ describe("useIdleSession", () => {
 		expect(result.current.secondsRemaining).toBe(
 			SESSION_IDLE_WARNING_LEAD_MS / 1000,
 		);
-		expect(result.current.idleMinutes).toBe(SESSION_IDLE_TIMEOUT_MINUTES);
+		// S2 asks for how long the session *has been* idle, not for the window:
+		// at the threshold that is the window minus the warning lead.
+		expect(result.current.idleMinutes).toBe(
+			Math.floor(WARNING_THRESHOLD_MS / 60_000),
+		);
 		expect(post).not.toHaveBeenCalled();
 	});
 
@@ -206,6 +211,31 @@ describe("useIdleSession", () => {
 
 		expect(post).toHaveBeenCalledTimes(1);
 		expect(replace).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not log out while another tab is active", async () => {
+		// Every tab shares one server-side session, so an idle background tab
+		// must not revoke it while the person works in another one. The shared
+		// timestamp is what the monitor reads before deciding to log out.
+		liveSession();
+
+		const { result } = renderHook(() => useIdleSession());
+
+		await advance(WARNING_THRESHOLD_MS);
+		expect(result.current.warningOpen).toBe(true);
+
+		// The other tab just interacted: it wins over this tab's anchor.
+		act(() => {
+			window.localStorage.setItem(
+				"inventory-manager:session-activity-at",
+				String(Date.now()),
+			);
+		});
+		await advance(1000);
+
+		expect(post).not.toHaveBeenCalled();
+		expect(result.current.warningOpen).toBe(false);
+		expect(result.current.idleMinutes).toBe(0);
 	});
 
 	it("logs out instead of extending when timers were throttled past the deadline", async () => {

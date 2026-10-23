@@ -195,6 +195,10 @@ model Session {
 	userId         String    @map("user_id") @db.Uuid
 	createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 	lastActivityAt DateTime  @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+	// Digest of the refresh token this session was issued for. It binds the pair:
+	// the gate compares it on every refresh, so a stolen token cannot be paired
+	// with somebody else's live session. Rotated with the token by the adapter.
+	refreshTokenHash String  @map("refresh_token_hash")
 	revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
 
 	user User @relation(fields: [userId], references: [id], onDelete: Restrict)

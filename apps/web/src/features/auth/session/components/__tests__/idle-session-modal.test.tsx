@@ -8,7 +8,7 @@ function renderModal(
 	const view = render(
 		<IdleSessionModal
 			open
-			idleMinutes={15}
+			idleMinutes={13}
 			secondsRemaining={93}
 			stayActive={stayActive}
 			{...overrides}
@@ -30,7 +30,7 @@ describe("IdleSessionModal", () => {
 
 		expect(screen.getByRole("dialog", { name: "¿Seguís ahí?" })).toBeTruthy();
 		expect(
-			screen.getByText("Tu sesión lleva 15 minutos sin actividad."),
+			screen.getByText("Tu sesión lleva 13 minutos sin actividad."),
 		).toBeTruthy();
 		expect(screen.getByText("Se cerrará en 1:33.")).toBeTruthy();
 	});

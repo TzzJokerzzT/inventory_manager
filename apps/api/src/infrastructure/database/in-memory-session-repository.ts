@@ -27,13 +27,20 @@ export class InMemorySessionRepository implements SessionRepository {
 		return this.sessions.get(sessionId) ?? null;
 	}
 
-	async touch(sessionId: string, lastActivityAt: Date): Promise<void> {
+	async recordRefresh(
+		sessionId: string,
+		refreshTokenHash: string,
+		lastActivityAt: Date,
+	): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (session === undefined) {
 			return;
 		}
 
-		this.sessions.set(sessionId, session.touch(lastActivityAt));
+		this.sessions.set(
+			sessionId,
+			session.recordRefresh(refreshTokenHash, lastActivityAt),
+		);
 	}
 
 	async revoke(sessionId: string, revokedAt: Date): Promise<void> {

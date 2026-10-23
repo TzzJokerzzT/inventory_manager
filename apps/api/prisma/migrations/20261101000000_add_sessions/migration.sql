@@ -16,6 +16,11 @@ CREATE TABLE "sessions" (
     "user_id" UUID NOT NULL,
     "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "last_activity_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Digest (sha256 hex) of the refresh token this session was issued for. It
+    -- is the binding between the two cookies: the gate compares it on every
+    -- refresh, so a stolen refresh token cannot be exchanged next to somebody
+    -- else's live session id. The token itself is never stored.
+    "refresh_token_hash" TEXT NOT NULL,
     "revoked_at" TIMESTAMPTZ(3),
 
     CONSTRAINT "sessions_pkey" PRIMARY KEY ("id")

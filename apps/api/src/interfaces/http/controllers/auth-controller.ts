@@ -153,6 +153,7 @@ export function createAuthController(
 				if (tokens.refreshToken !== undefined) {
 					const session = await dependencies.startSession.execute({
 						userId: user.id,
+						refreshToken: tokens.refreshToken,
 					});
 					setRefreshCookie(response, tokens.refreshToken);
 					setSessionCookie(response, session.id);
@@ -206,7 +207,14 @@ export function createAuthController(
 					// token and invalidates the old one, so spending the token
 					// first and rejecting the session afterwards would destroy a
 					// working session just to answer 401.
-					await dependencies.resumeSession.execute({ sessionId });
+					//
+					// It also checks that the token belongs to this session: a
+					// live row is not enough, or a stolen refresh token could be
+					// exchanged next to any other live session id.
+					await dependencies.resumeSession.execute({
+						sessionId,
+						refreshToken,
+					});
 				} catch (error) {
 					if (error instanceof SessionInvalidError) {
 						// Unknown, revoked or idle past the window: the cookie is
@@ -221,6 +229,14 @@ export function createAuthController(
 
 				const tokens = await dependencies.refreshSession.execute({
 					refreshToken,
+				});
+
+				// Only a completed exchange counts as activity, and the row now
+				// expects the token the provider just handed back — the rotated
+				// one when there is one, otherwise the one that was presented.
+				await dependencies.resumeSession.recordRefresh({
+					sessionId,
+					refreshToken: tokens.refreshToken ?? refreshToken,
 				});
 
 				// Rotate the cookie only when the provider issued a new refresh

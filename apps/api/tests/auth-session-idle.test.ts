@@ -6,6 +6,7 @@ import type {
 	IdentityProviderCredentials,
 	IdentityTokens,
 } from "../src/application/ports/identity-provider.js";
+import { hashRefreshToken } from "../src/application/session-token-hash.js";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
 import { EndSessionUseCase } from "../src/application/use-cases/end-session.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
@@ -108,6 +109,9 @@ function liveSession(lastActivityAt: Date = NOW): Session {
 		userId: USER_ID,
 		createdAt: NOW,
 		lastActivityAt,
+		// Bound to the token the browser holds, which is what makes the pair
+		// exchangeable and everything else a rejection.
+		refreshTokenHash: hashRefreshToken(REFRESH_TOKEN),
 	});
 }
 
@@ -325,7 +329,7 @@ describe("session lifetime", () => {
 		expect(provider.refreshCalls).toEqual([]);
 	});
 
-	it("keeps the distinct 503 when the provider is unavailable, not a session rejection", async () => {
+	it("asks the provider when the pair matches and relays its rejection as the same 401", async () => {
 		const { app, provider } = createTestApp();
 		provider.refreshResult = new RefreshTokenRejectedError();
 
@@ -335,5 +339,63 @@ describe("session lifetime", () => {
 
 		expect(response.status).toBe(401);
 		expect(provider.refreshCalls).toEqual([REFRESH_TOKEN]);
+	});
+
+	it("rejects a stolen refresh token paired with another live session, without calling the provider", async () => {
+		// The attack the digest binding closes: the session is live and valid,
+		// but it was not issued for this token, so the pair is not a pair.
+		const { app, provider, sessionRepository } = createTestApp();
+
+		const response = await request(app)
+			.post("/auth/refresh")
+			.set("Cookie", sessionCookies("stolen-refresh-token"));
+
+		expect(response.status).toBe(401);
+		expect(response.body).toEqual({
+			error: { message: REFRESH_TOKEN_REJECTED_MESSAGE },
+		});
+		expect(provider.refreshCalls).toEqual([]);
+		expect(
+			(await sessionRepository.findById(SESSION_ID))?.lastActivityAt,
+		).toEqual(NOW);
+	});
+
+	it("does not count a rejected exchange as activity", async () => {
+		// Activity is a completed refresh: if a failing provider moved the clock,
+		// a broken or revoked token retried forever would never idle out.
+		const later = new Date(NOW.getTime() + IDLE_TIMEOUT_MS - 1);
+		const { app, provider, sessionRepository } = createTestApp({
+			now: () => later,
+		});
+		provider.refreshResult = new RefreshTokenRejectedError();
+
+		const response = await request(app)
+			.post("/auth/refresh")
+			.set("Cookie", sessionCookies());
+
+		expect(response.status).toBe(401);
+		expect(
+			(await sessionRepository.findById(SESSION_ID))?.lastActivityAt,
+		).toEqual(NOW);
+	});
+
+	it("re-binds the session to the rotated token, so the previous one stops working", async () => {
+		const { app } = createTestApp();
+
+		const rotated = await request(app)
+			.post("/auth/refresh")
+			.set("Cookie", sessionCookies());
+		expect(rotated.status).toBe(200);
+
+		// The row now expects the token the provider just returned.
+		const withOldToken = await request(app)
+			.post("/auth/refresh")
+			.set("Cookie", sessionCookies());
+		expect(withOldToken.status).toBe(401);
+
+		const withNewToken = await request(app)
+			.post("/auth/refresh")
+			.set("Cookie", sessionCookies(NEW_REFRESH_TOKEN));
+		expect(withNewToken.status).toBe(200);
 	});
 });

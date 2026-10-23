@@ -16,11 +16,21 @@ export interface SessionRepository {
 	findById(sessionId: string): Promise<Session | null>;
 
 	/**
-	 * Moves `last_activity_at` forward. A no-op when the row is gone: the
-	 * caller has already read it, and losing the race must not turn a refresh
-	 * into a 500.
+	 * Records a refresh that actually happened: `last_activity_at` moves forward
+	 * **and** the token digest is replaced, because a rotating provider issues a
+	 * new token the row must now expect.
+	 *
+	 * It is deliberately one write: a refresh that moved the clock but kept the
+	 * old digest would lock the browser out on the next round trip, and one that
+	 * rotated the digest without moving the clock would stop counting activity.
+	 * A no-op when the row is gone: the caller already read it, and losing the
+	 * race must not turn a refresh into a 500.
 	 */
-	touch(sessionId: string, lastActivityAt: Date): Promise<void>;
+	recordRefresh(
+		sessionId: string,
+		refreshTokenHash: string,
+		lastActivityAt: Date,
+	): Promise<void>;
 
 	/**
 	 * Tombstones the session. Also a no-op when the row is gone or already

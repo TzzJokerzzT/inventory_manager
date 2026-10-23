@@ -6,6 +6,7 @@ import type {
 	IdentityProviderCredentials,
 	IdentityTokens,
 } from "../src/application/ports/identity-provider.js";
+import { hashRefreshToken } from "../src/application/session-token-hash.js";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
 import { EndSessionUseCase } from "../src/application/use-cases/end-session.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
@@ -103,7 +104,12 @@ function createTestApp(options: {
 	const companyRepository = new InMemoryCompanyRepository();
 	const userRepository = createFakeUserRepository();
 	const sessionRepository = new InMemorySessionRepository([
-		Session.create({ id: SESSION_ID, userId: USER_ID, createdAt: NOW }),
+		Session.create({
+			id: SESSION_ID,
+			userId: USER_ID,
+			createdAt: NOW,
+			refreshTokenHash: hashRefreshToken(OLD_REFRESH_TOKEN),
+		}),
 	]);
 
 	return buildApp({
@@ -295,16 +301,20 @@ describe("POST /auth/refresh", () => {
 	it("returns 429 once the configured refresh attempts are exceeded", async () => {
 		const app = createTestApp({ provider: new FakeIdentityProvider() });
 
+		// Every successful exchange rotates the token and the session re-binds to
+		// it, so the loop follows the cookie the browser would send next.
+		let currentToken = OLD_REFRESH_TOKEN;
 		for (let attempt = 0; attempt < AUTH_REFRESH_RATE_LIMIT; attempt++) {
 			const response = await request(app)
 				.post("/auth/refresh")
-				.set("Cookie", sessionCookies());
+				.set("Cookie", sessionCookies(currentToken));
 			expect(response.status).toBe(200);
+			currentToken = NEW_REFRESH_TOKEN;
 		}
 
 		const exceeded = await request(app)
 			.post("/auth/refresh")
-			.set("Cookie", sessionCookies());
+			.set("Cookie", sessionCookies(currentToken));
 
 		expect(exceeded.status).toBe(429);
 	});

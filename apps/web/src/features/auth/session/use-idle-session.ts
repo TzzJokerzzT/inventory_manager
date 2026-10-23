@@ -54,10 +54,51 @@ export const SESSION_IDLE_TIMEOUT_MINUTES = parseIdleTimeoutMinutes(
 
 const IDLE_WINDOW_MS = SESSION_IDLE_TIMEOUT_MINUTES * 60 * 1000;
 
+/**
+ * Where the last activity of the whole browser is kept, in milliseconds.
+ *
+ * Tabs share one server-side session, so they have to share the clock: without
+ * this, a background tab would reach its own deadline while the person works in
+ * another one, log out, and revoke the session for every tab. Only a timestamp
+ * lives here — never a token — so reading it with an XSS buys nothing.
+ */
+const SESSION_ACTIVITY_STORAGE_KEY = "inventory-manager:session-activity-at";
+
+/** How often the shared timestamp is written, at most, while interacting. */
+const SHARED_ACTIVITY_THROTTLE_MS = 1000;
+
+function readSharedActivityAt(): number {
+	try {
+		const raw = window.localStorage.getItem(SESSION_ACTIVITY_STORAGE_KEY);
+		const value = raw === null ? Number.NaN : Number(raw);
+		return Number.isFinite(value) ? value : 0;
+	} catch {
+		// Storage can be unavailable (private mode, policy): fall back to this
+		// tab's own clock instead of failing the monitor.
+		return 0;
+	}
+}
+
+function writeSharedActivityAt(at: number): void {
+	try {
+		window.localStorage.setItem(SESSION_ACTIVITY_STORAGE_KEY, String(at));
+	} catch {
+		// Same fallback: a tab that cannot share is still safer than no monitor.
+	}
+}
+
+function clearSharedActivity(): void {
+	try {
+		window.localStorage.removeItem(SESSION_ACTIVITY_STORAGE_KEY);
+	} catch {
+		// Nothing to clear if storage is unavailable.
+	}
+}
+
 export interface IdleSession {
 	/** True while the warning modal should be on screen. */
 	warningOpen: boolean;
-	/** The configured idle window, in minutes. */
+	/** How long the session has been idle, in whole minutes. */
 	idleMinutes: number;
 	/** Whole seconds left before the session is closed. */
 	secondsRemaining: number;
@@ -91,6 +132,7 @@ export function useIdleSession(): IdleSession {
 	const logout = useLogout();
 
 	const lastActivityRef = useRef(Date.now());
+	const lastSharedWriteRef = useRef(0);
 	const loggedOutRef = useRef(false);
 	const [warningOpen, setWarningOpen] = useState(false);
 	const [secondsRemaining, setSecondsRemaining] = useState(0);
@@ -110,10 +152,12 @@ export function useIdleSession(): IdleSession {
 	 * It is a callback over refs, not state: the interval, the listeners and the
 	 * answer to the warning all need to judge the same anchor without re-rendering.
 	 */
-	const remainingMs = useCallback(
-		() => IDLE_WINDOW_MS - (Date.now() - lastActivityRef.current),
-		[],
-	);
+	const remainingMs = useCallback(() => {
+		// The anchor is the latest activity of *any* tab, so an active tab keeps
+		// the idle ones alive exactly like the shared session requires.
+		const anchor = Math.max(lastActivityRef.current, readSharedActivityAt());
+		return IDLE_WINDOW_MS - (Date.now() - anchor);
+	}, []);
 
 	/**
 	 * Closes the session when the window already elapsed, and reports whether it
@@ -157,7 +201,14 @@ export function useIdleSession(): IdleSession {
 			return;
 		}
 
-		lastActivityRef.current = Date.now();
+		const now = Date.now();
+		lastActivityRef.current = now;
+		// Pointer events are frequent; the shared write is what other tabs read,
+		// and once per second is all their one-second tick can use.
+		if (now - lastSharedWriteRef.current >= SHARED_ACTIVITY_THROTTLE_MS) {
+			lastSharedWriteRef.current = now;
+			writeSharedActivityAt(now);
+		}
 		setWarningOpen(false);
 	}, [expireIfDue]);
 
@@ -168,9 +219,13 @@ export function useIdleSession(): IdleSession {
 	useEffect(() => {
 		if (!sessionLive) {
 			setWarningOpen(false);
+			clearSharedActivity();
 			return;
 		}
-		lastActivityRef.current = Date.now();
+		const now = Date.now();
+		lastActivityRef.current = now;
+		lastSharedWriteRef.current = now;
+		writeSharedActivityAt(now);
 		loggedOutRef.current = false;
 	}, [sessionLive]);
 
@@ -228,9 +283,9 @@ export function useIdleSession(): IdleSession {
 				return previous === next ? previous : next;
 			});
 
-			if (remaining <= SESSION_IDLE_WARNING_LEAD_MS) {
-				setWarningOpen(true);
-			}
+			// Inside the lead the warning opens; back outside it — because another
+			// tab just interacted — a warning already on screen is stale and closes.
+			setWarningOpen(remaining <= SESSION_IDLE_WARNING_LEAD_MS);
 		}, SESSION_IDLE_TICK_MS);
 
 		return () => clearInterval(interval);
@@ -238,7 +293,16 @@ export function useIdleSession(): IdleSession {
 
 	return {
 		warningOpen,
-		idleMinutes: SESSION_IDLE_TIMEOUT_MINUTES,
+		// How long the session has actually been idle, not the configured window:
+		// the warning says "lleva 13 minutos", which is what the person can see.
+		idleMinutes: Math.max(
+			0,
+			Math.floor(
+				(Date.now() -
+					Math.max(lastActivityRef.current, readSharedActivityAt())) /
+					60_000,
+			),
+		),
 		secondsRemaining,
 		stayActive,
 	};

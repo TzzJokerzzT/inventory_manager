@@ -113,6 +113,30 @@ would have been resurrected by the `visibilitychange` of coming back — defeati
 exists for. Every activity path now checks the deadline first and logs out instead of extending, pinned by
 two tests (throttled tick and late interaction).
 
+L9 (native review, closed findings): the three review lenses plus the refuter confirmed two CRITICAL
+findings, both introduced by this feature and both fixed here:
+- **R1-001** the refresh gate proved only "some session is live", never that the session belonged to the
+  token being exchanged. A stolen refresh token could be paired with the attacker's own live `session_id`
+  and exchanged for the victim's tokens, and a victim logout revoked only its own row. Fixed by binding the
+  row to the credential: `refresh_token_hash` (sha256, the token is never stored) is written at login,
+  compared on every refresh, and rotated together with the token by `ResumeSessionUseCase.recordRefresh`.
+- **R4-001** the idle monitor ran per tab, so a background tab reaching its deadline revoked the shared
+  server session and signed out the tab the person was actually using. Fixed by sharing one activity
+  timestamp across tabs (`localStorage`, timestamp only, never a token) and by having the tick read the
+  latest activity of any tab before deciding to log out.
+The same pass fixed two verifier findings: activity is now recorded only after the exchange succeeds (a
+rejected or failing provider no longer keeps a dead session alive), and the warning shows the elapsed
+idle time instead of the configured window.
+
+L10 (blocked): the native review could not be closed. The refuter left the lineage in
+`correction_required` with a `correction_plan_required` slot, and `gentle_review_capture` rejected that
+provider-issued binding twice with `capture-binding-rejected: collectBinding is missing or stale for
+current STATUS`, although the STATUS revision, request hash and repository context were copied verbatim
+from the same response. The fixes above were applied outside the correction route (code changes are not
+native-review actions), so the lineage `review-639245502c1c4d16` stays open and its frozen target no longer
+matches the working tree. Closing it needs either a fixed facade that accepts the plan slot or a fresh
+review on the corrected candidate.
+
 L8 (delivery slices): C1 session core (`6e3db96`), C2 Prisma persistence (`c592fd7`), C3 enforcement and
 contract (`9fe5da3`), C4 end-to-end endpoint tests (`d92974c`), C5 the web guard. The slice boundary is
 recorded here because the whole feature exceeds the ~400 authored-line guidance and is delivered as five

@@ -1,8 +1,20 @@
 import { SessionInvalidError } from "../../domain/errors/session-invalid-error.js";
 import type { SessionRepository } from "../../domain/repositories/session-repository.js";
+import { hashRefreshToken } from "../session-token-hash.js";
 
 export interface ResumeSessionInput {
 	sessionId: string;
+	/** The token presented in the cookie; only its digest is compared. */
+	refreshToken: string;
+}
+
+export interface RecordRefreshInput {
+	sessionId: string;
+	/**
+	 * The token in force after the exchange: the provider's new one when it
+	 * rotated, otherwise the one that was presented.
+	 */
+	refreshToken: string;
 }
 
 export interface ResumeSessionDependencies {
@@ -40,16 +52,37 @@ export class ResumeSessionUseCase {
 	}
 
 	async execute(input: ResumeSessionInput): Promise<void> {
-		const now = this.clock();
 		const session = await this.sessionRepository.findById(input.sessionId);
 
-		if (session === null || session.isExpiredAt(now, this.idleTimeoutMs)) {
+		if (session === null) {
 			throw new SessionInvalidError();
 		}
 
-		// Activity is this successful resume: a person who keeps using the app
-		// renews the token long before the window closes, so the clock is
-		// always moved by the same event that proves the session is alive.
-		await this.sessionRepository.touch(input.sessionId, now);
+		// Both halves of the pair have to agree: a live row alone is not enough,
+		// because that would let a stolen refresh token be exchanged next to any
+		// other live session. The digest comparison is what makes logout and the
+		// idle window cover the credential instead of just one browser.
+		if (
+			session.isExpiredAt(this.clock(), this.idleTimeoutMs) ||
+			!session.matchesRefreshTokenHash(hashRefreshToken(input.refreshToken))
+		) {
+			throw new SessionInvalidError();
+		}
+	}
+
+	/**
+	 * Records the refresh **after** the provider accepted it.
+	 *
+	 * Order matters in both directions: moving the clock before the exchange
+	 * would let a rejected or failing provider keep the session alive forever,
+	 * and storing the rotated digest before it would lock out a browser whose
+	 * exchange never completed.
+	 */
+	async recordRefresh(input: RecordRefreshInput): Promise<void> {
+		await this.sessionRepository.recordRefresh(
+			input.sessionId,
+			hashRefreshToken(input.refreshToken),
+			this.clock(),
+		);
 	}
 }

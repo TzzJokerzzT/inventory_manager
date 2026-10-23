@@ -6,6 +6,7 @@ import type {
 	IdentityProviderCredentials,
 	IdentityTokens,
 } from "../src/application/ports/identity-provider.js";
+import { hashRefreshToken } from "../src/application/session-token-hash.js";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
 import { EndSessionUseCase } from "../src/application/use-cases/end-session.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
@@ -80,6 +81,7 @@ function createTestApp() {
 			id: SESSION_ID,
 			userId: "11111111-1111-4111-8111-111111111111",
 			createdAt: new Date("2026-01-01T00:00:00.000Z"),
+			refreshTokenHash: hashRefreshToken(REFRESH_TOKEN),
 		}),
 	]);
 

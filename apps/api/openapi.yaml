@@ -135,6 +135,10 @@ paths:
         `session_id` cookies: the session is what makes the credential
         revocable and idle-limited.
 
+        The two have to belong together. The session row stores a digest of the
+        refresh token it was issued for, so pairing a stolen token with somebody
+        else's live session id is rejected exactly like an expired session.
+
         On success the cookie is rotated when the provider issues a new
         refresh token, and the session cookie is re-set so an active session
         never loses half of the pair.

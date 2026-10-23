@@ -23,11 +23,14 @@ function buildFakeDelegate() {
 
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
+const TOKEN_HASH = "a".repeat(64);
+
 const ROW = {
 	id: "session-1",
 	userId: "user-1",
 	createdAt: NOW,
 	lastActivityAt: NOW,
+	refreshTokenHash: TOKEN_HASH,
 	revokedAt: null,
 };
 
@@ -36,7 +39,11 @@ describe("PrismaSessionRepository", () => {
 		const { delegate, create } = buildFakeDelegate();
 		create.mockResolvedValue(ROW);
 		const repository = new PrismaSessionRepository({ prisma: delegate });
-		const session = Session.create({ userId: "user-1", createdAt: NOW });
+		const session = Session.create({
+			userId: "user-1",
+			createdAt: NOW,
+			refreshTokenHash: TOKEN_HASH,
+		});
 
 		const result = await repository.create(session);
 
@@ -46,6 +53,7 @@ describe("PrismaSessionRepository", () => {
 			userId: "user-1",
 			createdAt: NOW,
 			lastActivityAt: NOW,
+			refreshTokenHash: TOKEN_HASH,
 			revokedAt: null,
 		});
 		expect(result.id).toBe("session-1");
@@ -60,17 +68,19 @@ describe("PrismaSessionRepository", () => {
 		await expect(repository.findById("missing")).resolves.toBeNull();
 	});
 
-	it("touches with updateMany so a row removed in between is a no-op, not a P2025", async () => {
+	it("records the refresh with updateMany, so a row removed in between is a no-op, not a P2025", async () => {
 		const { delegate, updateMany } = buildFakeDelegate();
 		updateMany.mockResolvedValue({ count: 0 });
 		const repository = new PrismaSessionRepository({ prisma: delegate });
 		const later = new Date("2026-01-02T00:00:00.000Z");
 
-		await repository.touch("session-1", later);
+		await repository.recordRefresh("session-1", "b".repeat(64), later);
 
+		// One write for both fields: the rotated digest and the activity move
+		// together, so a refresh can never leave the row half-updated.
 		expect(updateMany).toHaveBeenCalledWith({
 			where: { id: "session-1" },
-			data: { lastActivityAt: later },
+			data: { lastActivityAt: later, refreshTokenHash: "b".repeat(64) },
 		});
 	});
 

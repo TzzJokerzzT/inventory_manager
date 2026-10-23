@@ -36,6 +36,7 @@ export class PrismaSessionRepository implements SessionRepository {
 				userId: session.userId,
 				createdAt: session.createdAt,
 				lastActivityAt: session.lastActivityAt,
+				refreshTokenHash: session.refreshTokenHash,
 				revokedAt: session.revokedAt,
 			},
 		});
@@ -51,13 +52,17 @@ export class PrismaSessionRepository implements SessionRepository {
 		return row === null ? null : PrismaSessionRepository.toEntity(row);
 	}
 
-	async touch(sessionId: string, lastActivityAt: Date): Promise<void> {
-		// `updateMany` instead of `update`: the caller already read the row, and
-		// a row removed in between must make this write a no-op rather than
-		// throw P2025 and turn a refresh into a 500.
+	async recordRefresh(
+		sessionId: string,
+		refreshTokenHash: string,
+		lastActivityAt: Date,
+	): Promise<void> {
+		// One write for both fields, and `updateMany` instead of `update`: the
+		// caller already read the row, and a row removed in between must make
+		// this a no-op rather than throw P2025 and turn a refresh into a 500.
 		await this.prisma.session.updateMany({
 			where: { id: sessionId },
-			data: { lastActivityAt },
+			data: { lastActivityAt, refreshTokenHash },
 		});
 	}
 
@@ -75,6 +80,7 @@ export class PrismaSessionRepository implements SessionRepository {
 		userId: string;
 		createdAt: Date;
 		lastActivityAt: Date;
+		refreshTokenHash: string;
 		revokedAt: Date | null;
 	}): Session {
 		return Session.create({
@@ -82,6 +88,7 @@ export class PrismaSessionRepository implements SessionRepository {
 			userId: row.userId,
 			createdAt: row.createdAt,
 			lastActivityAt: row.lastActivityAt,
+			refreshTokenHash: row.refreshTokenHash,
 			revokedAt: row.revokedAt,
 		});
 	}

@@ -355,7 +355,10 @@ Qué implica en el código:
   antes), y **5 días** sin actividad hacen que `POST /auth/refresh` responda 401, de modo que la
   persona tenga que volver a entrar. La ventana de credencial se configura con
   `SESSION_IDLE_TIMEOUT_MINUTES` (minutos, admite decimales para probar; por defecto `7200`) y la
-  del navegador con `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` (por defecto `15`). El logout marca
+  del navegador con `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` (por defecto `15`). La fila guarda
+  el **digest sha256 del refresh token** con el que nació (`refresh_token_hash`, el token nunca se
+  almacena), y el gate lo compara en cada refresh: así una cookie robada no se puede canjear al lado
+  del `session_id` de otra sesión, y el digest rota cuando el proveedor rota el token. El logout marca
   `revoked_at`, así que reusar las cookies viejas devuelve 401; la revocación del token en Auth0
   sigue fuera de alcance (Management API). Las cookies emitidas **antes** de este cambio no traen
   `session_id`: el primer refresh responde 401 y pide un único login.

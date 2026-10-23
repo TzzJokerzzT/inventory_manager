@@ -1,8 +1,14 @@
 import { Session } from "../../domain/entities/session.js";
 import type { SessionRepository } from "../../domain/repositories/session-repository.js";
+import { hashRefreshToken } from "../session-token-hash.js";
 
 export interface StartSessionInput {
 	userId: string;
+	/**
+	 * The refresh token the login just received. Only its digest is persisted:
+	 * it is what ties the row to the credential and makes the pair inseparable.
+	 */
+	refreshToken: string;
 }
 
 export interface StartSessionDependencies {
@@ -30,7 +36,11 @@ export class StartSessionUseCase {
 
 	async execute(input: StartSessionInput): Promise<Session> {
 		return this.sessionRepository.create(
-			Session.create({ userId: input.userId, createdAt: this.clock() }),
+			Session.create({
+				userId: input.userId,
+				createdAt: this.clock(),
+				refreshTokenHash: hashRefreshToken(input.refreshToken),
+			}),
 		);
 	}
 }

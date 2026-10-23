@@ -5,6 +5,7 @@ export interface SessionProps {
 	userId: string;
 	createdAt: Date;
 	lastActivityAt: Date;
+	refreshTokenHash: string;
 	revokedAt: Date | null;
 }
 
@@ -13,6 +14,12 @@ export interface CreateSessionProps {
 	userId: string;
 	createdAt?: Date;
 	lastActivityAt?: Date;
+	/**
+	 * Digest of the refresh token this session was issued for (see
+	 * `application/session-token-hash.ts`). It is the binding that stops a
+	 * stolen token from being exchanged with somebody else's live session.
+	 */
+	refreshTokenHash: string;
 	revokedAt?: Date | null;
 }
 
@@ -41,6 +48,11 @@ export class Session {
 			throw new DomainError("Session user id must not be empty");
 		}
 
+		const refreshTokenHash = input.refreshTokenHash.trim();
+		if (refreshTokenHash.length === 0) {
+			throw new DomainError("Session refresh token hash must not be empty");
+		}
+
 		const createdAt = input.createdAt ?? new Date();
 
 		return new Session({
@@ -50,6 +62,7 @@ export class Session {
 			// A brand new session was just used: its last activity is its
 			// creation, never an epoch date that would make it born expired.
 			lastActivityAt: input.lastActivityAt ?? createdAt,
+			refreshTokenHash,
 			revokedAt: input.revokedAt ?? null,
 		});
 	}
@@ -68,6 +81,10 @@ export class Session {
 
 	get lastActivityAt(): Date {
 		return this.props.lastActivityAt;
+	}
+
+	get refreshTokenHash(): string {
+		return this.props.refreshTokenHash;
 	}
 
 	get revokedAt(): Date | null {
@@ -93,8 +110,28 @@ export class Session {
 		return now.getTime() - this.props.lastActivityAt.getTime() >= idleTimeoutMs;
 	}
 
-	touch(now: Date): Session {
-		return new Session({ ...this.props, lastActivityAt: now });
+	/**
+	 * Whether the presented token is the one this session was issued for.
+	 *
+	 * Comparing digests is what binds the pair: without it the row would only
+	 * prove "some session is live", and a stolen refresh token could be
+	 * exchanged alongside anybody else's session id.
+	 */
+	matchesRefreshTokenHash(refreshTokenHash: string): boolean {
+		return this.props.refreshTokenHash === refreshTokenHash;
+	}
+
+	/**
+	 * Records a completed refresh: activity moved to `now` and the digest
+	 * replaced, because a rotating provider issues a new token and the old one
+	 * must stop matching this row.
+	 */
+	recordRefresh(refreshTokenHash: string, now: Date): Session {
+		return new Session({
+			...this.props,
+			lastActivityAt: now,
+			refreshTokenHash,
+		});
 	}
 
 	/**

@@ -10,6 +10,16 @@ import { useCompanies } from "@/src/features/company/api/use-companies";
 import { Provider } from "@/src/providers/providers";
 import { useSessionStore } from "@/src/store/session-store/session-store";
 
+/*
+ * The provider tree now also mounts the idle-session guard, and its logout
+ * wiring reads the router. There is no Next.js app router mounted in jsdom, so
+ * it is stubbed here: this suite is about the 401 refresh path only and never
+ * waits long enough for the idle window to log out.
+ */
+jest.mock("next/navigation", () => ({
+	useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+}));
+
 const COMPANIES = [
 	{ id: "c1", name: "Primera", createdAt: "2026-10-06T00:00:00.000Z" },
 ];

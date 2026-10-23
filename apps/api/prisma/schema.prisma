@@ -1,12 +1,13 @@
-// TODO(migrations): nothing applies migrations to the deployed database. CI runs
-// `db:deploy` against an ephemeral Postgres only (see .github/workflows/ci.yml),
-// and the API's build is just `tsc`, so a new model declared here reaches
-// production as a missing table: the Prisma client knows it, the suites pass
-// (they use in-memory doubles), and every query on it answers 500. Until a
-// deploy step runs `prisma migrate deploy` (see docs/stack.md §3.3), applying a
-// migration is a manual, required step:
+// MIGRATIONS: both runtime entry points of this app apply pending migrations
+// before booting (`bun run dev` and `bun run start` in apps/api run
+// `prisma migrate deploy` first), so a model declared here cannot reach a
+// process as a missing table. That happened once: `sessions` shipped without
+// its migration applied and every login answered 500, because nothing else in
+// this repository migrates a deployed database (CI runs `db:deploy` against an
+// ephemeral Postgres only, and the build is just `tsc`).
 //
-//   cd apps/api && bun run db:deploy
+// A serverless deployment does NOT run `start`: there the pipeline has to run
+// `cd apps/api && bun run db:deploy` itself (see docs/stack.md §3.3).
 
 generator client {
 	provider = "prisma-client"
@@ -72,6 +73,7 @@ model User {
 	invitedMemberships Membership[]    @relation("InvitedBy")
 	movements          StockMovement[]
 	notifications      Notification[]
+	sessions           Session[]
 
 	@@map("users")
 }
@@ -180,6 +182,30 @@ model Notification {
 
 	@@index([userId, createdAt(sort: Desc)])
 	@@map("notifications")
+}
+
+// A server-side session is what makes the refresh cookie revocable and idle
+// limited: the cookie itself cannot be un-issued, so the row is the authority.
+// `last_activity_at` moves forward on every successful refresh and
+// `revoked_at` is the logout tombstone; both are nullable-free by design (a
+// session is either active or tombstoned, never "expired" in the row — the
+// window is applied by the use case). Rows are never hard-deleted: the audit
+// value of "this browser signed out" outlives the session itself.
+model Session {
+	id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+	userId         String    @map("user_id") @db.Uuid
+	createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+	lastActivityAt DateTime  @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+	// Digest of the refresh token this session was issued for. It binds the pair:
+	// the gate compares it on every refresh, so a stolen token cannot be paired
+	// with somebody else's live session. Rotated with the token by the adapter.
+	refreshTokenHash String  @map("refresh_token_hash")
+	revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+	user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+	@@index([userId])
+	@@map("sessions")
 }
 
 model StockMovement {

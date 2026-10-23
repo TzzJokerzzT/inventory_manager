@@ -128,6 +128,9 @@ describe("product endpoints", () => {
 			loginWithCredentials: {} as never,
 			registerUser: {} as never,
 			refreshSession: {} as never,
+			startSession: {} as never,
+			resumeSession: {} as never,
+			endSession: {} as never,
 			updateUserFullName: {} as never,
 			products: {
 				list: new ListProductsUseCase({ productRepository }),

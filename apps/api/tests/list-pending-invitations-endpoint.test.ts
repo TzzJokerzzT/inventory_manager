@@ -62,6 +62,9 @@ describe("GET /me/invitations", () => {
 			loginWithCredentials: {} as never,
 			registerUser: {} as never,
 			refreshSession: {} as never,
+			startSession: {} as never,
+			resumeSession: {} as never,
+			endSession: {} as never,
 			updateUserFullName: {} as never,
 			acceptInvitations: {} as never,
 			// The pending-invitations slice never reaches these; the explicit

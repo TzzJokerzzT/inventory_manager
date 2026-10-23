@@ -4,9 +4,9 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "bun --watch src/main.ts",
+		"dev": "prisma migrate deploy && bun --watch src/main.ts",
 		"build": "tsc -p tsconfig.json",
-		"start": "node dist/main.js",
+		"start": "prisma migrate deploy && node dist/main.js",
 		"check-types": "tsc --noEmit -p tsconfig.check.json",
 		"test": "jest",
 		"db:generate": "prisma generate",

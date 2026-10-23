@@ -524,6 +524,7 @@ Todos desde la raíz del monorepo:
 | `bun run test` | Jest en todos los workspaces, vía Turborepo |
 | `cd apps/web && bun run openapi:generate` | Regenera `lib/api/openapi.d.ts` desde `apps/api/openapi.yaml` — requiere red o una caché de `bunx` caliente |
 | `cd apps/web && bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`) |
+| `cd apps/api && bun run dev` / `bun run start` | API en desarrollo / producción. Ambos aplican **`prisma migrate deploy` antes de arrancar**, así que una migración pendiente nunca queda sin aplicar |
 
 ### Build de producción
 
@@ -664,6 +665,8 @@ una.
 | `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` / `AUTH0_CONNECTION` | Intercambio de credenciales con Auth0 (ROPG). El `client_secret` es un secreto: sólo en el `.env` local y en las variables del deploy |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Firma de subida directa (el `api_secret` es un secreto) |
 | `NEXT_PUBLIC_API_URL` | URL base de la API desde el frontend (se inyecta en el bundle; no admite secretos) |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | Ventana de inactividad de la sesión en el servidor, en minutos (opcional; por defecto `7200` = 5 días). Pasado ese tiempo sin actividad, `POST /auth/refresh` responde 401 y hay que volver a entrar. Acepta decimales: poné `0.05` para probarlo en tres segundos |
+| `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` | Ventana de inactividad en el navegador, en minutos (opcional; por defecto `15`). Es la mitad cliente de la misma política: el modal de aviso aparece dos minutos antes y, si nadie responde, la sesión se cierra y se limpia la cookie |
 
 ### Estándares de código
 

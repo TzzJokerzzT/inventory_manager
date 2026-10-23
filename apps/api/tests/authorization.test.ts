@@ -43,6 +43,24 @@ describe("can(role, action)", () => {
 		});
 	});
 
+	describe("product rows", () => {
+		it("lets only an ADMIN or an OWNER manage products", () => {
+			// S6: "OWNER y ADMIN escriben; MEMBER solo lee".
+			expect(can("OWNER", "manage_products")).toBe(true);
+			expect(can("ADMIN", "manage_products")).toBe(true);
+			expect(can("MEMBER", "manage_products")).toBe(false);
+		});
+
+		it("lets only an OWNER purge a product permanently", () => {
+			// S3/L2: the purge is irreversible, so it is its own row and not a
+			// flag of `manage_products`: an ADMIN may manage the catalogue but
+			// never destroy a row.
+			expect(can("OWNER", "purge_products")).toBe(true);
+			expect(can("ADMIN", "purge_products")).toBe(false);
+			expect(can("MEMBER", "purge_products")).toBe(false);
+		});
+	});
+
 	describe("bootstrap and visibility rows", () => {
 		it("lets any authenticated user create a company", () => {
 			expect(can("OWNER", "create_company")).toBe(true);

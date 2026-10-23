@@ -77,6 +77,7 @@ describe("GET /companies/:companyId/context", () => {
 			requireUser: createRequireUser({ userRepository }),
 			requireCompanyContext: createRequireCompanyContext({
 				membershipRepository,
+				companyRepository,
 			}),
 			// The context slice never reaches these; the explicit `{} as never`
 			// records that the wiring is intentionally inert rather than forgotten.
@@ -94,6 +95,9 @@ describe("GET /companies/:companyId/context", () => {
 			registerUser: {} as never,
 			revokeMember: {} as never,
 			updateUserFullName: {} as never,
+			customers: {} as never,
+			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});

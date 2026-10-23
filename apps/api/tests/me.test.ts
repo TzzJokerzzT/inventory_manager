@@ -75,6 +75,9 @@ describe("me endpoint", () => {
 			mediaUploadSigner: {} as never,
 			registerUser: {} as never,
 			revokeMember: {} as never,
+			customers: {} as never,
+			products: {} as never,
+			movements: {} as never,
 			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});

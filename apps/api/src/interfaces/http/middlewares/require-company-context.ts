@@ -6,11 +6,22 @@ import {
 	COMPANY_CONTEXT_FORBIDDEN_CODE,
 	COMPANY_CONTEXT_FORBIDDEN_MESSAGE,
 } from "../../../domain/errors/company-context-forbidden-error.js";
+import type { CompanyRepository } from "../../../domain/repositories/company-repository.js";
 import type { MembershipRepository } from "../../../domain/repositories/membership-repository.js";
 
 export interface CompanyContext {
 	companyId: string;
 	role: MembershipRole;
+	/**
+	 * The company's display name, resolved with the same request.
+	 *
+	 * It lives in the context because some company-scoped flows need the
+	 * company itself, not only its id -- the media signature builds one upload
+	 * folder per company out of `id` and `name`. Resolving it here keeps those
+	 * flows from re-reading the company list and from trusting a client-sent
+	 * name.
+	 */
+	companyName: string;
 }
 
 /**
@@ -29,6 +40,7 @@ declare global {
 
 export interface RequireCompanyContextDependencies {
 	membershipRepository: MembershipRepository;
+	companyRepository: CompanyRepository;
 }
 
 const companyIdSchema = v.pipe(v.string(), v.uuid());
@@ -51,6 +63,7 @@ const companyIdSchema = v.pipe(v.string(), v.uuid());
  */
 export function createRequireCompanyContext({
 	membershipRepository,
+	companyRepository,
 }: RequireCompanyContextDependencies): RequestHandler {
 	return async (request, response, next) => {
 		try {
@@ -87,9 +100,25 @@ export function createRequireCompanyContext({
 				return;
 			}
 
+			// The membership proves access; the company row supplies the name. A
+			// membership pointing at a company that does not exist is an
+			// inconsistent store, so it fails closed with the same uniform 403
+			// instead of half-building a context.
+			const [company] = await companyRepository.findByIds([parsed.output]);
+			if (company === undefined) {
+				response.status(StatusCodes.FORBIDDEN).json({
+					error: {
+						message: COMPANY_CONTEXT_FORBIDDEN_MESSAGE,
+						code: COMPANY_CONTEXT_FORBIDDEN_CODE,
+					},
+				});
+				return;
+			}
+
 			request.companyContext = {
 				companyId: parsed.output,
 				role: membership.role,
+				companyName: company.name,
 			};
 			next();
 		} catch (error) {

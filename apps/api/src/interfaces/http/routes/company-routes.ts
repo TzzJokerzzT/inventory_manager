@@ -1,5 +1,8 @@
 import { Router } from "express";
 import type { CompanyController } from "../controllers/company-controller.js";
+import type { CustomerController } from "../controllers/customer-controller.js";
+import type { ProductController } from "../controllers/product-controller.js";
+import type { StockMovementController } from "../controllers/stock-movement-controller.js";
 
 /**
  * Company routes.
@@ -10,7 +13,12 @@ import type { CompanyController } from "../controllers/company-controller.js";
  * validated. MI-6/MI-7/MI-9 add their per-company routes to the same
  * `companyScoped` router instead of inventing a second path to the membership.
  */
-export function companyRoutes(controller: CompanyController): Router {
+export function companyRoutes(
+	controller: CompanyController,
+	products: ProductController,
+	customers: CustomerController,
+	movements: StockMovementController,
+): Router {
 	const router = Router();
 	router.post("/companies", controller.create);
 	router.get("/companies", controller.list);
@@ -37,6 +45,45 @@ export function companyRoutes(controller: CompanyController): Router {
 	companyScoped.delete("/members/me", controller.leaveCompany);
 	companyScoped.patch("/members/:membershipId", controller.changeMemberRole);
 	companyScoped.delete("/members/:membershipId", controller.revokeMember);
+	// Product routes. They hang off the same protected sub-router, so they
+	// inherit `requireCompanyContext`: the company comes from the path and the
+	// membership, never from the body. Who may write is decided by the
+	// `manage_products` row of the matrix inside the use cases, not here.
+	companyScoped.get("/products", products.list);
+	companyScoped.post("/products", products.create);
+	companyScoped.get("/products/:productId", products.get);
+	companyScoped.patch("/products/:productId", products.update);
+	// The permanent delete is declared BEFORE `/products/:productId` on purpose:
+	// Express matches one path segment per parameter, so the plain DELETE can
+	// never swallow `/permanent`, but registering the longer path first keeps
+	// that fact obvious and is what a future wildcard would break.
+	companyScoped.delete("/products/:productId/permanent", products.purge);
+	companyScoped.delete("/products/:productId", products.remove);
+	// Restoring is the mirror of the delete and shares its permission, so it is
+	// a POST on the product it acts on -- a state transition, not a PATCH of a
+	// client-owned field.
+	companyScoped.post("/products/:productId/restore", products.restore);
+	// Customer routes. Same protected sub-router, same reasoning: the company
+	// comes from the path and the membership, never from the body. Who may
+	// write is "any ACTIVE membership" (S6), so there is no role check here nor
+	// in the use cases.
+	companyScoped.get("/customers", customers.list);
+	companyScoped.post("/customers", customers.create);
+	companyScoped.get("/customers/:customerId", customers.get);
+	companyScoped.patch("/customers/:customerId", customers.update);
+	companyScoped.delete("/customers/:customerId", customers.remove);
+	// Stock movement routes. They share the protected sub-router, so they
+	// inherit `requireCompanyContext`: any ACTIVE membership registers and reads
+	// (S6), and the company comes from the path, never from the body. There is
+	// no edit or delete route on purpose -- a movement is the audit trail of the
+	// stock (MOV-05).
+	companyScoped.get("/movements", movements.list);
+	companyScoped.post("/movements", movements.create);
+	// Dashboard report routes. The trend is a read of the same ledger, so it
+	// hangs off the same protected sub-router and inherits
+	// `requireCompanyContext`: any ACTIVE membership reads it (S6) and the
+	// company comes from the path, never from the query.
+	companyScoped.get("/reports/movements", movements.trend);
 	router.use("/companies/:companyId", companyScoped);
 
 	return router;

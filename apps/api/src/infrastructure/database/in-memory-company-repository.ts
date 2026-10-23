@@ -78,6 +78,11 @@ export class InMemoryCompanyRepository implements CompanyRepository {
 		return Array.from(this.memberships.values());
 	}
 
+	/** Adapter-specific: lets the test suite insert a company directly. */
+	save(company: Company): void {
+		this.companies.set(company.id, company);
+	}
+
 	async findByIds(ids: string[]): Promise<Company[]> {
 		const wanted = new Set(ids);
 

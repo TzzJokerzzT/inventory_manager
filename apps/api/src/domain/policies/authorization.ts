@@ -13,7 +13,14 @@ export type AuthorizationAction =
 	| "change_own_role"
 	| "leave"
 	| "create_company"
-	| "view_users";
+	| "view_users"
+	| "manage_products"
+	/**
+	 * Irreversible: the row is removed, not stamped. It is its own action and not
+	 * a flag of `manage_products` (odd/tasks/product-purge.md L2), because an
+	 * ADMIN manages the catalogue but never destroys it.
+	 */
+	| "purge_products";
 
 /**
  * The three assignment rows of the matrix. §5.8 rules on *assigning or
@@ -90,5 +97,16 @@ export function can(
 			// users" is scoped to one's own companies by the query, not by
 			// role, so neither discriminates between roles here.
 			return true;
+		case "manage_products":
+			// S6, decided by the human: "OWNER y ADMIN escriben; MEMBER solo
+			// lee". Reading the catalogue needs no row of its own -- the
+			// company context already proves an ACTIVE membership.
+			return role === "ADMIN" || role === "OWNER";
+		case "purge_products":
+			// S3/L2 (odd/tasks/product-purge.md): the purge deletes the row for
+			// good, so it is separate from `manage_products` on purpose. An
+			// ADMIN may create, update, soft-delete and restore products; only
+			// the OWNER may destroy one.
+			return role === "OWNER";
 	}
 }

@@ -69,7 +69,8 @@ nuevo y con los días sin movimientos en cero, desde
 > `categoryId` no se expone en el contrato; entra cuando esa feature exista. PROD-06 se resuelve con
 > **subida directa firmada** a Cloudinary: el formulario pide la firma a
 > `POST /companies/{companyId}/media/signature`, sube el archivo y guarda únicamente el `secure_url`;
-> la optimización es la entrega de Cloudinary, no un paso de código propio.
+> la optimización es la entrega de Cloudinary, no un paso de código propio. Crear y editar
+> confirman con un toast y vuelven al listado.
 >
 > **PROD-03 es una baja lógica reversible** (`odd/tasks/product-restore.md`): la baja estampa
 > `deletedAt` y la restauración la deshace con
@@ -106,7 +107,9 @@ nuevo y con los días sin movimientos en cero, desde
 > cliente (ver la nota de la sección 5). La escritura del movimiento y el cambio de stock van en **una
 > sola transacción** (MOV-04) y la salida se aplica con un update guardado por `stockQuantity >=
 > quantity`, así que dos salidas concurrentes no pueden dejar stock negativo: la perdedora responde
-> `409 insufficient_stock` con el stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
+> `409 insufficient_stock` con el stock disponible y no registra nada. El formulario confirma con un
+> toast el stock resultante de la transacción y muestra los rechazos con el mensaje de la API en ese
+> mismo toast. Los movimientos son **inmutables** —no hay endpoints de edición
 > ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
 > por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
 > los roles leen el historial. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede

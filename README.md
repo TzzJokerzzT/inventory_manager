@@ -116,7 +116,8 @@ El precio viaja como **string decimal** (`"1500.00"`) porque la columna es `Deci
 número JSON perdería precisión. La foto se sube **directo a Cloudinary** con la firma de
 `POST /companies/{id}/media/signature` y sólo se guarda el `secure_url`. Escribir (crear, editar o
 dar de baja) exige `manage_products`, que la matriz resuelve como `ADMIN` u `OWNER`; un `MEMBER` lee
-el catálogo y recibe `403 insufficient_role` si intenta escribir. `stockQuantity` es del servidor
+el catálogo y recibe `403 insufficient_role` si intenta escribir. Crear y editar confirman con un
+**toast** y vuelven al listado. `stockQuantity` es del servidor
 (sólo lo mueven las entradas y salidas de MI-8) y `lowStockThreshold` sigue en el default de la base;
 `categoryId` no se expone porque todavía no existe la feature de categorías, así que el filtro por
 categoría de PROD-04 **no** está implementado.
@@ -135,7 +136,10 @@ sola transacción**: una entrada suma, una salida resta y, si el movimiento no s
 stock no cambia. **Una salida nunca puede superar el stock disponible**, porque la resta se hace con
 un update guardado (`stockQuantity >= quantity`): dos salidas concurrentes no pueden dejar stock
 negativo y la perdedora responde `409 insufficient_stock` con el stock disponible, sin registrar
-nada. Los movimientos son
+nada. El formulario confirma cada registro con un **toast** que muestra el stock resultante devuelto
+por la transacción —no el de la caché— y cada rechazo (`409 insufficient_stock`, `404
+customer_not_found`, `400 customer_requires_exit`) llega al mismo toast con el mensaje de la API: ya no
+hay alerts inline. Los movimientos son
 **inmutables** —no hay endpoints de edición ni de borrado— porque son la traza de auditoría del stock
 (MOV-05); `userId` y `createdAt` los pone el servidor y `reason` es opcional (≤300 caracteres).
 Cualquier membership `ACTIVE` registra y todos los roles leen el historial. **Una salida puede

@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -56,14 +58,26 @@ import { apiRateLimiter } from "./middlewares/rate-limit.js";
 import { buildRoutes } from "./routes/index.js";
 
 /**
- * Absolute path to the hand-written OpenAPI document. Resolved relative to
- * this module so it survives both the `tsc` output (`dist/interfaces/http/`)
- * and the source tree under Jest, where the module is loaded as CommonJS and
- * `import.meta.url` is lowered to `__filename`.
+ * Absolute path to the hand-written OpenAPI document.
+ *
+ * Two candidates, in this order: three levels up from this module, which is
+ * where the `tsc` output (`dist/interfaces/http/`) and the source tree under
+ * Jest both put it, and the process working directory, which is where a
+ * serverless bundle leaves it — the function inlines this module at its root,
+ * so the relative walk no longer lands on the repository layout. The first
+ * candidate that exists wins, and the declared one is kept when neither does so
+ * the error still names a path.
  */
-const OPENAPI_DOCUMENT_PATH = fileURLToPath(
-	new URL("../../../openapi.yaml", import.meta.url),
-);
+function resolveOpenApiDocumentPath(): string {
+	const candidates = [
+		fileURLToPath(new URL("../../../openapi.yaml", import.meta.url)),
+		resolve(process.cwd(), "openapi.yaml"),
+	];
+
+	return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+const OPENAPI_DOCUMENT_PATH = resolveOpenApiDocumentPath();
 
 /**
  * Loads the OpenAPI document on demand. A missing or malformed YAML file only

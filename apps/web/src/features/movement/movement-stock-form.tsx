@@ -1,16 +1,14 @@
 "use client";
 
 import { type FormEvent, useRef, useState } from "react";
-import { Alert, AutoComplete, TextField } from "@/components/design-system";
+import { AutoComplete, TextField } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
-import type {
-	RegisterMovementRequest,
-	RegisterMovementResponse,
-} from "@/lib/api/schemas";
+import type { RegisterMovementRequest } from "@/lib/api/schemas";
 import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useProducts } from "@/src/features/product/api/use-products";
+import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useRegisterMovement } from "./api/use-register-movement";
 import type { MovementType } from "./components/movement-type-badge";
 import { normalizeReason, validateMovement } from "./lib/validate-movement";
@@ -66,15 +64,6 @@ function registrationErrorMessage(error: unknown): string | undefined {
 		return error.message;
 	}
 	return error ? FALLBACK_ERROR : undefined;
-}
-
-/**
- * What the server answered after a successful registration: the stock **after**
- * the movement, straight from the transaction (MOV-04). Computing it here from
- * the cached product would be a second source of truth for the same number.
- */
-function successMessage(response: RegisterMovementResponse): string {
-	return `${response.quantity} unidades de ${response.product.name}. Stock disponible: ${response.stockQuantity}.`;
 }
 
 /**
@@ -171,8 +160,6 @@ export function MovementStockForm({
 	const errors = attempted
 		? validateMovement({ productId, quantity, reason })
 		: {};
-	const errorMessage = registrationErrorMessage(register.error);
-	const success = register.isSuccess ? register.data : undefined;
 
 	function reset() {
 		setProductId("");
@@ -206,7 +193,31 @@ export function MovementStockForm({
 			body.customerId = customerId === NO_CUSTOMER_VALUE ? null : customerId;
 		}
 
-		register.mutate(body, { onSuccess: reset });
+		register.mutate(body, {
+			onSuccess: (response) => {
+				reset();
+				// The stock comes from the transaction's response, not from the
+				// cached catalogue: it is the number the server actually wrote (MOV-04).
+				AlertToast({
+					title: "Registro exitoso",
+					description: `${type === "IN" ? "Entrada" : "Salida"} registrada. Stock disponible: ${response.stockQuantity}.`,
+					type: "success",
+					delay: 3000,
+				});
+			},
+			onError: (error) => {
+				// The callback argument is the error of *this* attempt; reading
+				// `register.error` here would be the previous render's value.
+				AlertToast({
+					title: "Error en el registro",
+					description:
+						registrationErrorMessage(error) ??
+						"Intentá de nuevo en unos minutos.",
+					type: "error",
+					delay: 3000,
+				});
+			},
+		});
 	}
 
 	return (
@@ -270,22 +281,6 @@ export function MovementStockForm({
 				/>
 			) : null}
 
-			{errorMessage ? (
-				<div className="col-span-full">
-					<Alert variant="danger" title="No pudimos registrar el movimiento">
-						{errorMessage}
-					</Alert>
-				</div>
-			) : null}
-
-			{success ? (
-				<div className="col-span-full">
-					<Alert variant="success" title={copy.title}>
-						{successMessage(success)}
-					</Alert>
-				</div>
-			) : null}
-
 			<div className="col-span-full flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
 				<Button
 					type="button"
@@ -297,7 +292,7 @@ export function MovementStockForm({
 					Cancelar
 				</Button>
 				<Button
-					className="h-10 w-full sm:w-30"
+					className="h-10 w-full sm:w-40"
 					type="submit"
 					disabled={register.isPending}
 				>

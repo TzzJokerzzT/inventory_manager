@@ -56,7 +56,7 @@ nuevo y con los días sin movimientos en cero, desde
 | ---- | --------------- | ----------- |
 | PROD-01 | Creación de productos con: nombre, descripción, precio, foto, código SKU | Alta |
 | PROD-02 | Edición de datos de productos existentes | Alta |
-| PROD-03 | Eliminación lógica de productos (soft delete) | Alta |
+| PROD-03 | Eliminación lógica de productos (soft delete, reversible) | Alta |
 | PROD-04 | Búsqueda y filtrado de productos por nombre, SKU o categoría | Alta |
 | PROD-05 | Validación de unicidad de SKU por empresa | Alta |
 | PROD-06 | Carga de imagen del producto (optimización incluida) | Media |
@@ -69,7 +69,35 @@ nuevo y con los días sin movimientos en cero, desde
 > `categoryId` no se expone en el contrato; entra cuando esa feature exista. PROD-06 se resuelve con
 > **subida directa firmada** a Cloudinary: el formulario pide la firma a
 > `POST /companies/{companyId}/media/signature`, sube el archivo y guarda únicamente el `secure_url`;
-> la optimización es la entrega de Cloudinary, no un paso de código propio.
+> la optimización es la entrega de Cloudinary, no un paso de código propio. Crear y editar
+> confirman con un toast y vuelven al listado.
+>
+> **PROD-03 es una baja lógica reversible** (`odd/tasks/product-restore.md`): la baja estampa
+> `deletedAt` y la restauración la deshace con
+> `POST /companies/{companyId}/products/{productId}/restore`, que devuelve el producto activo con su
+> SKU y su historial de movimientos intactos y exige el mismo permiso que la baja (`manage_products`,
+> ADMIN u OWNER). La papelera lee **solo** las bajas
+> (`GET /companies/{companyId}/products?deleted=true`, con la misma búsqueda y el mismo orden; el
+> default sigue siendo el catálogo activo) y restaurar uno que no está dado de baja responde `409
+> product_not_deleted` (la papelera es un estado, no un flag); uno de otra empresa responde el mismo
+> `404` que uno inexistente. El SKU **sigue reservado** mientras el producto está dado de baja —el
+> índice único cubre las filas con `deletedAt`—, así que recrearlo responde `409 sku_already_exists`
+> y **restaurar es la forma de reutilizarlo** mientras la fila siga en la papelera.
+>
+> **La purga física está implementada** (`odd/tasks/product-purge.md`): `DELETE
+> /companies/{companyId}/products/{productId}/permanent` borra la fila y responde `204`; es la segunda
+> mitad de la papelera —restaurar o purgar— y la única forma de **liberar el SKU**, porque la fila y su
+> índice único desaparecen, así que un producto nuevo puede volver a usar ese código. Es **solo para el
+> `OWNER`**: `purge_products` es una fila propia de la matriz, separada de `manage_products` porque la
+> operación es irreversible, y un `ADMIN` recibe `403 insufficient_role` aunque pueda dar de baja y
+> restaurar. Solo se permite sobre un producto **ya dado de baja** (`409 product_not_deleted`, la
+> papelera es el único punto de entrada) y **sin movimientos** (`409 product_has_movements`, con el
+> conteo): el ledger es la traza de auditoría (MOV-05) y **no se borra nunca**, y
+> `stock_movements.product_id` es `ON DELETE RESTRICT`, la última guarda —un movimiento creado entre el
+> conteo y el `DELETE` también responde ese `409`, nunca un `500`—. En la UI, la papelera ofrece
+> **Eliminar definitivamente** junto a **Restaurar** únicamente al `OWNER`, detrás del `Modal` de
+> confirmación (danger) que advierte que es irreversible y que solo se permite sin movimientos; el
+> `409` se muestra adentro del diálogo con el mensaje de la API.
 
 ### 4. Entradas y Salidas de Inventario
 
@@ -91,7 +119,9 @@ nuevo y con los días sin movimientos en cero, desde
 > cliente (ver la nota de la sección 5). La escritura del movimiento y el cambio de stock van en **una
 > sola transacción** (MOV-04) y la salida se aplica con un update guardado por `stockQuantity >=
 > quantity`, así que dos salidas concurrentes no pueden dejar stock negativo: la perdedora responde
-> `409 insufficient_stock` con el stock disponible y no registra nada. Los movimientos son **inmutables** —no hay endpoints de edición
+> `409 insufficient_stock` con el stock disponible y no registra nada. El formulario confirma con un
+> toast el stock resultante de la transacción y muestra los rechazos con el mensaje de la API en ese
+> mismo toast. Los movimientos son **inmutables** —no hay endpoints de edición
 > ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
 > por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
 > los roles leen el historial. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede

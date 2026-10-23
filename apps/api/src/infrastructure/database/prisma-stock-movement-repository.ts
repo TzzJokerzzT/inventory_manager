@@ -165,6 +165,14 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
 		return rows.map((row) => this.toDomain(row));
 	}
 
+	async countByProduct(companyId: string, productId: string): Promise<number> {
+		// The company is part of the count, so a movement of another company can
+		// never block a purge (odd/tasks/product-purge.md L4).
+		return this.prisma.stockMovement.count({
+			where: { companyId, productId },
+		});
+	}
+
 	/** Maps a raw Prisma row back into the domain entity. */
 	private toDomain(row: StockMovementModel): StockMovement {
 		return StockMovement.create({

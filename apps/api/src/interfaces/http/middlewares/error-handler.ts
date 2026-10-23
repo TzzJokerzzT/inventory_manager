@@ -34,6 +34,14 @@ import {
 	MembershipNotFoundError,
 } from "../../../domain/errors/membership-not-found-error.js";
 import {
+	PRODUCT_HAS_MOVEMENTS_CODE,
+	ProductHasMovementsError,
+} from "../../../domain/errors/product-has-movements-error.js";
+import {
+	PRODUCT_NOT_DELETED_CODE,
+	ProductNotDeletedError,
+} from "../../../domain/errors/product-not-deleted-error.js";
+import {
 	PRODUCT_NOT_FOUND_CODE,
 	ProductNotFoundError,
 } from "../../../domain/errors/product-not-found-error.js";
@@ -162,6 +170,33 @@ export const errorHandler: ErrorRequestHandler = (
 		// the caller needs to know (S4).
 		response.status(StatusCodes.NOT_FOUND).json({
 			error: { message: error.message, code: PRODUCT_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof ProductNotDeletedError) {
+		// 409, not 404 and not a silent no-op: the product exists in this
+		// company, it is simply not in the trash, so there is nothing to
+		// restore (L2). The code tells the client that its copy of the state was
+		// stale, instead of letting it believe the restore happened.
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: PRODUCT_NOT_DELETED_CODE,
+			},
+		});
+		return;
+	}
+
+	if (error instanceof ProductHasMovementsError) {
+		// 409, not 400: the body is well formed and the caller may purge, the
+		// product simply has history. The ledger is the audit trail (MOV-05) and
+		// nothing was deleted; the message carries the count (S4).
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: PRODUCT_HAS_MOVEMENTS_CODE,
+			},
 		});
 		return;
 	}

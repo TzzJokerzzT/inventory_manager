@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel } from "@/lib/api/schemas";
 import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useProducts } from "@/src/features/product/api/use-products";
+import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useRegisterMovement } from "../api/use-register-movement";
 import { MovementEntryStockForm } from "../movement-stock-entry-form";
 
@@ -16,6 +17,10 @@ jest.mock("@/src/features/client/api/use-customers", () => ({
 
 jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
+}));
+
+jest.mock("@/src/shared/components/AlertToast", () => ({
+	AlertToast: jest.fn(),
 }));
 
 const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
@@ -44,6 +49,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 	};
 }
 
+const alertToastMock = AlertToast as jest.MockedFunction<typeof AlertToast>;
 const mutate = jest.fn();
 
 function setup({
@@ -184,24 +190,31 @@ describe("MovementEntryStockForm", () => {
 		expect(mutate).not.toHaveBeenCalled();
 	});
 
-	it("renders the API message of insufficient_stock instead of a success", () => {
-		setup({
-			mutation: {
-				isError: true,
-				error: new ApiError(
+	it("surfaces the API message of insufficient_stock in the error toast", () => {
+		mutate.mockImplementation((_input, options) =>
+			options?.onError?.(
+				new ApiError(
 					"No hay stock suficiente: disponible 3.",
 					409,
 					"insufficient_stock",
 				),
-			},
-		});
+			),
+		);
 
 		render(<MovementEntryStockForm companyId="c1" />);
+		chooseProduct("Café molido 500g · CAF-500");
+		fill("Cantidad", "10");
+		submit();
 
-		expect(
-			screen.getByText("No hay stock suficiente: disponible 3."),
-		).toBeTruthy();
-		expect(screen.queryByText("Entrada registrada")).toBeNull();
+		expect(alertToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "error",
+				description: "No hay stock suficiente: disponible 3.",
+			}),
+		);
+		expect(alertToastMock).not.toHaveBeenCalledWith(
+			expect.objectContaining({ type: "success" }),
+		);
 	});
 
 	it("resets the form after a successful registration", () => {

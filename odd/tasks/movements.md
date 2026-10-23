@@ -129,3 +129,9 @@ el push y el PR los decide el humano.
 Pendiente del humano: queda un archivo de scratch de la worker de frontend en
 `/tmp/movement-combobox-probe.test.tsx`, fuera del worktree; debe borrarlo el humano (esta tarea no
 borra archivos).
+
+L7. Cambio de feedback de la UI (sin tocar contrato ni backend): el formulario de movimientos ya no
+renderiza alerts inline. El éxito y el error se muestran con `AlertToast`, y el toast de éxito incluye
+el `stockQuantity` que devolvió la transacción (el número real, no el de la caché). El toast de error
+usa el argumento del callback de la mutación, no `register.error` de un render anterior, para no
+perder el mensaje de la API. Los tests de los formularios se reescribieron a ese comportamiento.

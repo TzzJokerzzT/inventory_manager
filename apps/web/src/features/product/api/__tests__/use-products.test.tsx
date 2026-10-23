@@ -49,6 +49,16 @@ describe("productsQueryKey", () => {
 		expect(productsQueryKey("c1", "café")).toEqual(["products", "c1", "café"]);
 		expect(productsQueryKey("c2", "café")).toEqual(["products", "c2", "café"]);
 	});
+
+	it("adds the trash mode to the key only when the trash is requested", () => {
+		expect(productsQueryKey("c1", "", false)).toEqual(["products", "c1", ""]);
+		expect(productsQueryKey("c1", "café", true)).toEqual([
+			"products",
+			"c1",
+			"café",
+			"deleted",
+		]);
+	});
 });
 
 describe("useProducts", () => {
@@ -95,6 +105,56 @@ describe("useProducts", () => {
 			expect(result.current.isSuccess).toBe(true);
 		});
 		expect(get).toHaveBeenCalledWith("/companies/c1/products", undefined);
+	});
+
+	it("lists only the deleted products when the trash is requested", async () => {
+		const trash = [product({ id: "p9", sku: "VIE-1" })];
+		const get = mockGet(trash);
+
+		const { result } = renderHook(
+			() => useProducts("c1", undefined, { deleted: true }),
+			{ wrapper },
+		);
+
+		await waitFor(() => {
+			expect(result.current.isSuccess).toBe(true);
+		});
+		expect(get).toHaveBeenCalledWith("/companies/c1/products", {
+			params: { deleted: true },
+		});
+		expect(result.current.data).toEqual(trash);
+	});
+
+	it("combines the trash mode with the search term", async () => {
+		const get = mockGet([]);
+
+		const { result } = renderHook(
+			() => useProducts("c1", "café", { deleted: true }),
+			{ wrapper },
+		);
+
+		await waitFor(() => {
+			expect(result.current.isSuccess).toBe(true);
+		});
+		expect(get).toHaveBeenCalledWith("/companies/c1/products", {
+			params: { search: "café", deleted: true },
+		});
+	});
+
+	it("keeps the request of the active catalogue unchanged when the trash is off", async () => {
+		const get = mockGet([]);
+
+		const { result } = renderHook(
+			() => useProducts("c1", "café", { deleted: false }),
+			{ wrapper },
+		);
+
+		await waitFor(() => {
+			expect(result.current.isSuccess).toBe(true);
+		});
+		expect(get).toHaveBeenCalledWith("/companies/c1/products", {
+			params: { search: "café" },
+		});
 	});
 
 	it("does not call the API without an active company", () => {

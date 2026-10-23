@@ -21,9 +21,11 @@ import { ListProductsUseCase } from "./application/use-cases/list-products.js";
 import { ListStockMovementsUseCase } from "./application/use-cases/list-stock-movements.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notifications-read.js";
+import { PurgeProductUseCase } from "./application/use-cases/purge-product.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
+import { RestoreProductUseCase } from "./application/use-cases/restore-product.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
@@ -165,6 +167,13 @@ const app = buildApp({
 		get: new GetProductUseCase({ productRepository }),
 		update: new UpdateProductUseCase({ productRepository }),
 		remove: new DeleteProductUseCase({ productRepository }),
+		restore: new RestoreProductUseCase({ productRepository }),
+		// The purge needs the ledger to count the movements that block it (S4):
+		// the row is never removed while the audit trail points at it (MOV-05).
+		purge: new PurgeProductUseCase({
+			productRepository,
+			stockMovementRepository,
+		}),
 	},
 	customers: {
 		list: new ListCustomersUseCase({ customerRepository }),

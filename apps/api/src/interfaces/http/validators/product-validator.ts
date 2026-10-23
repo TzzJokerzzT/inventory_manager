@@ -92,7 +92,18 @@ export const updateProductSchema = v.object({
  *
  * The length cap is the contract's (`maxLength: 100`), and a blank value means
  * "no search": the client clearing the box must not hide the catalogue.
+ *
+ * `deleted` arrives as a string, so it is parsed like `limit` in the movement
+ * query: only `"true"` and `"false"` are accepted, anything else (`1`, `yes`,
+ * `maybe`) is a 400 instead of a silently false filter. The default is written
+ * as the raw query string the schema receives, so an absent parameter keeps
+ * listing the active catalogue.
  */
+const deletedSchema = v.pipe(
+	v.picklist(["true", "false"], `deleted must be "true" or "false"`),
+	v.transform((value) => value === "true"),
+);
+
 export const listProductsQuerySchema = v.object({
 	search: v.optional(
 		v.pipe(
@@ -101,4 +112,5 @@ export const listProductsQuerySchema = v.object({
 			v.maxLength(100, "search must be at most 100 characters"),
 		),
 	),
+	deleted: v.optional(deletedSchema, "false"),
 });

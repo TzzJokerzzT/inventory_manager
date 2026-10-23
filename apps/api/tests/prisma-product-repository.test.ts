@@ -15,12 +15,13 @@ function buildFakeDelegate() {
 	const findFirst = jest.fn();
 	const findMany = jest.fn();
 	const updateMany = jest.fn();
+	const deleteMany = jest.fn();
 
 	const delegate = {
-		product: { create, findFirst, findMany, updateMany },
+		product: { create, findFirst, findMany, updateMany, deleteMany },
 	} as unknown as ProductDelegate;
 
-	return { delegate, create, findFirst, findMany, updateMany };
+	return { delegate, create, findFirst, findMany, updateMany, deleteMany };
 }
 
 const CREATED_AT = new Date("2026-10-20T12:00:00.000Z");
@@ -190,7 +191,7 @@ describe("PrismaProductRepository.list", () => {
 		findMany.mockResolvedValue([]);
 
 		const repository = new PrismaProductRepository({ prisma: delegate });
-		await repository.list("company-1", "cafe");
+		await repository.list("company-1", { search: "cafe" });
 
 		expect(findMany).toHaveBeenCalledWith({
 			where: {
@@ -201,6 +202,54 @@ describe("PrismaProductRepository.list", () => {
 					{ sku: { contains: "cafe", mode: "insensitive" } },
 				],
 			},
+			orderBy: [{ name: "asc" }, { id: "asc" }],
+		});
+	});
+
+	it("filters the soft-deleted rows when the trash is asked for", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([row({ deletedAt: new Date("2026-10-22") })]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const listed = await repository.list("company-1", { deleted: true });
+
+		// The trash replaces the active filter; it is not a union of both.
+		expect(findMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", deletedAt: { not: null } },
+			orderBy: [{ name: "asc" }, { id: "asc" }],
+		});
+		expect(listed).toHaveLength(1);
+	});
+
+	it("keeps the search inside the trash", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		await repository.list("company-1", { search: "cafe", deleted: true });
+
+		expect(findMany).toHaveBeenCalledWith({
+			where: {
+				companyId: "company-1",
+				deletedAt: { not: null },
+				OR: [
+					{ name: { contains: "cafe", mode: "insensitive" } },
+					{ sku: { contains: "cafe", mode: "insensitive" } },
+				],
+			},
+			orderBy: [{ name: "asc" }, { id: "asc" }],
+		});
+	});
+
+	it("keeps listing the active products when deleted is false", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([row()]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		await repository.list("company-1", { search: undefined, deleted: false });
+
+		expect(findMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", deletedAt: null },
 			orderBy: [{ name: "asc" }, { id: "asc" }],
 		});
 	});
@@ -286,6 +335,57 @@ describe("PrismaProductRepository.softDelete", () => {
 	});
 });
 
+describe("PrismaProductRepository.restore", () => {
+	it("clears deletedAt only while the row is still deleted, then reads it back", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(row());
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const restored = await repository.restore("company-1", "product-1");
+
+		// `deletedAt: { not: null }` is the guard: an active row is not
+		// restamped, so two concurrent restores cannot both win (S3).
+		expect(updateMany).toHaveBeenCalledWith({
+			where: {
+				id: "product-1",
+				companyId: "company-1",
+				deletedAt: { not: null },
+			},
+			data: { deletedAt: null, updatedAt: expect.any(Date) },
+		});
+		expect(findFirst).toHaveBeenCalledWith({
+			where: { id: "product-1", companyId: "company-1" },
+		});
+		expect(restored).toBeInstanceOf(Product);
+		expect(restored?.deletedAt).toBeNull();
+	});
+
+	it("returns null when no deleted row matched, without reading it back", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 0 });
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(
+			repository.restore("company-1", "product-1"),
+		).resolves.toBeNull();
+		expect(findFirst).not.toHaveBeenCalled();
+	});
+
+	it("returns null when the row vanished between the write and the read", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(null);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(
+			repository.restore("company-1", "product-1"),
+		).resolves.toBeNull();
+	});
+});
+
 describe("PrismaProductRepository price mapping", () => {
 	it("never exposes a float: a Decimal row is normalized to a two-decimal string", async () => {
 		const { delegate, findFirst } = buildFakeDelegate();
@@ -332,5 +432,87 @@ describe("PrismaProductRepository.findByIds", () => {
 			"product-1",
 			"product-2",
 		]);
+	});
+});
+
+describe("PrismaProductRepository.purge", () => {
+	it("deletes only a soft-deleted row of the company", async () => {
+		const { delegate, deleteMany } = buildFakeDelegate();
+		deleteMany.mockResolvedValue({ count: 1 });
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"purged",
+		);
+		// The trash is the only entry point: the `deletedAt: { not: null }`
+		// guard is part of the DELETE, not a read before it.
+		expect(deleteMany).toHaveBeenCalledWith({
+			where: {
+				id: "product-1",
+				companyId: "company-1",
+				deletedAt: { not: null },
+			},
+		});
+	});
+
+	it("answers not_found when nothing matched and the row does not exist", async () => {
+		const { delegate, deleteMany, findFirst } = buildFakeDelegate();
+		deleteMany.mockResolvedValue({ count: 0 });
+		findFirst.mockResolvedValue(null);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"not_found",
+		);
+		// The re-read is scoped by the company, so a foreign row is absent too.
+		expect(findFirst).toHaveBeenCalledWith({
+			where: { id: "product-1", companyId: "company-1" },
+		});
+	});
+
+	it("answers not_deleted when nothing matched because the row is active", async () => {
+		const { delegate, deleteMany, findFirst } = buildFakeDelegate();
+		deleteMany.mockResolvedValue({ count: 0 });
+		findFirst.mockResolvedValue(row());
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"not_deleted",
+		);
+	});
+
+	it("answers has_movements when the foreign key rejects the delete (P2003)", async () => {
+		const { delegate, deleteMany, findFirst } = buildFakeDelegate();
+		deleteMany.mockRejectedValue(
+			Object.assign(new Error("Foreign key constraint violated"), {
+				code: "P2003",
+			}),
+		);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		// The race L4 describes: a movement landed after the count, so the
+		// database rejects the row and the caller gets the same 409.
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"has_movements",
+		);
+		expect(findFirst).not.toHaveBeenCalled();
+	});
+
+	it("lets any other failure through untouched", async () => {
+		const { delegate, deleteMany } = buildFakeDelegate();
+		const failure = Object.assign(new Error("connection lost"), {
+			code: "P1001",
+		});
+		deleteMany.mockRejectedValue(failure);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).rejects.toBe(
+			failure,
+		);
 	});
 });

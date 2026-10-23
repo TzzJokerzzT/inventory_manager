@@ -125,6 +125,75 @@ describe("InMemoryProductRepository.list", () => {
 		]);
 	});
 
+	it("lists the active products when `deleted` is explicitly false", async () => {
+		const repository = repositoryWith([
+			product({ id: "product-a", name: "Cafe" }),
+			product({
+				id: "product-b",
+				name: "Deleted",
+				sku: "DEL-1",
+				deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+			}),
+		]);
+
+		const listed = await repository.list(COMPANY, { deleted: false });
+
+		expect(listed.map((row) => row.id)).toEqual(["product-a"]);
+	});
+
+	it("lists only the soft-deleted products when the trash is asked for", async () => {
+		const repository = repositoryWith([
+			product({
+				id: "product-b",
+				name: "Zapallo",
+				sku: "ZAP-1",
+				deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+			}),
+			product({ id: "product-a", name: "Cafe" }),
+			product({
+				id: "product-c",
+				name: "Cafe",
+				sku: "CAF-1",
+				deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+			}),
+			product({
+				id: "product-d",
+				companyId: OTHER_COMPANY,
+				name: "Ajeno",
+				deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+			}),
+		]);
+
+		const listed = await repository.list(COMPANY, { deleted: true });
+
+		// Same order as the active catalogue: name, then id.
+		expect(listed.map((row) => row.id)).toEqual(["product-c", "product-b"]);
+	});
+
+	it("matches the search inside the trash too", async () => {
+		const repository = repositoryWith([
+			product({
+				id: "product-1",
+				name: "Cafe molido 500g",
+				sku: "CAF-500",
+				deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+			}),
+			product({
+				id: "product-2",
+				name: "Azucar",
+				sku: "SUGAR-1",
+				deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+			}),
+		]);
+
+		const listed = await repository.list(COMPANY, {
+			search: "caf-5",
+			deleted: true,
+		});
+
+		expect(listed.map((row) => row.id)).toEqual(["product-1"]);
+	});
+
 	it("matches the search against the name or the sku, case-insensitively", async () => {
 		const repository = repositoryWith([
 			product({ id: "product-1", name: "Cafe molido 500g", sku: "CAF-500" }),
@@ -132,8 +201,8 @@ describe("InMemoryProductRepository.list", () => {
 			product({ id: "product-3", name: "Yerba", sku: "YERBA-CAFE" }),
 		]);
 
-		const byName = await repository.list(COMPANY, "cafe");
-		const bySku = await repository.list(COMPANY, "caf-5");
+		const byName = await repository.list(COMPANY, { search: "cafe" });
+		const bySku = await repository.list(COMPANY, { search: "caf-5" });
 
 		expect(byName.map((row) => row.id)).toEqual(["product-1", "product-3"]);
 		expect(bySku.map((row) => row.id)).toEqual(["product-1"]);
@@ -229,6 +298,46 @@ describe("InMemoryProductRepository.softDelete", () => {
 	});
 });
 
+describe("InMemoryProductRepository.restore", () => {
+	const DELETED_AT = new Date("2026-10-22T12:00:00.000Z");
+
+	it("clears deletedAt and returns the product active again", async () => {
+		const repository = repositoryWith([product({ deletedAt: DELETED_AT })]);
+
+		const restored = await repository.restore(COMPANY, "product-1");
+
+		expect(restored).toMatchObject({ id: "product-1", sku: "CAF-500" });
+		expect(restored?.deletedAt).toBeNull();
+		await expect(repository.findActiveById(COMPANY, "product-1")).resolves.toBe(
+			restored,
+		);
+	});
+
+	it("returns null for a product that is not deleted, without touching it", async () => {
+		const active = product();
+		const repository = repositoryWith([active]);
+
+		await expect(repository.restore(COMPANY, "product-1")).resolves.toBeNull();
+		await expect(repository.findActiveById(COMPANY, "product-1")).resolves.toBe(
+			active,
+		);
+	});
+
+	it("returns null for another company's product", async () => {
+		const repository = repositoryWith([
+			product({ companyId: OTHER_COMPANY, deletedAt: DELETED_AT }),
+		]);
+
+		await expect(repository.restore(COMPANY, "product-1")).resolves.toBeNull();
+	});
+
+	it("returns null for a product that does not exist", async () => {
+		await expect(
+			repositoryWith([]).restore(COMPANY, "product-1"),
+		).resolves.toBeNull();
+	});
+});
+
 describe("InMemoryProductRepository.findByIds", () => {
 	it("resolves the requested products of the company", async () => {
 		const repository = repositoryWith([
@@ -271,5 +380,65 @@ describe("InMemoryProductRepository.findByIds", () => {
 		const repository = repositoryWith([product()]);
 
 		await expect(repository.findByIds(COMPANY, [])).resolves.toEqual([]);
+	});
+});
+
+describe("InMemoryProductRepository.purge", () => {
+	const DELETED_AT = new Date("2026-10-22T12:00:00.000Z");
+
+	it("removes a soft-deleted product of the company for good", async () => {
+		const repository = repositoryWith([product({ deletedAt: DELETED_AT })]);
+
+		await expect(repository.purge(COMPANY, "product-1")).resolves.toBe(
+			"purged",
+		);
+
+		// The row is gone from both halves of the store.
+		await expect(repository.findByIds(COMPANY, ["product-1"])).resolves.toEqual(
+			[],
+		);
+		await expect(repository.list(COMPANY, { deleted: true })).resolves.toEqual(
+			[],
+		);
+	});
+
+	it("frees the sku, so a new product may take it", async () => {
+		const repository = repositoryWith([product({ deletedAt: DELETED_AT })]);
+
+		await repository.purge(COMPANY, "product-1");
+
+		await expect(
+			repository.create(product({ id: "product-2", name: "Otro" })),
+		).resolves.toMatchObject({ id: "product-2", sku: "CAF-500" });
+	});
+
+	it("returns not_found for a product that does not exist", async () => {
+		await expect(repositoryWith([]).purge(COMPANY, "product-1")).resolves.toBe(
+			"not_found",
+		);
+	});
+
+	it("returns not_found for another company's product, without deleting it", async () => {
+		const repository = repositoryWith([
+			product({ companyId: OTHER_COMPANY, deletedAt: DELETED_AT }),
+		]);
+
+		await expect(repository.purge(COMPANY, "product-1")).resolves.toBe(
+			"not_found",
+		);
+		await expect(
+			repository.findByIds(OTHER_COMPANY, ["product-1"]),
+		).resolves.toHaveLength(1);
+	});
+
+	it("returns not_deleted for an active product, without deleting it", async () => {
+		const repository = repositoryWith([product()]);
+
+		await expect(repository.purge(COMPANY, "product-1")).resolves.toBe(
+			"not_deleted",
+		);
+		await expect(
+			repository.findActiveById(COMPANY, "product-1"),
+		).resolves.not.toBeNull();
 	});
 });

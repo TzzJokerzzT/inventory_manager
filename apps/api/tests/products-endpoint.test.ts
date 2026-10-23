@@ -3,17 +3,23 @@ import { CreateProductUseCase } from "../src/application/use-cases/create-produc
 import { DeleteProductUseCase } from "../src/application/use-cases/delete-product.js";
 import { GetProductUseCase } from "../src/application/use-cases/get-product.js";
 import { ListProductsUseCase } from "../src/application/use-cases/list-products.js";
+import { PurgeProductUseCase } from "../src/application/use-cases/purge-product.js";
+import { RestoreProductUseCase } from "../src/application/use-cases/restore-product.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
 import { Company } from "../src/domain/entities/company.js";
 import {
 	Membership,
 	type MembershipRole,
 } from "../src/domain/entities/membership.js";
+import type { Product } from "../src/domain/entities/product.js";
+import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
+import { apiRateLimiter } from "../src/interfaces/http/middlewares/rate-limit.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
 import { createRequireCompanyContext } from "../src/interfaces/http/middlewares/require-company-context.js";
 import { createRequireUser } from "../src/interfaces/http/middlewares/require-user.js";
@@ -42,13 +48,29 @@ describe("product endpoints", () => {
 		issuer = await startLocalIssuer();
 	});
 
+	beforeEach(() => {
+		// The global limiter is a module-level singleton with a 100-request window
+		// that counts every request this file sends from the same client, and the
+		// limiter is not what any test here asserts (the auth suites own that).
+		// Resetting the client's counter keeps the window from leaking between
+		// tests; both spellings of the loopback address are cleared because the
+		// key is the request's `ip`.
+		apiRateLimiter.resetKey("::ffff:127.0.0.1");
+		apiRateLimiter.resetKey("127.0.0.1");
+	});
+
 	afterAll(async () => {
 		await issuer.close();
 	});
 
 	function createTestApp() {
 		const membershipRepository = new InMemoryMembershipRepository();
-		const productRepository = new InMemoryProductRepository();
+		// The ledger and the product reads share one store, exactly like the
+		// Prisma adapters share the database: the purge has to see the
+		// movements of the very rows this repository serves.
+		const store = new Map<string, Product>();
+		const productRepository = new InMemoryProductRepository([], store);
+		const stockMovementRepository = new InMemoryStockMovementRepository(store);
 
 		const owner = User.create({ auth0Sub: OWNER_SUB, email: "owner@x.com" });
 		const admin = User.create({ auth0Sub: ADMIN_SUB, email: "admin@x.com" });
@@ -113,6 +135,11 @@ describe("product endpoints", () => {
 				get: new GetProductUseCase({ productRepository }),
 				update: new UpdateProductUseCase({ productRepository }),
 				remove: new DeleteProductUseCase({ productRepository }),
+				restore: new RestoreProductUseCase({ productRepository }),
+				purge: new PurgeProductUseCase({
+					productRepository,
+					stockMovementRepository,
+				}),
 			},
 			// Not exercised by this suite: the customer slice keeps the app
 			// buildable, and its own suite wires it for real.
@@ -145,6 +172,7 @@ describe("product endpoints", () => {
 			member,
 			outsider,
 			productRepository,
+			stockMovementRepository,
 			seedMembership,
 			seedRoster: () => {
 				seedMembership({ userId: owner.id, role: "OWNER" });
@@ -415,6 +443,79 @@ describe("product endpoints", () => {
 
 			expect(response.status).toBe(400);
 		});
+
+		it("lists only the soft-deleted products with ?deleted=true", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const deleted = await createProduct(app, {
+				name: "Cafe",
+				sku: "CAF-1",
+			});
+			await createProduct(app, { name: "Zapallo", sku: "ZAP-1" });
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${deleted.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const trash = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const catalogue = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const explicitActive = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=false`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(trash.status).toBe(200);
+			expect(trash.body).toEqual([
+				expect.objectContaining({ id: deleted.id, sku: "CAF-1" }),
+			]);
+			expect(
+				catalogue.body.map((product: { sku: string }) => product.sku),
+			).toEqual(["ZAP-1"]);
+			expect(explicitActive.body).toEqual(catalogue.body);
+		});
+
+		it("keeps the search and the order inside the trash", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const first = await createProduct(app, {
+				name: "Cafe molido",
+				sku: "CAF-500",
+			});
+			const second = await createProduct(app, {
+				name: "Cafe en grano",
+				sku: "CAF-900",
+			});
+			await createProduct(app, { name: "Cafe activo", sku: "CAF-100" });
+
+			for (const product of [first, second]) {
+				await request(app)
+					.delete(`/companies/${COMPANY}/products/${product.id}`)
+					.set("authorization", authorization(OWNER_SUB));
+			}
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true&search=cafe`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(
+				response.body.map((product: { name: string }) => product.name),
+			).toEqual(["Cafe en grano", "Cafe molido"]);
+		});
+
+		it("answers 400 for a deleted value that is not true or false", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=maybe`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.issues.length).toBeGreaterThan(0);
+		});
 	});
 
 	describe("GET /companies/:companyId/products/:productId", () => {
@@ -681,6 +782,361 @@ describe("product endpoints", () => {
 
 			expect(badId.status).toBe(400);
 			expect(absent.status).toBe(404);
+		});
+	});
+
+	describe("POST /companies/:companyId/products/:productId/restore", () => {
+		it("restores a deleted product and answers 200 with it active again", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const restored = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(ADMIN_SUB));
+
+			expect(restored.status).toBe(200);
+			expect(restored.body).toEqual({
+				...product,
+				updatedAt: expect.any(String),
+			});
+		});
+
+		it("brings the product back to the catalogue and out of the trash", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+			await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const catalogue = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const trash = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(catalogue.body.map((row: { id: string }) => row.id)).toEqual([
+				product.id,
+			]);
+			expect(trash.body).toEqual([]);
+		});
+
+		it("keeps the sku reserved after the delete and reuses the row instead of a new create", async () => {
+			// S2: the SKU never chokes on restore because the unique index kept
+			// it reserved while the product was in the trash.
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const duplicate = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe", sku: "CAF-500", price: "1500" });
+
+			const restored = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const stillReserved = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe", sku: "CAF-500", price: "1500" });
+
+			expect(duplicate.status).toBe(409);
+			expect(duplicate.body.error.code).toBe("sku_already_exists");
+			expect(restored.status).toBe(200);
+			expect(restored.body).toMatchObject({
+				id: product.id,
+				sku: "CAF-500",
+			});
+			expect(stillReserved.status).toBe(409);
+			expect(stillReserved.body.error.code).toBe("sku_already_exists");
+		});
+
+		it("answers 409 product_not_deleted for a product that is not deleted", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(409);
+			expect(response.body.error.code).toBe("product_not_deleted");
+		});
+
+		it("answers 409 on a second restore", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+			await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+			const second = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(second.status).toBe(409);
+			expect(second.body.error.code).toBe("product_not_deleted");
+		});
+
+		it("answers 404 product_not_found for another company's product", async () => {
+			const { app, seedRoster, seedMembership, owner } = createTestApp();
+			seedRoster();
+			seedMembership({
+				userId: owner.id,
+				role: "OWNER",
+				companyId: OTHER_COMPANY,
+			});
+			const foreign = await request(app)
+				.post(`/companies/${OTHER_COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Ajeno", sku: "AJE-1", price: "10" });
+
+			await request(app)
+				.delete(`/companies/${OTHER_COMPANY}/products/${foreign.body.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${foreign.body.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("product_not_found");
+		});
+
+		it("answers 404 product_not_found for a product that does not exist", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${MISSING_PRODUCT_ID}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("product_not_found");
+		});
+
+		it("answers 403 insufficient_role for a MEMBER", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(403);
+			expect(response.body.error.code).toBe("insufficient_role");
+		});
+
+		it("answers 400 for a malformed product id and 401 without a token", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const badId = await request(app)
+				.post(`/companies/${COMPANY}/products/not-a-uuid/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+			const withoutToken = await request(app).post(
+				`/companies/${COMPANY}/products/${MISSING_PRODUCT_ID}/restore`,
+			);
+
+			expect(badId.status).toBe(400);
+			expect(withoutToken.status).toBe(401);
+		});
+	});
+	describe("DELETE /companies/:companyId/products/:productId/permanent", () => {
+		it("purges a deleted product and answers 204, and it is gone from both lists", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const purged = await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}/permanent`)
+				.set("authorization", authorization(OWNER_SUB));
+			const trash = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const catalogue = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(purged.status).toBe(204);
+			expect(purged.text).toBe("");
+			expect(trash.body).toEqual([]);
+			expect(catalogue.body).toEqual([]);
+		});
+
+		it("frees the sku, so the same sku may be created again", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}/permanent`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const recreated = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe", sku: "CAF-500", price: "1500" });
+
+			expect(recreated.status).toBe(201);
+			expect(recreated.body.sku).toBe("CAF-500");
+		});
+
+		it.each([
+			["ADMIN", ADMIN_SUB],
+			["MEMBER", MEMBER_SUB],
+		])("answers 403 insufficient_role for a %s", async (_role, sub) => {
+			// S3/L2: only the OWNER purges; the ADMIN may manage the catalogue
+			// but never destroy a row.
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const response = await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}/permanent`)
+				.set("authorization", authorization(sub));
+
+			expect(response.status).toBe(403);
+			expect(response.body.error.code).toBe("insufficient_role");
+		});
+
+		it("answers 404 product_not_found for another company's product", async () => {
+			const { app, seedRoster, seedMembership, owner } = createTestApp();
+			seedRoster();
+			seedMembership({
+				userId: owner.id,
+				role: "OWNER",
+				companyId: OTHER_COMPANY,
+			});
+			const foreign = await request(app)
+				.post(`/companies/${OTHER_COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Ajeno", sku: "AJE-1", price: "10" });
+
+			await request(app)
+				.delete(`/companies/${OTHER_COMPANY}/products/${foreign.body.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const response = await request(app)
+				.delete(`/companies/${COMPANY}/products/${foreign.body.id}/permanent`)
+				.set("authorization", authorization(OWNER_SUB));
+			const foreignTrash = await request(app)
+				.get(`/companies/${OTHER_COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("product_not_found");
+			// The foreign row is untouched: the company is part of the DELETE.
+			expect(foreignTrash.body.map((row: { id: string }) => row.id)).toEqual([
+				foreign.body.id,
+			]);
+		});
+
+		it("answers 409 product_not_deleted for an active product", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			const response = await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}/permanent`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(409);
+			expect(response.body.error.code).toBe("product_not_deleted");
+		});
+
+		it("answers 409 product_has_movements with the count, and nothing is deleted", async () => {
+			const { app, seedRoster, stockMovementRepository, owner } =
+				createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+			stockMovementRepository.save(
+				StockMovement.create({
+					companyId: COMPANY,
+					productId: product.id as string,
+					userId: owner.id,
+					type: "IN",
+					quantity: 3,
+				}),
+			);
+
+			const response = await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}/permanent`)
+				.set("authorization", authorization(OWNER_SUB));
+			const trash = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(409);
+			expect(response.body.error.code).toBe("product_has_movements");
+			expect(response.body.error.message).toContain("1");
+			// The ledger is the audit trail (MOV-05) and the row is still there.
+			expect(
+				await stockMovementRepository.countByProduct(
+					COMPANY,
+					product.id as string,
+				),
+			).toBe(1);
+			expect(trash.body.map((row: { id: string }) => row.id)).toEqual([
+				product.id,
+			]);
+		});
+
+		it("answers 400 for a malformed product id and 401 without a token", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const badId = await request(app)
+				.delete(`/companies/${COMPANY}/products/not-a-uuid/permanent`)
+				.set("authorization", authorization(OWNER_SUB));
+			const withoutToken = await request(app).delete(
+				`/companies/${COMPANY}/products/${MISSING_PRODUCT_ID}/permanent`,
+			);
+
+			expect(badId.status).toBe(400);
+			expect(badId.body.error.message).toBe("Invalid product id");
+			expect(withoutToken.status).toBe(401);
 		});
 	});
 });

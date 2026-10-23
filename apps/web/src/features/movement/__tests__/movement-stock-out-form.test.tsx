@@ -6,6 +6,7 @@ import type {
 } from "@/lib/api/schemas";
 import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useProducts } from "@/src/features/product/api/use-products";
+import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useRegisterMovement } from "../api/use-register-movement";
 import { MovementOutStockForm } from "../movement-stock-out-form";
 
@@ -19,6 +20,10 @@ jest.mock("@/src/features/client/api/use-customers", () => ({
 
 jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
+}));
+
+jest.mock("@/src/shared/components/AlertToast", () => ({
+	AlertToast: jest.fn(),
 }));
 
 const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
@@ -61,6 +66,7 @@ function customer(overrides: Partial<CustomerModel> = {}): CustomerModel {
 	};
 }
 
+const alertToastMock = AlertToast as jest.MockedFunction<typeof AlertToast>;
 const mutate = jest.fn();
 
 function setup({
@@ -204,101 +210,100 @@ describe("MovementOutStockForm", () => {
 		);
 	});
 
-	it("shows the stock the API answered after the movement", () => {
-		// El stock que se muestra es el de la respuesta (10), no el que la vista
-		// podría calcular desde la caché del catálogo (12 - 2).
-		setup({
-			mutation: {
-				isSuccess: true,
-				data: {
-					id: "m1",
-					companyId: "c1",
-					productId: "p1",
-					type: "OUT",
-					quantity: 2,
-					reason: "Venta",
-					createdAt: "2026-10-21T12:00:00.000Z",
-					product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
-					actor: null,
-					customerId: null,
-					customer: null,
-					stockQuantity: 10,
-				},
-			},
-		});
+	it("surfaces the stock the API answered after the movement in the success toast", () => {
+		// El stock del toast es el de la respuesta de la transacción (10), no el
+		// que la vista podría calcular desde la caché del catálogo (12 - 2).
+		mutate.mockImplementation((_input, options) =>
+			options?.onSuccess?.({ id: "m1", stockQuantity: 10 }),
+		);
 
 		render(<MovementOutStockForm companyId="c1" />);
+		chooseProduct("Café molido 500g · CAF-500");
+		fill("Cantidad", "2");
+		submit();
 
-		expect(screen.getByText("Salida registrada")).toBeTruthy();
-		expect(
-			screen.getByText("2 unidades de Café molido 500g. Stock disponible: 10."),
-		).toBeTruthy();
+		expect(alertToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "success",
+				description: "Salida registrada. Stock disponible: 10.",
+			}),
+		);
 	});
 
 	it("accepts a 201 that comes with the customer of the sale", () => {
-		setup({
-			mutation: {
-				isSuccess: true,
-				data: {
-					id: "m1",
-					companyId: "c1",
-					productId: "p1",
-					type: "OUT",
-					quantity: 2,
-					reason: "Venta",
-					createdAt: "2026-10-21T12:00:00.000Z",
-					product: { id: "p1", name: "Café molido 500g", sku: "CAF-500" },
-					actor: null,
-					customerId: "cu1",
-					customer: { id: "cu1", name: "Almacén Sur" },
-					stockQuantity: 9,
-				},
-			},
-		});
+		mutate.mockImplementation((_input, options) =>
+			options?.onSuccess?.({
+				id: "m1",
+				customerId: "cu1",
+				customer: { id: "cu1", name: "Almacén Sur" },
+				stockQuantity: 9,
+			}),
+		);
 
 		render(<MovementOutStockForm companyId="c1" />);
+		chooseProduct("Café molido 500g · CAF-500");
+		fill("Cantidad", "2");
+		chooseCustomer("Almacén Sur");
+		submit();
 
-		expect(screen.getByText("Salida registrada")).toBeTruthy();
-		expect(
-			screen.getByText("2 unidades de Café molido 500g. Stock disponible: 9."),
-		).toBeTruthy();
+		expect(alertToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "success",
+				description: "Salida registrada. Stock disponible: 9.",
+			}),
+		);
+		expect(mutate).toHaveBeenCalledWith(
+			expect.objectContaining({ customerId: "cu1" }),
+			expect.any(Object),
+		);
 	});
 
-	it("renders the customer_not_found message of the API", () => {
-		setup({
-			mutation: {
-				isError: true,
-				error: new ApiError("El cliente no existe.", 404, "customer_not_found"),
-			},
-		});
+	it("surfaces the customer_not_found message of the API in the error toast", () => {
+		mutate.mockImplementation((_input, options) =>
+			options?.onError?.(
+				new ApiError("El cliente no existe.", 404, "customer_not_found"),
+			),
+		);
 
 		render(<MovementOutStockForm companyId="c1" />);
+		chooseProduct("Café molido 500g · CAF-500");
+		fill("Cantidad", "2");
+		submit();
 
-		expect(
-			screen.getByText("Ese cliente ya no existe en el padrón."),
-		).toBeTruthy();
-		expect(screen.queryByText("Salida registrada")).toBeNull();
+		expect(alertToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "error",
+				description: "Ese cliente ya no existe en el padrón.",
+			}),
+		);
+		expect(alertToastMock).not.toHaveBeenCalledWith(
+			expect.objectContaining({ type: "success" }),
+		);
 	});
 
-	it("renders the customer_requires_exit message of the API", () => {
-		setup({
-			mutation: {
-				isError: true,
-				error: new ApiError(
+	it("surfaces the customer_requires_exit message of the API in the error toast", () => {
+		mutate.mockImplementation((_input, options) =>
+			options?.onError?.(
+				new ApiError(
 					"Una entrada no puede llevar cliente.",
 					400,
 					"customer_requires_exit",
 				),
-			},
-		});
+			),
+		);
 
 		render(<MovementOutStockForm companyId="c1" />);
+		chooseProduct("Café molido 500g · CAF-500");
+		fill("Cantidad", "2");
+		submit();
 
-		expect(
-			screen.getByText(
-				"Una entrada no puede llevar cliente: es una compra a proveedor, no una venta.",
-			),
-		).toBeTruthy();
+		expect(alertToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "error",
+				description:
+					"Una entrada no puede llevar cliente: es una compra a proveedor, no una venta.",
+			}),
+		);
 	});
 
 	it("resets the chosen customer after a successful registration", () => {

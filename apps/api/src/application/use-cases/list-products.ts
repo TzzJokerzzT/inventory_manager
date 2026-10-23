@@ -4,6 +4,12 @@ import type { ProductRepository } from "../../domain/repositories/product-reposi
 export interface ListProductsInput {
 	/** Free text matched against the name or the SKU. */
 	search?: string;
+	/**
+	 * `true` reads the trash (only the soft-deleted products) instead of the
+	 * active catalogue. Absent or `false` keeps listing the active products,
+	 * which is what every existing client gets (S4/L3).
+	 */
+	deleted?: boolean;
 }
 
 export interface ListProductsContext {
@@ -26,6 +32,10 @@ export interface ListProductsDependencies {
  * The search is the one PROD-04 asks for today: name or SKU, substring,
  * case-insensitive. Filtering by category is out of scope until categories
  * exist (S5/L4).
+ *
+ * `deleted` swaps the half of the store that is read -- the trash instead of
+ * the active catalogue -- and changes nothing else: the search and the order
+ * are the same in both (S4).
  */
 export class ListProductsUseCase {
 	private readonly productRepository: ProductRepository;
@@ -42,9 +52,9 @@ export class ListProductsUseCase {
 		// the client clearing the box must not hide the catalogue.
 		const search = input.search?.trim();
 
-		return this.productRepository.list(
-			context.companyId,
-			search === undefined || search.length === 0 ? undefined : search,
-		);
+		return this.productRepository.list(context.companyId, {
+			search: search === undefined || search.length === 0 ? undefined : search,
+			deleted: input.deleted === true,
+		});
 	}
 }

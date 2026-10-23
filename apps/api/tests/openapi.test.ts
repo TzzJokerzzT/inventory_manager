@@ -190,6 +190,8 @@ function buildRoutesForEnumeration(): Router {
 			get: noop,
 			update: noop,
 			remove: noop,
+			restore: noop,
+			purge: noop,
 		},
 		customers: {
 			list: noop,

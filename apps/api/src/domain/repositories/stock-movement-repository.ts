@@ -81,4 +81,15 @@ export interface StockMovementRepository {
 	 * array.
 	 */
 	findSince(companyId: string, since: Date): Promise<StockMovement[]>;
+
+	/**
+	 * Counts the company's movements of one product.
+	 *
+	 * It is the read the permanent delete needs (odd/tasks/product-purge.md L4):
+	 * the count answers a readable conflict without attempting a delete that
+	 * the database would reject anyway. The `companyId` is part of the count, so
+	 * a movement of another company never blocks a purge, and it is a read of
+	 * the ledger -- the ledger itself is never written by a purge (MOV-05).
+	 */
+	countByProduct(companyId: string, productId: string): Promise<number>;
 }

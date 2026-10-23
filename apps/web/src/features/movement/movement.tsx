@@ -87,7 +87,7 @@ export function Movement() {
 						className="xl:col-span-full"
 					>
 						<div className="flex flex-col gap-3">
-							<h2 className="text-2xl font-bold text-text-primary">
+							<h2 className="text-2xl font-bold text-text-primary md:hidden">
 								Entrada de productos
 							</h2>
 							<MovementEntryStockForm companyId={companyId} />
@@ -102,7 +102,7 @@ export function Movement() {
 						className="xl:col-span-full"
 					>
 						<div className="flex flex-col gap-3">
-							<h2 className="text-2xl font-bold text-text-primary">
+							<h2 className="text-2xl font-bold text-text-primary md:hidden">
 								Salida de productos
 							</h2>
 							<MovementOutStockForm companyId={companyId} />

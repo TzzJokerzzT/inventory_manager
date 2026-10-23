@@ -1,5 +1,9 @@
 import type { MeResponse } from "@/lib/api/schemas";
-import { canManageProducts, roleForCompany } from "../product-permissions";
+import {
+	canManageProducts,
+	canPurgeProducts,
+	roleForCompany,
+} from "../product-permissions";
 
 describe("canManageProducts", () => {
 	it("lets an OWNER write", () => {
@@ -16,6 +20,24 @@ describe("canManageProducts", () => {
 
 	it("offers nothing while the role is unknown", () => {
 		expect(canManageProducts(undefined)).toBe(false);
+	});
+});
+
+describe("canPurgeProducts", () => {
+	it("lets an OWNER purge", () => {
+		expect(canPurgeProducts("OWNER")).toBe(true);
+	});
+
+	it("keeps an ADMIN from purging, because the purge is irreversible", () => {
+		expect(canPurgeProducts("ADMIN")).toBe(false);
+	});
+
+	it("keeps a MEMBER from purging", () => {
+		expect(canPurgeProducts("MEMBER")).toBe(false);
+	});
+
+	it("offers nothing while the role is unknown", () => {
+		expect(canPurgeProducts(undefined)).toBe(false);
 	});
 });
 

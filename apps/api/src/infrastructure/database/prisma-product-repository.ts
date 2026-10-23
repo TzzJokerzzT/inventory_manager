@@ -1,7 +1,11 @@
 import { Product } from "../../domain/entities/product.js";
 import { DomainError } from "../../domain/errors/domain-error.js";
 import { SkuAlreadyExistsError } from "../../domain/errors/sku-already-exists-error.js";
-import type { ProductRepository } from "../../domain/repositories/product-repository.js";
+import type {
+	ListProductsOptions,
+	ProductRepository,
+	PurgeProductResult,
+} from "../../domain/repositories/product-repository.js";
 import type {
 	PrismaClient,
 	Product as ProductModel,
@@ -53,6 +57,20 @@ function isUniqueViolation(error: unknown): boolean {
 		typeof error === "object" &&
 		error !== null &&
 		(error as { code?: unknown }).code === "P2002"
+	);
+}
+
+/**
+ * A movement of the product makes the database reject the delete
+ * (`ON DELETE RESTRICT`), which Prisma reports as `P2003`. The check is
+ * structural for the same reason as the one above: there is no
+ * `Prisma.PrismaClientKnownRequestError` value to narrow against.
+ */
+function isForeignKeyViolation(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { code?: unknown }).code === "P2003"
 	);
 }
 
@@ -148,13 +166,19 @@ export class PrismaProductRepository implements ProductRepository {
 		return rows.map((row) => this.toDomain(row));
 	}
 
-	async list(companyId: string, search?: string): Promise<Product[]> {
-		const needle = search?.trim();
+	async list(
+		companyId: string,
+		options: ListProductsOptions = {},
+	): Promise<Product[]> {
+		const needle = options.search?.trim();
+		// The trash replaces the active filter instead of being added to it: a
+		// view that mixed both would serve neither (L3).
+		const deleted = options.deleted === true;
 
 		const rows = await this.prisma.product.findMany({
 			where: {
 				companyId,
-				deletedAt: null,
+				deletedAt: deleted ? { not: null } : null,
 				...(needle === undefined || needle.length === 0
 					? {}
 					: {
@@ -236,6 +260,69 @@ export class PrismaProductRepository implements ProductRepository {
 		}
 
 		return this.toDomain(row);
+	}
+
+	async restore(companyId: string, productId: string): Promise<Product | null> {
+		const now = new Date();
+
+		// The mirror guard of `softDelete`: only a row that is currently in the
+		// trash is written, so an active one is a `null` instead of being
+		// restamped, and of two concurrent restores exactly one wins (S3).
+		const { count } = await this.prisma.product.updateMany({
+			where: { id: productId, companyId, deletedAt: { not: null } },
+			data: { deletedAt: null, updatedAt: now },
+		});
+
+		if (count === 0) {
+			return null;
+		}
+
+		const row = await this.prisma.product.findFirst({
+			where: { id: productId, companyId },
+		});
+
+		if (row === null) {
+			return null;
+		}
+
+		return this.toDomain(row);
+	}
+
+	async purge(
+		companyId: string,
+		productId: string,
+	): Promise<PurgeProductResult> {
+		let count: number;
+		try {
+			// `deleteMany` (not `delete`) because it accepts the extra `deletedAt`
+			// predicate: the trash is the only entry point (L3), so the guard is
+			// part of the DELETE and not a read before it.
+			({ count } = await this.prisma.product.deleteMany({
+				where: { id: productId, companyId, deletedAt: { not: null } },
+			}));
+		} catch (error) {
+			// A movement landed between the count and this DELETE: the database's
+			// `ON DELETE RESTRICT` rejects the row and the caller gets the same
+			// conflict the count would have produced (L4), never a 500.
+			if (isForeignKeyViolation(error)) {
+				return "has_movements";
+			}
+
+			throw error;
+		}
+
+		if (count > 0) {
+			return "purged";
+		}
+
+		// Nothing matched: re-read the row to tell an absent (or foreign) product
+		// from an active one. The `companyId` stays in the WHERE clause, so a row
+		// of another company is absent too.
+		const row = await this.prisma.product.findFirst({
+			where: { id: productId, companyId },
+		});
+
+		return row === null ? "not_found" : "not_deleted";
 	}
 
 	/** Maps a raw Prisma row back into the domain entity. */

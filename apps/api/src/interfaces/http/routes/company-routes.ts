@@ -53,7 +53,16 @@ export function companyRoutes(
 	companyScoped.post("/products", products.create);
 	companyScoped.get("/products/:productId", products.get);
 	companyScoped.patch("/products/:productId", products.update);
+	// The permanent delete is declared BEFORE `/products/:productId` on purpose:
+	// Express matches one path segment per parameter, so the plain DELETE can
+	// never swallow `/permanent`, but registering the longer path first keeps
+	// that fact obvious and is what a future wildcard would break.
+	companyScoped.delete("/products/:productId/permanent", products.purge);
 	companyScoped.delete("/products/:productId", products.remove);
+	// Restoring is the mirror of the delete and shares its permission, so it is
+	// a POST on the product it acts on -- a state transition, not a PATCH of a
+	// client-owned field.
+	companyScoped.post("/products/:productId/restore", products.restore);
 	// Customer routes. Same protected sub-router, same reasoning: the company
 	// comes from the path and the membership, never from the body. Who may
 	// write is "any ACTIVE membership" (S6), so there is no role check here nor

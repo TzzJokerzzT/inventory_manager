@@ -29,9 +29,11 @@ import type { ListProductsUseCase } from "../../application/use-cases/list-produ
 import type { ListStockMovementsUseCase } from "../../application/use-cases/list-stock-movements.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
+import type { PurgeProductUseCase } from "../../application/use-cases/purge-product.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
+import type { RestoreProductUseCase } from "../../application/use-cases/restore-product.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
 import type { UpdateCustomerUseCase } from "../../application/use-cases/update-customer.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
@@ -96,7 +98,7 @@ export interface AppDependencies {
 	requireCompanyContext: RequestHandler;
 	mediaUploadSigner: MediaUploadSigner;
 	/**
-	 * The product slice of MI-7. It is one field, not five, because the routes
+	 * The product slice of MI-7. It is one field, not six, because the routes
 	 * that consume it are all mounted together on the company-scoped router.
 	 */
 	products: {
@@ -105,6 +107,8 @@ export interface AppDependencies {
 		get: GetProductUseCase;
 		update: UpdateProductUseCase;
 		remove: DeleteProductUseCase;
+		restore: RestoreProductUseCase;
+		purge: PurgeProductUseCase;
 	};
 	/**
 	 * The customer slice of MI-11. One field, not five, because the routes that

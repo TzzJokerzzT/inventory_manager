@@ -9,6 +9,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Product } from "@/lib/api/schemas";
+import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useCreateProduct } from "./api/use-create-product";
 import { useUpdateProduct } from "./api/use-update-product";
 import { useUploadProductPhoto } from "./api/use-upload-product-photo";
@@ -133,12 +134,32 @@ export function ProductForm({
 		if (product) {
 			update.mutate(
 				{ productId: product.id, ...body },
-				{ onSuccess: goBackToList },
+				{
+					onSuccess: () => {
+						AlertToast({
+							title: "Actualización exitosa",
+							description: `${product?.name ?? "El nuevo producto"} actualizado correctamente.`,
+							type: "success",
+							delay: 3000,
+						});
+						goBackToList();
+					},
+				},
 			);
 			return;
 		}
 
-		create.mutate(body, { onSuccess: goBackToList });
+		create.mutate(body, {
+			onSuccess: () => {
+				AlertToast({
+					title: "Registro exitoso",
+					description: `${name ?? "El nuevo producto"} creado correctamente.`,
+					type: "success",
+					delay: 3000,
+				});
+				goBackToList();
+			},
+		});
 	}
 
 	return (
@@ -229,13 +250,13 @@ export function ProductForm({
 					Cancelar
 				</Link>
 				<Button
-					className="h-10 w-full sm:w-30"
+					className="h-10 w-full sm:w-40"
 					type="submit"
 					disabled={isPending || upload.isPending}
 				>
 					{isPending ? (
 						<>
-							<SpinnerMotion size={16} className="mr-2" />
+							<SpinnerMotion size={20} className="mr-2" />
 							{isEdit ? "Guardando..." : "Creando..."}
 						</>
 					) : isEdit ? (

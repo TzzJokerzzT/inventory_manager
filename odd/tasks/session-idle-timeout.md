@@ -69,6 +69,8 @@ two-window rule.
 
 - T1: `apps/api/tests/session.test.ts` — 12 tests, green.
 - T2: `apps/api/tests/auth-session-idle.test.ts` — 8 tests, green; `bun run test` in `apps/api` → **61 suites / 940 tests green**; `bun run check-types` clean; `bunx biome check apps/api` clean after `--write`.
+- T4/T5: `bun run test` in `apps/web` → **108 suites / 831 tests green** (baseline 806); `bun run check-types` clean; `bunx biome check apps/web` clean. The two extra tests beyond the delivered suite pin the throttled-timer case (see L7).
+- Whole monorepo: `bun run check-types` 2/2 tasks, `bun run test` → api 944 tests + web 831 tests green, `bunx biome check .` clean, `bunx jest lib/api` (contract + drift) 108 tests green.
 - T6 differential (probe over the unchanged auth surface, base `origin/development` vs this branch, both run the same supertest probe and the JSON is diffed): identical for `/auth/register`, `/auth/login` 401/403/503 bodies, `/auth/refresh` without cookies (uniform 401) and the 401 on a company route; the only two differences are `/health` `uptime` (wall-clock, not a regression) and `POST /auth/logout` emitting the second cleared cookie (`session_id`), which is exactly S6.
 
 ## Log
@@ -102,4 +104,16 @@ shared auth surface — logout now clears two cookies — and no unrequested cha
 L6 (blocked): the tool policy refuses to edit `.env.example` files ("Gentle AI safety policy blocked access
 to sensitive path"), so `SESSION_IDLE_TIMEOUT_MINUTES` and `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` are
 documented in `docs/stack.md`, the README variable table, `apps/api/src/config/env.ts` and the web hook
-instead of the three example files. That needs the human's explicit authorization to finish.
+instead of the three example files. That needs the human's explicit authorization to finish. The prepared
+block for `apps/web/.env.example` is in the delegation report of task `mvl5ks71-1-01xq`.
+
+L7 (review finding, fixed): the first delivery anchored the window on any interaction, including the tab
+becoming visible again. Browsers throttle timers in a hidden tab, so a tab left open past the deadline
+would have been resurrected by the `visibilitychange` of coming back — defeating S1 exactly in the case it
+exists for. Every activity path now checks the deadline first and logs out instead of extending, pinned by
+two tests (throttled tick and late interaction).
+
+L8 (delivery slices): C1 session core (`6e3db96`), C2 Prisma persistence (`c592fd7`), C3 enforcement and
+contract (`9fe5da3`), C4 end-to-end endpoint tests (`d92974c`), C5 the web guard. The slice boundary is
+recorded here because the whole feature exceeds the ~400 authored-line guidance and is delivered as five
+reviewable units on one branch.

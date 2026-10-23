@@ -526,6 +526,15 @@ Todos desde la raíz del monorepo:
 | `cd apps/web && bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`) |
 | `cd apps/api && bun run dev` / `bun run start` | API en desarrollo / producción. Ambos aplican **`prisma migrate deploy` antes de arrancar**, así que una migración pendiente nunca queda sin aplicar |
 
+### Despliegue
+
+El proyecto se despliega en **Vercel** como dos proyectos del monorepo: la web (`apps/web`) y el API
+(`apps/api`) como función, con un dominio propio y la web y el API en subdominios del mismo dominio
+registrable (las cookies de sesión son `SameSite=Lax` y `*.vercel.app` son sitios distintos).
+El API migra la base en su build, y sus variables están en la tabla de arriba. El detalle completo,
+con el `vercel.json`, la tabla de variables por proyecto y las advertencias de serverless, está en
+`docs/stack.md` §5.9.
+
 ### Build de producción
 
 ```sh

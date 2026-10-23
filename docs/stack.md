@@ -206,10 +206,11 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
   migración pendiente se aplica sola y un modelo nuevo no puede llegar al runtime como tabla
   faltante. `migrate deploy` toma un lock de aviso en la base, así que dos réplicas arrancando a la
   vez no se pisan.
-- **Excepción — serverless:** un deploy como función (Vercel) **no ejecuta `start`**, así que ahí el
-  pipeline tiene que correr `cd apps/api && bun run db:deploy` por su cuenta. Hoy no hay
-  `vercel.json`; si se agrega, este paso va con él. El job `migrations` de CI sigue aplicando
-  `db:deploy` contra un Postgres **efímero** (`postgres:17`), nunca contra el proyecto de Supabase.
+- **Excepción — serverless:** un deploy como función (Vercel) **no ejecuta `start`**, así que ahí las
+  migraciones van en el **build** del proyecto del API: `apps/api/vercel.json` declara
+  `"buildCommand": "bun run db:deploy"`, que necesita `DIRECT_URL` en el entorno de build (ver §5.9).
+  El job `migrations` de CI sigue aplicando `db:deploy` contra un Postgres **efímero**
+  (`postgres:17`), nunca contra el proyecto de Supabase.
 - **Por qué esto muerde:** una migración sin aplicar no rompe los tests. El modelo está en el schema,
   el cliente Prisma lo conoce y la suite pasa, porque los tests usan dobles in-memory y **nunca**
   tocan la base. El síntoma aparece sólo en producción: la tabla no existe y cada query sobre ella
@@ -300,6 +301,8 @@ un job que no sabemos si pasa deja el CI rojo desde el primer push. Va como foll
 | Cypress como test de integración de backend | **supertest** — Cypress queda como E2E de la SPA |
 
 ### 5.2 Riesgos por correr Express en Vercel sin contenedores
+
+> Cómo se despliega hoy, con las decisiones tomadas: **§5.9**.
 
 Vercel ejecuta el backend como **funciones serverless** (sin estado, efímeras, con límite de
 payload y de tiempo). Eso tensiona varias librerías elegidas:
@@ -688,6 +691,60 @@ usuario** (`users.is_platform_admin` o tabla aparte) y **nunca** como un valor d
 una membership está acotada a una empresa, un privilegio de plataforma no.
 
 ---
+
+### 5.9 Despliegue en Vercel: web y API como dos proyectos
+
+Railway quedó descartado (su plan gratuito apaga el backend a los 15 días), así que **todo el
+proyecto vive en Vercel**: la web como proyecto Next.js y el API como Vercel Function. Son **dos
+proyectos** del mismo repositorio, cada uno con su *Root Directory* (`apps/web` y `apps/api`), Node
+**24.x** (el default para proyectos nuevos) y `bun` como gestor de paquetes.
+
+**El API como función.** `apps/api/src/create-application.ts` compone la aplicación y la expone con
+`createApplication()`; `src/main.ts` sólo agrega `listen` (entry de proceso), y `apps/api/api/index.ts`
+**exporta la app** como entry de función. `apps/api/vercel.json` hace el resto:
+
+| Clave | Para qué |
+| --- | --- |
+| `"rewrites": [{ "source": "/(.*)", "destination": "/api" }]` | Toda ruta entra por la función, así `/auth/refresh` sigue estando en la raíz y la cookie con `Path=/auth` viaja |
+| `"buildCommand": "bun run db:deploy"` | Las migraciones corren **en el deploy** (Vercel nunca ejecuta `start`); `migrate deploy` toma un advisory lock, así que dos builds simultáneos no se pisan |
+| `"includeFiles": "openapi.yaml"` | El contrato viaja con la función para que `/docs` no responda 500 |
+
+`apps/api/api/index.ts` importa **sin sufijo `.js`** y queda fuera de `tsconfig.check.json`: el
+paquete compila con NodeNext (que exige el sufijo) y el bundler de funciones resuelve el archivo
+TypeScript desde el especificador pelado. Está comentado en el archivo para que no se "arregle" por
+error.
+
+**La restricción que manda: las cookies.** La sesión usa dos cookies `httpOnly` con
+`SameSite=Lax` y `Path=/auth`. `Lax` se evalúa por **sitio** (dominio registrable), y `vercel.app`
+está en la **Public Suffix List**: `mi-app.vercel.app` y `mi-api.vercel.app` son **dos sitios
+distintos** para el navegador y el refresh no viaja. Por eso el despliegue exige **un dominio propio
+con la web y el API como subdominios** (`app.<dominio>` y `api.<dominio>`); sin eso hay que pasar a
+`SameSite=None` **con protección CSRF**, que es un cambio de código y de superficie de ataque.
+
+**Variables por proyecto** (las del API son obligatorias en producción: `env.ts` falla al arrancar y
+nombra la que falta):
+
+| Proyecto | Variable | Nota |
+| --- | --- | --- |
+| web | `NEXT_PUBLIC_API_URL` | `https://api.<dominio>`; **se inlinea en el build**, si cambia hay que redeployar |
+| web | `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` | opcional, default `15` |
+| API | `DATABASE_URL` | pooler de Supabase (6543, `?pgbouncer=true`) — la usa el runtime |
+| API | `DIRECT_URL` | conexión directa (5432) — la usa **sólo el build**, para migrar |
+| API | `WEB_ORIGIN` | `https://app.<dominio>`, exacto: CORS con credenciales no acepta comodín |
+| API | `AUTH0_DOMAIN` · `AUTH0_AUDIENCE` · `AUTH0_CLIENT_ID` · `AUTH0_CLIENT_SECRET` · `AUTH0_CONNECTION` | ROPG; el tenant no necesita callback URLs |
+| API | `CLOUDINARY_CLOUD_NAME` · `CLOUDINARY_API_KEY` · `CLOUDINARY_API_SECRET` | firma de subida directa |
+| API | `SESSION_IDLE_TIMEOUT_MINUTES` | opcional, default `7200` (5 días) |
+
+**Lo que sigue siendo cierto en serverless** (por eso §5.2 no se borra): `express-rate-limit` guarda
+los contadores **en memoria**, así que con varias instancias el límite de login es por instancia y no
+global; hay cold starts; cada instancia abre su propio pool `pg` contra el pooler; y las *preview
+deployments* tienen un host aleatorio, así que con `WEB_ORIGIN` fijo se caen por CORS (sirven para
+páginas públicas o hay que setear `WEB_ORIGIN` por entorno).
+
+**Verificación mínima después de desplegar:** `GET /health` → 200 · login → 200 con **dos**
+`Set-Cookie` (`refresh_token`, `session_id`), `Secure`+`HttpOnly`+`SameSite=Lax`+`Path=/auth` ·
+recargar restaura la sesión · logout y replay de las cookies viejas → 401 · `OPTIONS` con
+`Origin: https://app.<dominio>` devuelve ese origen y `credentials` · `/docs` carga el contrato.
 
 ## 6. Pendientes y su resolución
 

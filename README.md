@@ -25,8 +25,9 @@ filtrado por membership y endpoint de contexto con sus reglas de autorización),
 miembros está implementada** (invitación, listado, cambio de rol, revocación, salida, aceptación de
 invitaciones y notificaciones), **la firma de subidas de media por empresa ya está cableada** y
 **el catálogo de productos es el primer módulo de negocio terminado** (CRUD por empresa con SKU único,
-búsqueda, baja lógica y foto subida con firma), **los movimientos de stock también están
-terminados** (entradas y salidas con actualización atómica del stock, historial filtrable e
+búsqueda, baja lógica reversible con papelera y restauración, y foto subida con firma), **los
+movimientos de stock también están terminados** (entradas y salidas con actualización atómica del
+stock, historial filtrable e
 auditoría inmutable de usuario, fecha y motivo) y **el padrón de clientes está cerrado** (CRUD por
 empresa con baja lógica y búsqueda por nombre, email o teléfono), junto con el shell de la
 aplicación, **la vista del dashboard, que ya es enteramente real** —cuatro KPIs, alertas, tabla de
@@ -47,7 +48,7 @@ El repositorio y el stack de tests ya están en pie.
 | ------------ | -------- |
 | Monorepo con Turborepo + Bun | ✅ |
 | `apps/web` (Next.js 16 + React 19) | ✅ Tailwind CSS v4 + shadcn/ui |
-| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 33 operaciones en `openapi.yaml` |
+| `apps/api` (Express 5 + TypeScript) | ✅ Clean Architecture, 34 operaciones en `openapi.yaml` |
 | **Biome** (lint + formato) | ✅ único tool del repo — `bun run lint` (`biome check .`) en verde |
 | **Tokens del design system** | ✅ paleta en `tokens.ts` + variables CSS con modo claro y oscuro |
 | **Modo oscuro** | ✅ `next-themes` + `ThemeProvider` + toggle |
@@ -55,12 +56,12 @@ El repositorio y el stack de tests ya están en pie.
 | **Autenticación** | ✅ registro, login (gate de email verificado), refresh, logout y bootstrap de sesión contra Auth0 |
 | **Empresas** | ✅ alta con membership `OWNER` en una transacción, listado por membership y `GET /companies/{id}/context` |
 | **Miembros** | ✅ invitación, listado, cambio de rol, revocación y salida por empresa, más invitaciones y notificaciones en `/me` |
-| **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica y foto firmada a Cloudinary |
+| **Productos** | ✅ CRUD por empresa, SKU único (normalizado a mayúsculas), búsqueda por nombre/SKU, baja lógica reversible (papelera + restaurar) y foto firmada a Cloudinary |
 | **Movimientos** | ✅ entradas y salidas con stock atómico (una transacción con guard `stockQuantity >= quantity`), historial por producto, auditoría de usuario/fecha/motivo y cliente opcional en las salidas (MI-10) |
 | **Clientes** | ✅ CRUD por empresa con baja lógica y búsqueda por nombre, email o teléfono; escribe cualquier membership `ACTIVE`, las salidas pueden asociarse a un cliente (MI-10) y el detalle de un cliente lista sus salidas |
 | **Media (Cloudinary)** | ✅ firma de subida directa por empresa (`POST /companies/{id}/media/signature`) |
 | **Prisma + Supabase** | ✅ `schema.prisma`, migración `20261006223356_init` aplicada y repositorios Prisma cableados |
-| **Frontend** | ✅ shell de la app (`AppShell`), dashboard con datos reales (cuatro KPIs, alertas, tabla de stock crítico y los gráficos de MI-14, todo derivado de la empresa activa), páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta y edición), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
+| **Frontend** | ✅ shell de la app (`AppShell`), dashboard con datos reales (cuatro KPIs, alertas, tabla de stock crítico y los gráficos de MI-14, todo derivado de la empresa activa), páginas de login/registro/sin-empresas, el catálogo de productos (lista, alta, edición, papelera y restauración), los movimientos (formulario e historial) y el padrón de clientes (lista, búsqueda, formulario y detalle de las salidas del cliente) |
 | **Contrato OpenAPI** | ✅ `openapi.yaml` servido en `/docs` + tipos del frontend generados desde él |
 | **Repositorio Git** | ✅ repo propio en `TzzJokerzzT/inventory_manager`, con las ramas `production`, `development` y `feat/login-register-backend-frontend` |
 | **Tests** | ✅ **Jest** como único runner en las dos apps, más Cypress E2E; `bun run test` corre ambas suites y reporta el conteo |
@@ -97,9 +98,22 @@ rol y el último `OWNER` activo no puede salir de la empresa.
 **Productos.** Catálogo por empresa en `/dashboard/products`: listado con búsqueda por nombre **o**
 SKU (subcadena, sin distinguir mayúsculas), alta, edición parcial y baja lógica (`204`). El SKU se
 normaliza a mayúsculas y es **único por empresa incluidas las filas dadas de baja**: un producto
-eliminado sigue reservando su SKU, así que recrearlo responde `409 sku_already_exists`. El precio
-viaja como **string decimal** (`"1500.00"`) porque la columna es `Decimal(12,2)` y un número JSON
-perdería precisión. La foto se sube **directo a Cloudinary** con la firma de
+eliminado sigue reservando su SKU, así que recrearlo responde `409 sku_already_exists`.
+
+La baja es **reversible** y esa es la forma de reutilizar el producto. El interruptor **Papelera** de
+`/dashboard/products` cambia el listado por el de productos dados de baja
+(`GET /companies/{id}/products?deleted=true`, que devuelve **solo** las bajas, con la misma búsqueda y
+el mismo orden; sin el parámetro la lista sigue siendo el catálogo activo) y en esa vista cada fila
+ofrece **Restaurar**, sin confirmación porque es una acción segura, mientras crear, editar y eliminar
+quedan ocultos. Restaurar (`POST /companies/{id}/products/{productId}/restore`) limpia `deletedAt` y
+devuelve el producto **activo con su mismo SKU y su historial de movimientos intacto**. Restaurar uno
+que no está dado de baja responde `409 product_not_deleted` —la papelera es un estado, no un flag—,
+uno de otra empresa o inexistente responde el mismo `404 product_not_found` y el permiso es el de la
+baja (`manage_products`, ADMIN u OWNER). **La purga física (borrado definitivo) no está
+implementada**: es una feature aparte, OWNER-only y bloqueada cuando el producto tiene movimientos,
+porque `stock_movements.product_id` es `ON DELETE RESTRICT` y el ledger no puede perder filas.
+El precio viaja como **string decimal** (`"1500.00"`) porque la columna es `Decimal(12,2)` y un
+número JSON perdería precisión. La foto se sube **directo a Cloudinary** con la firma de
 `POST /companies/{id}/media/signature` y sólo se guarda el `secure_url`. Escribir (crear, editar o
 dar de baja) exige `manage_products`, que la matriz resuelve como `ADMIN` u `OWNER`; un `MEMBER` lee
 el catálogo y recibe `403 insufficient_role` si intenta escribir. `stockQuantity` es del servidor
@@ -281,7 +295,7 @@ apps/web/
 │       ├── auth/                 # login, registro, logout y sesión (refresh/bootstrap)
 │       ├── company/              # empresas, switch y contexto activo
 │       ├── member/               # invitaciones, roster de miembros y salida de la empresa
-│       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto)
+│       ├── product/              # catálogo de productos (lista, búsqueda, formulario, foto, papelera)
 │       ├── movement/             # entradas y salidas de stock (formulario e historial)
 │       ├── client/               # padrón de clientes (lista, búsqueda, formulario, baja y detalle)
 │       ├── dashboard/            # vista del dashboard (KPIs, alertas, tabla y gráficos reales)
@@ -337,7 +351,7 @@ rompió.
 
 Al ser aplicaciones **independientes y sin código compartido**, los esquemas Valibot **no se
 comparten**: cada app valida lo suyo. El contrato es la **especificación OpenAPI de la API**
-(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (33 operaciones): métodos, seguridad
+(`apps/api/openapi.yaml`), la fuente de verdad de los endpoints (34 operaciones): métodos, seguridad
 y códigos de error. El backend la sirve en `/docs` (Swagger UI) y en `/docs/openapi.json`, y el frontend
 **genera sus tipos desde esa especificación** (`cd apps/web && bun run openapi:generate`, que escribe
 `lib/api/openapi.d.ts`) y los consume en `lib/api/schemas.ts` con Valibot.
@@ -349,7 +363,7 @@ caliente** (baja `openapi-typescript` y su propio TypeScript 5.x); ningún build
 ### Endpoints de la API
 
 Las operaciones de autenticación, empresas, media, miembros, invitaciones, notificaciones, productos,
-movimientos, clientes y reportes del contrato (`apps/api/openapi.yaml`, 33 operaciones en total),
+movimientos, clientes y reportes del contrato (`apps/api/openapi.yaml`, 34 operaciones en total),
 servidas en `/docs`.
 «Token» = cabecera `Authorization: Bearer <JWT>`; el `429` es el rate limit (el global aplica a todas
 las rutas, y login/register/refresh suman uno propio más estricto). Las rutas de empresa exigen además
@@ -373,11 +387,12 @@ una membership `ACTIVE` (ver la sección siguiente).
 | `PATCH /companies/{companyId}/members/{membershipId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`membership_not_found`), 409 (`last_active_owner`), 429, 500 | Cambia el rol de una membership; nadie cambia el suyo y la empresa conserva un `OWNER` activo |
 | `DELETE /companies/{companyId}/members/{membershipId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`membership_not_found`), 409 (`last_active_owner`), 429, 500 | Revoca una membership (`status = REVOKED`, la fila queda) |
 | `DELETE /companies/{companyId}/members/me` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden`), 404 (`membership_not_found`), 409 (`last_active_owner`), 429, 500 | Sale de la empresa revocando su propia membership; el último `OWNER` activo no puede salir |
-| `GET /companies/{companyId}/products?search=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los productos no dados de baja, ordenados por nombre y luego por id; `search` compara por subcadena contra nombre o SKU |
+| `GET /companies/{companyId}/products?search=&deleted=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Lista los productos no dados de baja, ordenados por nombre y luego por id; `search` compara por subcadena contra nombre o SKU. `deleted=true` lista **solo** los dados de baja (la papelera), con la misma búsqueda y el mismo orden; el default sigue siendo el catálogo activo |
 | `POST /companies/{companyId}/products` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 409 (`sku_already_exists`), 429, 500 | Da de alta un producto (el SKU se normaliza a mayúsculas) y responde `201` |
 | `GET /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`company_access_forbidden`), 404 (`product_not_found`), 429, 500 | Lee un producto; uno de otra empresa y uno dado de baja responden el mismo 404 |
 | `PATCH /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 409 (`sku_already_exists`), 429, 500 | Edición parcial: un campo ausente no cambia y un `null` limpia `description` o `photoUrl` |
 | `DELETE /companies/{companyId}/products/{productId}` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 429, 500 | Baja lógica (`deletedAt`) que responde `204` y conserva el SKU reservado |
+| `POST /companies/{companyId}/products/{productId}/restore` | sí | 400, 401, 403 (`user_not_provisioned` / `company_access_forbidden` / `insufficient_role`), 404 (`product_not_found`), 409 (`product_not_deleted`), 429, 500 | Restaura un producto dado de baja (limpia `deletedAt`) y responde `200` con el producto activo, su SKU y su historial; comparte el permiso de la baja (`manage_products`). La purga física no existe |
 | `GET /companies/{companyId}/movements?productId=&customerId=&type=&limit=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Historial de la empresa, más recientes primero; `productId`, `customerId` y `type` filtran (combinables entre sí) y `limit` va de `1` a `200` (default `50`). `customerId` es un filtro de lectura, no un recurso: un id de otra empresa no devuelve filas en vez de un `404`. Cada movimiento trae el producto, el usuario y el cliente resueltos por la API: `customer` es `null` cuando no hay asociación y **sigue resolviéndose después de la baja lógica del cliente** |
 | `POST /companies/{companyId}/movements` | sí | 400 (`customer_requires_exit`), 401, 403 (`company_access_forbidden`), 404 (`product_not_found` / `customer_not_found`), 409 (`insufficient_stock`), 429, 500 | Registra una entrada `IN` o una salida `OUT` aplicando el stock en la misma transacción y responde `201` con el movimiento y el stock resultante. Acepta un `customerId` opcional que **sólo es válido con `type: OUT`**; el cliente se valida antes de escribir, así que un rechazo no toca el stock |
 | `GET /companies/{companyId}/reports/movements?days=` | sí | 400, 401, 403 (`company_access_forbidden`), 429, 500 | Reporte del dashboard: entradas y salidas **por día UTC**, del más viejo al más nuevo y con los días sin movimientos en cero; `days` va de `1` a `90` (default `30`) |
@@ -403,9 +418,10 @@ completo del código de la aplicación**. Hoy hay tres piezas que lo materializa
   empresa inexistente responden el mismo 403 (`company_access_forbidden`) para que los ids no se
   puedan enumerar.
 - **En cada consulta de producto o de cliente**, el `companyId` viaja en el `WHERE` y nunca en un
-  filtro posterior sobre lo ya leído, y el repositorio excluye las filas con `deletedAt`: un producto
-  (o un cliente) de otra empresa y uno inexistente responden el mismo `404` (`product_not_found`,
-  `customer_not_found`).
+  filtro posterior sobre lo ya leído, y el repositorio excluye las filas con `deletedAt` en las
+  lecturas normales (la papelera, `?deleted=true`, las lee pero conserva el mismo `companyId` en el
+  `WHERE`): un producto (o un cliente) de otra empresa y uno inexistente responden el mismo `404`
+  (`product_not_found`, `customer_not_found`).
 
 El límite honesto: esto cubre lo que está construido (empresas, contexto, firma de media, miembros,
 productos, movimientos, clientes y el reporte del dashboard, que lee con `where: { companyId,
@@ -661,6 +677,7 @@ producto en sí**, no la infraestructura.
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
 - [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
 - [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.
+- [ ] **Purga física de productos** — feature aparte sobre la misma papelera: `DELETE` definitivo, OWNER-only, con modal de confirmación y bloqueado cuando el producto tiene movimientos (`stock_movements.product_id` es `ON DELETE RESTRICT`). No está implementada: hoy lo único que recupera un producto es la baja lógica reversible (**Restaurar**).
 - [ ] **Notificaciones de stock bajo** — MI-12.
 
 ### Polish (Fase 4)

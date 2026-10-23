@@ -41,11 +41,11 @@ S7. **Verificación.** Suites completas en verde (baseline: API 59 suites/844 te
 
 | # | Tarea | Specs | Ruta | Commit |
 | --- | --- | --- | --- | --- |
-| T1 | Contrato OpenAPI + regenerar tipos web | S2, S4, S7 | parent | C1 |
-| T2 | Backend: `restore` en puerto/adaptadores, caso de uso, error y filtro `deleted` | S2-S4 | worker | C1 |
-| T3 | Frontend: papelera, restaurar y hook | S4, S5 | worker | C2 |
-| T4 | Verificación integral | S7 | parent | — |
-| T5 | Sincronizar README y `docs/Project.md` | S7 | parent | C3 |
+| T1 | Contrato OpenAPI + regenerar tipos web | S2, S4, S7 | parent | `ccdbb35` (C1) |
+| T2 | Backend: `restore` en puerto/adaptadores, caso de uso, error y filtro `deleted` | S2-S4 | worker | `ccdbb35` (C1) |
+| T3 | Frontend: papelera, restaurar y hook | S4, S5 | worker | `d08b3ae` (C2) |
+| T4 | Verificación integral | S7 | parent | — (verificación, sin commit) |
+| T5 | Sincronizar README y `docs/Project.md` | S7 | parent | C3 (este commit de docs, pendiente al escribir) |
 
 ## Log
 
@@ -62,3 +62,41 @@ dos vistas y complicaría el filtro del cliente. El default no cambia.
 
 L4. Decisión del orquestador: `restore` comparte el permiso de la baja (`manage_products`). La purga,
 que es irreversible, irá con OWNER-only y su propia decisión.
+
+L5. Cierre. **Commits:**
+
+- `ccdbb35` — `feat(api): restore soft-deleted products and list the trash` (C1, T1+T2): el contrato
+  (`POST /companies/{companyId}/products/{productId}/restore` con `200`, `404 product_not_found` y
+  `409 product_not_deleted`; el parámetro `deleted` en `GET /companies/{companyId}/products`), el
+  error de dominio `ProductNotDeletedError`, `restore` y el filtro `deleted` en el puerto
+  `ProductRepository` y en sus dos adaptadores (Prisma y memoria), el caso de uso
+  `restore-product.ts` (permiso `manage_products` primero, lectura que incluye las bajas, 409 si está
+  activo y escritura guardada para resolver la carrera de dos restauraciones), el cambio en
+  `list-products.ts`, el controller, la ruta, el validador, el mapeo del error en el error handler, sus
+  tests (endpoint, caso de uso, repositorios y el test de OpenAPI) y los tipos web regenerados
+  (`apps/web/lib/api/openapi.d.ts`).
+- `d08b3ae` — `feat(web): add the products trash and a restore action` (C2, T3): el modo `deleted` en
+  `use-products.ts` (clave de caché por término y por modo), el hook `use-restore-product.ts`, el
+  interruptor **Papelera** en `product.tsx` (crear, editar y eliminar ocultos en la papelera) y el
+  modo `trash` de `product-row-actions.tsx` con **Restaurar** sin confirmación, más sus tests.
+
+**Verificación (T4, sin commit):** API **59 suites / 882 tests** en verde y las suites del frontend de
+productos **16 suites / 117 tests** en verde; `check-types` limpio en las dos apps. **La suite web
+completa no está en verde**: 5 tests de `features/movement` fallan por el trabajo en curso del humano
+en `movement-stock-form.tsx` (sin commitear), ajeno a esta feature. C3 sólo toca documentación y no
+vuelve a correr las suites.
+
+**Árbol de trabajo:** siguen sin commitear los cambios en curso del humano en
+`apps/web/components/design-system/modal.tsx`, `apps/web/src/features/movement/movement.tsx`,
+`apps/web/src/features/movement/movement-stock-form.tsx` y
+`apps/web/src/features/product/product-form.tsx`: se dejaron fuera a propósito, no son parte de este
+slice.
+
+**Entrega:** dos slices sobre `feat/refactor/product-frontend-create-product`. El push y el PR los
+decide el humano.
+
+**Restos de scratch en `/tmp`** (fuera del worktree, nunca versionados): el directorio del chequeo
+diferencial del backend ya **no existe** —barrido con `find /tmp -maxdepth 1` por nombre y por fecha
+del 2026-10-22, sin resultados— así que no queda nada que borrar de esta tarea. Sólo sobrevive
+`/tmp/lint.out` (la salida de un `biome check .` fechado 20:36, atribución sólo por fecha), que
+tampoco se conserva a propósito.

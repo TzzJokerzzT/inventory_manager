@@ -56,7 +56,7 @@ nuevo y con los días sin movimientos en cero, desde
 | ---- | --------------- | ----------- |
 | PROD-01 | Creación de productos con: nombre, descripción, precio, foto, código SKU | Alta |
 | PROD-02 | Edición de datos de productos existentes | Alta |
-| PROD-03 | Eliminación lógica de productos (soft delete) | Alta |
+| PROD-03 | Eliminación lógica de productos (soft delete, reversible) | Alta |
 | PROD-04 | Búsqueda y filtrado de productos por nombre, SKU o categoría | Alta |
 | PROD-05 | Validación de unicidad de SKU por empresa | Alta |
 | PROD-06 | Carga de imagen del producto (optimización incluida) | Media |
@@ -70,6 +70,21 @@ nuevo y con los días sin movimientos en cero, desde
 > **subida directa firmada** a Cloudinary: el formulario pide la firma a
 > `POST /companies/{companyId}/media/signature`, sube el archivo y guarda únicamente el `secure_url`;
 > la optimización es la entrega de Cloudinary, no un paso de código propio.
+>
+> **PROD-03 es una baja lógica reversible** (`odd/tasks/product-restore.md`): la baja estampa
+> `deletedAt` y la restauración la deshace con
+> `POST /companies/{companyId}/products/{productId}/restore`, que devuelve el producto activo con su
+> SKU y su historial de movimientos intactos y exige el mismo permiso que la baja (`manage_products`,
+> ADMIN u OWNER). La papelera lee **solo** las bajas
+> (`GET /companies/{companyId}/products?deleted=true`, con la misma búsqueda y el mismo orden; el
+> default sigue siendo el catálogo activo) y restaurar uno que no está dado de baja responde `409
+> product_not_deleted` (la papelera es un estado, no un flag); uno de otra empresa responde el mismo
+> `404` que uno inexistente. El SKU **sigue reservado** mientras el producto está dado de baja —el
+> índice único cubre las filas con `deletedAt`—, así que recrearlo responde `409 sku_already_exists`
+> y **restaurar es la forma de reutilizarlo**. La **purga física** (borrado definitivo) **no está
+> implementada** y es una **decisión aparte**: OWNER-only, con modal de confirmación y bloqueada
+> cuando el producto tiene movimientos, porque `stock_movements.product_id` es `ON DELETE RESTRICT` y
+> el ledger es la traza de auditoría (MOV-05). Nada del roadmap la marca como hecha.
 
 ### 4. Entradas y Salidas de Inventario
 

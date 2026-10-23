@@ -137,6 +137,14 @@ native-review actions), so the lineage `review-639245502c1c4d16` stays open and 
 matches the working tree. Closing it needs either a fixed facade that accepts the plan slot or a fresh
 review on the corrected candidate.
 
+L11 (native review, corrected candidate): a second lineage (`review-d1855d2fce54f690`, target
+`sha256:ac803fcf…`) reviewed the corrected candidate with the risk, resilience and reliability lenses plus
+the refuter, and closed as **escalated**, cause `unknown_causality`, finding `R3-001`, with `R4-001` and
+`R4-002` corroborated by the refuter. The provider reports it as "inconclusive severe findings; maintainer
+action is informational" and does not expose the finding text through the facade, so no further code change
+was made from it: the specifics have to come from the maintainer's own review tooling or a re-review.
+Delivery is unaffected — a review outcome never authorizes it either way.
+
 L8 (delivery slices): C1 session core (`6e3db96`), C2 Prisma persistence (`c592fd7`), C3 enforcement and
 contract (`9fe5da3`), C4 end-to-end endpoint tests (`d92974c`), C5 the web guard. The slice boundary is
 recorded here because the whole feature exceeds the ~400 authored-line guidance and is delivered as five

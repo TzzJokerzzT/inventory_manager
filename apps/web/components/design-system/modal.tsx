@@ -44,11 +44,11 @@ export function Modal({
 			<DialogPrimitive.Portal>
 				<DialogPrimitive.Backdrop
 					data-slot="modal-backdrop"
-					className="fixed inset-0 z-50 bg-black/40"
+					className="fixed inset-0 z-50 bg-black/40 transition-opacity duration-200 ease-out data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none"
 				/>
 				<DialogPrimitive.Popup
 					data-slot="modal"
-					className="fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-lg"
+					className="fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-lg transition-[opacity,scale] duration-200 ease-out data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 motion-reduce:transition-none"
 				>
 					<DialogPrimitive.Close
 						data-slot="modal-close"

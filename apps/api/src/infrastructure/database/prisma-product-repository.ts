@@ -1,7 +1,10 @@
 import { Product } from "../../domain/entities/product.js";
 import { DomainError } from "../../domain/errors/domain-error.js";
 import { SkuAlreadyExistsError } from "../../domain/errors/sku-already-exists-error.js";
-import type { ProductRepository } from "../../domain/repositories/product-repository.js";
+import type {
+	ListProductsOptions,
+	ProductRepository,
+} from "../../domain/repositories/product-repository.js";
 import type {
 	PrismaClient,
 	Product as ProductModel,
@@ -148,13 +151,19 @@ export class PrismaProductRepository implements ProductRepository {
 		return rows.map((row) => this.toDomain(row));
 	}
 
-	async list(companyId: string, search?: string): Promise<Product[]> {
-		const needle = search?.trim();
+	async list(
+		companyId: string,
+		options: ListProductsOptions = {},
+	): Promise<Product[]> {
+		const needle = options.search?.trim();
+		// The trash replaces the active filter instead of being added to it: a
+		// view that mixed both would serve neither (L3).
+		const deleted = options.deleted === true;
 
 		const rows = await this.prisma.product.findMany({
 			where: {
 				companyId,
-				deletedAt: null,
+				deletedAt: deleted ? { not: null } : null,
 				...(needle === undefined || needle.length === 0
 					? {}
 					: {
@@ -221,6 +230,32 @@ export class PrismaProductRepository implements ProductRepository {
 		const { count } = await this.prisma.product.updateMany({
 			where: { id: productId, companyId, deletedAt: null },
 			data: { deletedAt: now, updatedAt: now },
+		});
+
+		if (count === 0) {
+			return null;
+		}
+
+		const row = await this.prisma.product.findFirst({
+			where: { id: productId, companyId },
+		});
+
+		if (row === null) {
+			return null;
+		}
+
+		return this.toDomain(row);
+	}
+
+	async restore(companyId: string, productId: string): Promise<Product | null> {
+		const now = new Date();
+
+		// The mirror guard of `softDelete`: only a row that is currently in the
+		// trash is written, so an active one is a `null` instead of being
+		// restamped, and of two concurrent restores exactly one wins (S3).
+		const { count } = await this.prisma.product.updateMany({
+			where: { id: productId, companyId, deletedAt: { not: null } },
+			data: { deletedAt: null, updatedAt: now },
 		});
 
 		if (count === 0) {

@@ -1,6 +1,9 @@
 import { Product } from "../../domain/entities/product.js";
 import { SkuAlreadyExistsError } from "../../domain/errors/sku-already-exists-error.js";
-import type { ProductRepository } from "../../domain/repositories/product-repository.js";
+import type {
+	ListProductsOptions,
+	ProductRepository,
+} from "../../domain/repositories/product-repository.js";
 
 /**
  * In-memory adapter for the {@link ProductRepository} port.
@@ -84,11 +87,21 @@ export class InMemoryProductRepository implements ProductRepository {
 		);
 	}
 
-	async list(companyId: string, search?: string): Promise<Product[]> {
-		const needle = search?.trim().toLowerCase();
+	async list(
+		companyId: string,
+		options: ListProductsOptions = {},
+	): Promise<Product[]> {
+		const needle = options.search?.trim().toLowerCase();
+		// The trash replaces the active filter instead of being added to it: a
+		// view that mixed both would serve neither (L3).
+		const deleted = options.deleted === true;
 
 		return Array.from(this.products.values())
-			.filter((row) => row.companyId === companyId && row.deletedAt === null)
+			.filter(
+				(row) =>
+					row.companyId === companyId &&
+					(deleted ? row.deletedAt !== null : row.deletedAt === null),
+			)
 			.filter(
 				(row) =>
 					needle === undefined ||
@@ -159,6 +172,42 @@ export class InMemoryProductRepository implements ProductRepository {
 		this.products.set(deleted.id, deleted);
 
 		return deleted;
+	}
+
+	async restore(companyId: string, productId: string): Promise<Product | null> {
+		const existing = this.products.get(productId);
+
+		// The mirror guard of `softDelete`: only a row that is actually in the
+		// trash is written, so an active (or foreign, or absent) product answers
+		// `null` and two concurrent restores resolve to one winner.
+		if (
+			existing === undefined ||
+			existing.companyId !== companyId ||
+			existing.deletedAt === null
+		) {
+			return null;
+		}
+
+		const restoredAt = new Date();
+		const restored = Product.create({
+			id: existing.id,
+			companyId: existing.companyId,
+			name: existing.name,
+			description: existing.description,
+			sku: existing.sku,
+			price: existing.price,
+			photoUrl: existing.photoUrl,
+			stockQuantity: existing.stockQuantity,
+			lowStockThreshold: existing.lowStockThreshold,
+			categoryId: existing.categoryId,
+			deletedAt: null,
+			createdAt: existing.createdAt,
+			updatedAt: restoredAt,
+		});
+
+		this.products.set(restored.id, restored);
+
+		return restored;
 	}
 
 	/** Adapter-specific: lets the test suite insert products directly. */

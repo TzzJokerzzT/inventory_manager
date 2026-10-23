@@ -3,6 +3,7 @@ import { CreateProductUseCase } from "../src/application/use-cases/create-produc
 import { DeleteProductUseCase } from "../src/application/use-cases/delete-product.js";
 import { GetProductUseCase } from "../src/application/use-cases/get-product.js";
 import { ListProductsUseCase } from "../src/application/use-cases/list-products.js";
+import { RestoreProductUseCase } from "../src/application/use-cases/restore-product.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
 import { Company } from "../src/domain/entities/company.js";
 import {
@@ -14,6 +15,7 @@ import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-mem
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
+import { apiRateLimiter } from "../src/interfaces/http/middlewares/rate-limit.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
 import { createRequireCompanyContext } from "../src/interfaces/http/middlewares/require-company-context.js";
 import { createRequireUser } from "../src/interfaces/http/middlewares/require-user.js";
@@ -40,6 +42,17 @@ describe("product endpoints", () => {
 
 	beforeAll(async () => {
 		issuer = await startLocalIssuer();
+	});
+
+	beforeEach(() => {
+		// The global limiter is a module-level singleton with a 100-request window
+		// that counts every request this file sends from the same client, and the
+		// limiter is not what any test here asserts (the auth suites own that).
+		// Resetting the client's counter keeps the window from leaking between
+		// tests; both spellings of the loopback address are cleared because the
+		// key is the request's `ip`.
+		apiRateLimiter.resetKey("::ffff:127.0.0.1");
+		apiRateLimiter.resetKey("127.0.0.1");
 	});
 
 	afterAll(async () => {
@@ -113,6 +126,7 @@ describe("product endpoints", () => {
 				get: new GetProductUseCase({ productRepository }),
 				update: new UpdateProductUseCase({ productRepository }),
 				remove: new DeleteProductUseCase({ productRepository }),
+				restore: new RestoreProductUseCase({ productRepository }),
 			},
 			// Not exercised by this suite: the customer slice keeps the app
 			// buildable, and its own suite wires it for real.
@@ -415,6 +429,79 @@ describe("product endpoints", () => {
 
 			expect(response.status).toBe(400);
 		});
+
+		it("lists only the soft-deleted products with ?deleted=true", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const deleted = await createProduct(app, {
+				name: "Cafe",
+				sku: "CAF-1",
+			});
+			await createProduct(app, { name: "Zapallo", sku: "ZAP-1" });
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${deleted.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const trash = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const catalogue = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const explicitActive = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=false`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(trash.status).toBe(200);
+			expect(trash.body).toEqual([
+				expect.objectContaining({ id: deleted.id, sku: "CAF-1" }),
+			]);
+			expect(
+				catalogue.body.map((product: { sku: string }) => product.sku),
+			).toEqual(["ZAP-1"]);
+			expect(explicitActive.body).toEqual(catalogue.body);
+		});
+
+		it("keeps the search and the order inside the trash", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const first = await createProduct(app, {
+				name: "Cafe molido",
+				sku: "CAF-500",
+			});
+			const second = await createProduct(app, {
+				name: "Cafe en grano",
+				sku: "CAF-900",
+			});
+			await createProduct(app, { name: "Cafe activo", sku: "CAF-100" });
+
+			for (const product of [first, second]) {
+				await request(app)
+					.delete(`/companies/${COMPANY}/products/${product.id}`)
+					.set("authorization", authorization(OWNER_SUB));
+			}
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true&search=cafe`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(
+				response.body.map((product: { name: string }) => product.name),
+			).toEqual(["Cafe en grano", "Cafe molido"]);
+		});
+
+		it("answers 400 for a deleted value that is not true or false", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=maybe`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.issues.length).toBeGreaterThan(0);
+		});
 	});
 
 	describe("GET /companies/:companyId/products/:productId", () => {
@@ -681,6 +768,190 @@ describe("product endpoints", () => {
 
 			expect(badId.status).toBe(400);
 			expect(absent.status).toBe(404);
+		});
+	});
+
+	describe("POST /companies/:companyId/products/:productId/restore", () => {
+		it("restores a deleted product and answers 200 with it active again", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const restored = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(ADMIN_SUB));
+
+			expect(restored.status).toBe(200);
+			expect(restored.body).toEqual({
+				...product,
+				updatedAt: expect.any(String),
+			});
+		});
+
+		it("brings the product back to the catalogue and out of the trash", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+			await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const catalogue = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+			const trash = await request(app)
+				.get(`/companies/${COMPANY}/products?deleted=true`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(catalogue.body.map((row: { id: string }) => row.id)).toEqual([
+				product.id,
+			]);
+			expect(trash.body).toEqual([]);
+		});
+
+		it("keeps the sku reserved after the delete and reuses the row instead of a new create", async () => {
+			// S2: the SKU never chokes on restore because the unique index kept
+			// it reserved while the product was in the trash.
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const duplicate = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe", sku: "CAF-500", price: "1500" });
+
+			const restored = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const stillReserved = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe", sku: "CAF-500", price: "1500" });
+
+			expect(duplicate.status).toBe(409);
+			expect(duplicate.body.error.code).toBe("sku_already_exists");
+			expect(restored.status).toBe(200);
+			expect(restored.body).toMatchObject({
+				id: product.id,
+				sku: "CAF-500",
+			});
+			expect(stillReserved.status).toBe(409);
+			expect(stillReserved.body.error.code).toBe("sku_already_exists");
+		});
+
+		it("answers 409 product_not_deleted for a product that is not deleted", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(409);
+			expect(response.body.error.code).toBe("product_not_deleted");
+		});
+
+		it("answers 409 on a second restore", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+			await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+			const second = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(second.status).toBe(409);
+			expect(second.body.error.code).toBe("product_not_deleted");
+		});
+
+		it("answers 404 product_not_found for another company's product", async () => {
+			const { app, seedRoster, seedMembership, owner } = createTestApp();
+			seedRoster();
+			seedMembership({
+				userId: owner.id,
+				role: "OWNER",
+				companyId: OTHER_COMPANY,
+			});
+			const foreign = await request(app)
+				.post(`/companies/${OTHER_COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Ajeno", sku: "AJE-1", price: "10" });
+
+			await request(app)
+				.delete(`/companies/${OTHER_COMPANY}/products/${foreign.body.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${foreign.body.id}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("product_not_found");
+		});
+
+		it("answers 404 product_not_found for a product that does not exist", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${MISSING_PRODUCT_ID}/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("product_not_found");
+		});
+
+		it("answers 403 insufficient_role for a MEMBER", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			await request(app)
+				.delete(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB));
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products/${product.id}/restore`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(403);
+			expect(response.body.error.code).toBe("insufficient_role");
+		});
+
+		it("answers 400 for a malformed product id and 401 without a token", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const badId = await request(app)
+				.post(`/companies/${COMPANY}/products/not-a-uuid/restore`)
+				.set("authorization", authorization(OWNER_SUB));
+			const withoutToken = await request(app).post(
+				`/companies/${COMPANY}/products/${MISSING_PRODUCT_ID}/restore`,
+			);
+
+			expect(badId.status).toBe(400);
+			expect(withoutToken.status).toBe(401);
 		});
 	});
 });

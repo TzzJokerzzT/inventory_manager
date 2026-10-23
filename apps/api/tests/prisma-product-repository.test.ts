@@ -190,7 +190,7 @@ describe("PrismaProductRepository.list", () => {
 		findMany.mockResolvedValue([]);
 
 		const repository = new PrismaProductRepository({ prisma: delegate });
-		await repository.list("company-1", "cafe");
+		await repository.list("company-1", { search: "cafe" });
 
 		expect(findMany).toHaveBeenCalledWith({
 			where: {
@@ -201,6 +201,54 @@ describe("PrismaProductRepository.list", () => {
 					{ sku: { contains: "cafe", mode: "insensitive" } },
 				],
 			},
+			orderBy: [{ name: "asc" }, { id: "asc" }],
+		});
+	});
+
+	it("filters the soft-deleted rows when the trash is asked for", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([row({ deletedAt: new Date("2026-10-22") })]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const listed = await repository.list("company-1", { deleted: true });
+
+		// The trash replaces the active filter; it is not a union of both.
+		expect(findMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", deletedAt: { not: null } },
+			orderBy: [{ name: "asc" }, { id: "asc" }],
+		});
+		expect(listed).toHaveLength(1);
+	});
+
+	it("keeps the search inside the trash", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		await repository.list("company-1", { search: "cafe", deleted: true });
+
+		expect(findMany).toHaveBeenCalledWith({
+			where: {
+				companyId: "company-1",
+				deletedAt: { not: null },
+				OR: [
+					{ name: { contains: "cafe", mode: "insensitive" } },
+					{ sku: { contains: "cafe", mode: "insensitive" } },
+				],
+			},
+			orderBy: [{ name: "asc" }, { id: "asc" }],
+		});
+	});
+
+	it("keeps listing the active products when deleted is false", async () => {
+		const { delegate, findMany } = buildFakeDelegate();
+		findMany.mockResolvedValue([row()]);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		await repository.list("company-1", { search: undefined, deleted: false });
+
+		expect(findMany).toHaveBeenCalledWith({
+			where: { companyId: "company-1", deletedAt: null },
 			orderBy: [{ name: "asc" }, { id: "asc" }],
 		});
 	});
@@ -282,6 +330,57 @@ describe("PrismaProductRepository.softDelete", () => {
 
 		await expect(
 			repository.softDelete("company-1", "product-1"),
+		).resolves.toBeNull();
+	});
+});
+
+describe("PrismaProductRepository.restore", () => {
+	it("clears deletedAt only while the row is still deleted, then reads it back", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(row());
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const restored = await repository.restore("company-1", "product-1");
+
+		// `deletedAt: { not: null }` is the guard: an active row is not
+		// restamped, so two concurrent restores cannot both win (S3).
+		expect(updateMany).toHaveBeenCalledWith({
+			where: {
+				id: "product-1",
+				companyId: "company-1",
+				deletedAt: { not: null },
+			},
+			data: { deletedAt: null, updatedAt: expect.any(Date) },
+		});
+		expect(findFirst).toHaveBeenCalledWith({
+			where: { id: "product-1", companyId: "company-1" },
+		});
+		expect(restored).toBeInstanceOf(Product);
+		expect(restored?.deletedAt).toBeNull();
+	});
+
+	it("returns null when no deleted row matched, without reading it back", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 0 });
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(
+			repository.restore("company-1", "product-1"),
+		).resolves.toBeNull();
+		expect(findFirst).not.toHaveBeenCalled();
+	});
+
+	it("returns null when the row vanished between the write and the read", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(null);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(
+			repository.restore("company-1", "product-1"),
 		).resolves.toBeNull();
 	});
 });

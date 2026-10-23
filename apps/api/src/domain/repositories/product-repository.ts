@@ -1,6 +1,21 @@
 import type { Product } from "../entities/product.js";
 
 /**
+ * The options of a catalogue read.
+ *
+ * `search`, when present, is a case-insensitive substring matched against the
+ * name **or** the SKU (PROD-04/S5). `deleted` selects which half of the store
+ * is read: absent or `false` is the active catalogue, `true` is the trash
+ * (only the soft-deleted rows), because a view that mixed both would serve
+ * neither (odd/tasks/product-restore.md L3). The two are never combined as an
+ * "include deleted" flag.
+ */
+export interface ListProductsOptions {
+	search?: string;
+	deleted?: boolean;
+}
+
+/**
  * Port for product persistence.
  *
  * Two things are part of the contract rather than an optimisation:
@@ -10,12 +25,17 @@ import type { Product } from "../entities/product.js";
  *   the company afterwards would be a filter in memory, and the adapter could
  *   forget it.
  * - **`deletedAt` is a guard, never a post-filter.** A soft-deleted product is
- *   simply not there: `findActiveById`, `list` and both writes only ever see
- *   active rows, so "deleted" and "does not exist" are the same answer.
+ *   simply not in the catalogue: `findActiveById` and the guarded writes only
+ *   ever match active rows, so "deleted" and "does not exist" are the same
+ *   answer there. The two places that look at the stamp on purpose are
+ *   `list({ deleted: true })` (the trash is its own listing) and
+ *   `softDelete`/`restore`, whose guards are what make a concurrent delete or
+ *   restore resolve to a single winner.
  *
  * The write surface is deliberately narrow: `stockQuantity`,
  * `lowStockThreshold`, `categoryId` and the soft-delete stamp are not settable
- * from the product endpoints (MI-8, MI-12, L4), so no method accepts them.
+ * from the product endpoints (MI-8, MI-12, L4), so no method accepts them;
+ * only `softDelete` and `restore` move the stamp, each with its own guard.
  */
 export interface ProductRepository {
 	/**
@@ -56,13 +76,15 @@ export interface ProductRepository {
 	findByIds(companyId: string, ids: string[]): Promise<Product[]>;
 
 	/**
-	 * Lists the company's active products, ordered by name and then id so two
-	 * reads of the same state answer the same array.
+	 * Lists the company's products of the requested half of the store, ordered
+	 * by name and then id so two reads of the same state answer the same array.
 	 *
-	 * `search`, when present, is a case-insensitive substring matched against
-	 * the name **or** the SKU (PROD-04/S5).
+	 * The `deleted` filter **replaces** the active one: `true` lists only the
+	 * soft-deleted products, anything else lists only the active ones. `search`
+	 * behaves identically in both, and the `companyId` stays in the WHERE clause
+	 * either way.
 	 */
-	list(companyId: string, search?: string): Promise<Product[]>;
+	list(companyId: string, options?: ListProductsOptions): Promise<Product[]>;
 
 	/**
 	 * Writes the next state of an already-valid entity, guarded on
@@ -83,4 +105,15 @@ export interface ProductRepository {
 	 * second stamp that would reset the original date.
 	 */
 	softDelete(companyId: string, productId: string): Promise<Product | null>;
+
+	/**
+	 * Clears the soft-delete stamp of a product that is currently deleted, and
+	 * returns the row active again -- or `null` when no deleted row matched.
+	 *
+	 * Guarded on `deletedAt` being set, so this is the mirror of
+	 * {@link softDelete}: restoring an active product, a foreign one or an
+	 * absent one is a `null`, never a write. That guard is what makes two
+	 * concurrent restores resolve to one winner.
+	 */
+	restore(companyId: string, productId: string): Promise<Product | null>;
 }

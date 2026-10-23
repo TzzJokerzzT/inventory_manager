@@ -32,6 +32,7 @@ import type { MarkNotificationsReadUseCase } from "../../application/use-cases/m
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
+import type { RestoreProductUseCase } from "../../application/use-cases/restore-product.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
 import type { UpdateCustomerUseCase } from "../../application/use-cases/update-customer.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
@@ -96,7 +97,7 @@ export interface AppDependencies {
 	requireCompanyContext: RequestHandler;
 	mediaUploadSigner: MediaUploadSigner;
 	/**
-	 * The product slice of MI-7. It is one field, not five, because the routes
+	 * The product slice of MI-7. It is one field, not six, because the routes
 	 * that consume it are all mounted together on the company-scoped router.
 	 */
 	products: {
@@ -105,6 +106,7 @@ export interface AppDependencies {
 		get: GetProductUseCase;
 		update: UpdateProductUseCase;
 		remove: DeleteProductUseCase;
+		restore: RestoreProductUseCase;
 	};
 	/**
 	 * The customer slice of MI-11. One field, not five, because the routes that

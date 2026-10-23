@@ -700,6 +700,16 @@ paths:
           schema:
             type: string
             maxLength: 100
+        - name: deleted
+          in: query
+          required: false
+          description: |
+            When true, lists **only** the soft-deleted products (the trash)
+            instead of the active catalogue. The default lists active products
+            only, so existing clients keep their behaviour.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: The company's products, ordered by name and then id.
@@ -1493,6 +1503,82 @@ paths:
             Either the token resolves to no user (`user_not_provisioned`) or
             the caller has no ACTIVE membership in the company
             (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/products/{productId}/restore:
+    post:
+      tags: [products]
+      summary: Restore a soft-deleted product
+      description: |
+        Clears the product's `deletedAt` and returns it active again, with its
+        SKU and its movement history untouched. It is the answer to "bring back
+        the product I deleted": the SKU of a soft-deleted product stays reserved,
+        so creating a new product with the same SKU is a 409, and restoring is
+        the way to reuse the product itself.
+
+        Requires `manage_products` (ADMIN or OWNER), the same permission as the
+        soft delete. Restoring a product that is **not** deleted answers
+        `409 product_not_deleted`: the trash is a state, not a flag. A product
+        from another company answers the same 404 as a nonexistent one.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The restored product, active again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: The company id or the product id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`), the
+            caller has no ACTIVE membership in the company
+            (`company_access_forbidden`), or their role cannot write products
+            (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist or belongs to another company; the `code`
+            is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The product is not soft-deleted, so there is nothing to restore; the
+            `code` is `product_not_deleted`.
           content:
             application/json:
               schema:

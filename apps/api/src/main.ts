@@ -24,6 +24,7 @@ import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notif
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
 import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
+import { RestoreProductUseCase } from "./application/use-cases/restore-product.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
@@ -165,6 +166,7 @@ const app = buildApp({
 		get: new GetProductUseCase({ productRepository }),
 		update: new UpdateProductUseCase({ productRepository }),
 		remove: new DeleteProductUseCase({ productRepository }),
+		restore: new RestoreProductUseCase({ productRepository }),
 	},
 	customers: {
 		list: new ListCustomersUseCase({ customerRepository }),

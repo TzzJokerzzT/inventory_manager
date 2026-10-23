@@ -2,13 +2,16 @@ import { CreateProductUseCase } from "../src/application/use-cases/create-produc
 import { DeleteProductUseCase } from "../src/application/use-cases/delete-product.js";
 import { GetProductUseCase } from "../src/application/use-cases/get-product.js";
 import { ListProductsUseCase } from "../src/application/use-cases/list-products.js";
+import { RestoreProductUseCase } from "../src/application/use-cases/restore-product.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
 import type { MembershipRole } from "../src/domain/entities/membership.js";
 import { Product } from "../src/domain/entities/product.js";
 import { DomainError } from "../src/domain/errors/domain-error.js";
 import { InsufficientRoleError } from "../src/domain/errors/insufficient-role-error.js";
+import { ProductNotDeletedError } from "../src/domain/errors/product-not-deleted-error.js";
 import { ProductNotFoundError } from "../src/domain/errors/product-not-found-error.js";
 import { SkuAlreadyExistsError } from "../src/domain/errors/sku-already-exists-error.js";
+import type { ProductRepository } from "../src/domain/repositories/product-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 
 const COMPANY = "company-1";
@@ -249,6 +252,58 @@ describe("ListProductsUseCase", () => {
 
 		await expect(
 			listProducts(repository_).execute({}, { companyId: COMPANY }),
+		).resolves.toEqual([]);
+	});
+
+	it("lists only the soft-deleted products when the trash is asked for", async () => {
+		// S4/L3: `deleted: true` is the trash, not "actives plus deleted".
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", name: "Cafe", deleted: true });
+		seed(repository_, { id: "product-2", name: "Zapallo", deleted: true });
+		seed(repository_, { id: "product-3", name: "Azucar" });
+
+		const listed = await listProducts(repository_).execute(
+			{ deleted: true },
+			{ companyId: COMPANY },
+		);
+
+		// Same order as the active catalogue: name, then id.
+		expect(listed.map((row) => row.id)).toEqual(["product-1", "product-2"]);
+	});
+
+	it("keeps the search when listing the trash", async () => {
+		const repository_ = repository();
+		seed(repository_, {
+			id: "product-1",
+			name: "Cafe molido",
+			sku: "CAF-500",
+			deleted: true,
+		});
+		seed(repository_, {
+			id: "product-2",
+			name: "Azucar",
+			sku: "SUGAR-1",
+			deleted: true,
+		});
+		seed(repository_, { id: "product-3", name: "Cafe", sku: "CAF-900" });
+
+		const listed = await listProducts(repository_).execute(
+			{ search: "cafe", deleted: true },
+			{ companyId: COMPANY },
+		);
+
+		expect(listed.map((row) => row.id)).toEqual(["product-1"]);
+	});
+
+	it("keeps the trash empty when nothing was deleted", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1" });
+
+		await expect(
+			listProducts(repository_).execute(
+				{ deleted: true },
+				{ companyId: COMPANY },
+			),
 		).resolves.toEqual([]);
 	});
 });
@@ -535,5 +590,189 @@ describe("DeleteProductUseCase", () => {
 				context("OWNER"),
 			),
 		).rejects.toThrow(ProductNotFoundError);
+	});
+});
+
+/**
+ * A repository whose two reads and whose guarded write are scripted by the
+ * test, so the race the port describes can actually happen: the write matches
+ * no row even though the read before it did.
+ */
+function racedRepository(reads: (Product | undefined)[]): ProductRepository {
+	let call = 0;
+
+	return {
+		findByIds: async () => {
+			const row = reads[Math.min(call, reads.length - 1)];
+			call += 1;
+
+			return row === undefined ? [] : [row];
+		},
+		restore: async () => null,
+	} as unknown as ProductRepository;
+}
+
+describe("RestoreProductUseCase", () => {
+	function restoreProduct(productRepository: ProductRepository) {
+		return new RestoreProductUseCase({ productRepository });
+	}
+
+	it("brings the product back with its own id and sku", async () => {
+		// S2: the SKU stayed reserved, so restoring reuses the row instead of
+		// creating a copy.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", sku: "CAF-500", deleted: true });
+
+		const restored = await restoreProduct(repository_).execute(
+			{ productId: "product-1" },
+			context("OWNER"),
+		);
+
+		expect(restored).toMatchObject({
+			id: "product-1",
+			companyId: COMPANY,
+			sku: "CAF-500",
+		});
+		expect(restored.deletedAt).toBeNull();
+		await expect(
+			repository_.findActiveById(COMPANY, "product-1"),
+		).resolves.toBe(restored);
+	});
+
+	it("leaves the stock and the history of the row untouched", async () => {
+		const repository_ = repository();
+		seed(repository_, {
+			id: "product-1",
+			stockQuantity: 12,
+			description: "Molido medio",
+			deleted: true,
+		});
+
+		const restored = await restoreProduct(repository_).execute(
+			{ productId: "product-1" },
+			context("OWNER"),
+		);
+
+		expect(restored.stockQuantity).toBe(12);
+		expect(restored.description).toBe("Molido medio");
+	});
+
+	it("lets an ADMIN restore", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+
+		await expect(
+			restoreProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("ADMIN"),
+			),
+		).resolves.toMatchObject({ id: "product-1" });
+	});
+
+	it("answers ProductNotDeletedError for a product that is not deleted", async () => {
+		// L2: restoring is not an idempotent no-op; the client learns that the
+		// state was not the one it thought.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1" });
+
+		await expect(
+			restoreProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotDeletedError);
+	});
+
+	it("answers ProductNotDeletedError on a second restore", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+
+		const useCase = restoreProduct(repository_);
+		await useCase.execute({ productId: "product-1" }, context("OWNER"));
+
+		await expect(
+			useCase.execute({ productId: "product-1" }, context("OWNER")),
+		).rejects.toThrow(ProductNotDeletedError);
+	});
+
+	it("answers ProductNotDeletedError when the guarded write loses the race and the row is already active", async () => {
+		const deleted = Product.create({
+			id: "product-1",
+			companyId: COMPANY,
+			name: "Cafe",
+			sku: "CAF-500",
+			price: "1500",
+			deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+		});
+		const active = Product.create({
+			id: "product-1",
+			companyId: COMPANY,
+			name: "Cafe",
+			sku: "CAF-500",
+			price: "1500",
+		});
+
+		await expect(
+			restoreProduct(racedRepository([deleted, active])).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotDeletedError);
+	});
+
+	it("answers ProductNotFoundError when the guarded write loses the race and the row is gone", async () => {
+		const deleted = Product.create({
+			id: "product-1",
+			companyId: COMPANY,
+			name: "Cafe",
+			sku: "CAF-500",
+			price: "1500",
+			deletedAt: new Date("2026-10-22T12:00:00.000Z"),
+		});
+
+		await expect(
+			restoreProduct(racedRepository([deleted, undefined])).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotFoundError);
+	});
+
+	it("answers ProductNotFoundError for another company's product", async () => {
+		const repository_ = repository();
+		seed(repository_, {
+			id: "product-1",
+			companyId: OTHER_COMPANY,
+			deleted: true,
+		});
+
+		await expect(
+			restoreProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotFoundError);
+	});
+
+	it("answers ProductNotFoundError for a product that does not exist", async () => {
+		await expect(
+			restoreProduct(repository()).execute(
+				{ productId: "product-nope" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotFoundError);
+	});
+
+	it("rejects a MEMBER with InsufficientRoleError", async () => {
+		// L4: restore shares the permission of the soft delete.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+
+		await expect(
+			restoreProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("MEMBER"),
+			),
+		).rejects.toThrow(InsufficientRoleError);
 	});
 });

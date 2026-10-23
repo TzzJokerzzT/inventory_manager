@@ -155,6 +155,13 @@ migrations to a deployed database. Fixed by running `bun run db:deploy` in `apps
 `prisma migrate deploy` from the API's start script so a schema change can never reach a runtime as a missing
 table again.
 
+L13 (decision, same incident): both API entry points — `bun run dev` and `bun run start` — now run
+`prisma migrate deploy` before booting, so a declared model cannot reach a process as a missing table again.
+`migrate deploy` takes a PostgreSQL advisory lock, so replicas starting together do not race. Documented
+caveat: a serverless deployment does not run `start`, so there the pipeline must run `db:deploy` itself
+(no `vercel.json` exists today). Verified by building and booting `start` on a free port: it printed
+"No pending migrations to apply", listened, and answered `/health` 200.
+
 L8 (delivery slices): C1 session core (`6e3db96`), C2 Prisma persistence (`c592fd7`), C3 enforcement and
 contract (`9fe5da3`), C4 end-to-end endpoint tests (`d92974c`), C5 the web guard. The slice boundary is
 recorded here because the whole feature exceeds the ~400 authored-line guidance and is delivered as five

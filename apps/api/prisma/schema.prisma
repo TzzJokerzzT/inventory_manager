@@ -1,12 +1,13 @@
-// TODO(migrations): nothing applies migrations to the deployed database. CI runs
-// `db:deploy` against an ephemeral Postgres only (see .github/workflows/ci.yml),
-// and the API's build is just `tsc`, so a new model declared here reaches
-// production as a missing table: the Prisma client knows it, the suites pass
-// (they use in-memory doubles), and every query on it answers 500. Until a
-// deploy step runs `prisma migrate deploy` (see docs/stack.md §3.3), applying a
-// migration is a manual, required step:
+// MIGRATIONS: both runtime entry points of this app apply pending migrations
+// before booting (`bun run dev` and `bun run start` in apps/api run
+// `prisma migrate deploy` first), so a model declared here cannot reach a
+// process as a missing table. That happened once: `sessions` shipped without
+// its migration applied and every login answered 500, because nothing else in
+// this repository migrates a deployed database (CI runs `db:deploy` against an
+// ephemeral Postgres only, and the build is just `tsc`).
 //
-//   cd apps/api && bun run db:deploy
+// A serverless deployment does NOT run `start`: there the pipeline has to run
+// `cd apps/api && bun run db:deploy` itself (see docs/stack.md §3.3).
 
 generator client {
 	provider = "prisma-client"

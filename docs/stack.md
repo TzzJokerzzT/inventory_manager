@@ -201,12 +201,15 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
   migraciones editadas a mano (ver §3.2).
 - Comandos: `db:generate` · `db:migrate` (desarrollo local) · `db:deploy` (aplicar migraciones) ·
   `db:status` · `db:studio`.
-- **Producción — `TODO(migrations)`:** **hoy nada aplica las migraciones a la base real.** El job
-  `migrations` de CI corre `db:deploy` contra un Postgres **efímero** (`postgres:17` como service
-  container, nunca el proyecto de Supabase), el `build` del API es sólo `tsc -p tsconfig.json` y no
-  hay `vercel.json`, así que **ningún** paso del deploy ejecuta `db:deploy` contra producción.
-  Mientras siga así, aplicar una migración es un **paso manual obligatorio**:
-  `cd apps/api && bun run db:deploy`.
+- **Migraciones al arrancar:** los dos puntos de entrada del API (`bun run dev` y `bun run start`
+  en `apps/api`) corren **`prisma migrate deploy` antes de levantar** el proceso, así que una
+  migración pendiente se aplica sola y un modelo nuevo no puede llegar al runtime como tabla
+  faltante. `migrate deploy` toma un lock de aviso en la base, así que dos réplicas arrancando a la
+  vez no se pisan.
+- **Excepción — serverless:** un deploy como función (Vercel) **no ejecuta `start`**, así que ahí el
+  pipeline tiene que correr `cd apps/api && bun run db:deploy` por su cuenta. Hoy no hay
+  `vercel.json`; si se agrega, este paso va con él. El job `migrations` de CI sigue aplicando
+  `db:deploy` contra un Postgres **efímero** (`postgres:17`), nunca contra el proyecto de Supabase.
 - **Por qué esto muerde:** una migración sin aplicar no rompe los tests. El modelo está en el schema,
   el cliente Prisma lo conoce y la suite pasa, porque los tests usan dobles in-memory y **nunca**
   tocan la base. El síntoma aparece sólo en producción: la tabla no existe y cada query sobre ella
@@ -321,7 +324,8 @@ solución ya está **decidida y construida**:
 - El **CLI y las migraciones** usan la **URL directa** (session pooler, puerto 5432), configurada en
   `prisma.config.ts` desde `DIRECT_URL`.
 
-Las **migraciones no corren en el runtime** de la función: van en el pipeline de CI (`db:deploy`).
+Las **migraciones no corren en el runtime** de la función: en un deploy serverless van en el
+pipeline (`db:deploy`). Un deploy como proceso (`bun run start`) sí las aplica al arrancar.
 
 ### 5.4 Autenticación con Auth0
 

@@ -524,6 +524,7 @@ Todos desde la raíz del monorepo:
 | `bun run test` | Jest en todos los workspaces, vía Turborepo |
 | `cd apps/web && bun run openapi:generate` | Regenera `lib/api/openapi.d.ts` desde `apps/api/openapi.yaml` — requiere red o una caché de `bunx` caliente |
 | `cd apps/web && bun run test:e2e` | Cypress en `apps/web` — **requiere el dev server levantado** (`bun run dev`) |
+| `cd apps/api && bun run dev` / `bun run start` | API en desarrollo / producción. Ambos aplican **`prisma migrate deploy` antes de arrancar**, así que una migración pendiente nunca queda sin aplicar |
 
 ### Build de producción
 

@@ -5,6 +5,7 @@ import { useActiveCompany } from "@/src/features/company/store/company-selectors
 import { useMe } from "@/src/features/user/api/use-me";
 import { useDeleteProduct } from "../api/use-delete-product";
 import { useProducts } from "../api/use-products";
+import { useRestoreProduct } from "../api/use-restore-product";
 import { Product } from "../product";
 
 jest.mock("@/src/features/company/store/company-selectors", () => ({
@@ -23,6 +24,10 @@ jest.mock("../api/use-delete-product", () => ({
 	useDeleteProduct: jest.fn(),
 }));
 
+jest.mock("../api/use-restore-product", () => ({
+	useRestoreProduct: jest.fn(),
+}));
+
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;
@@ -31,6 +36,10 @@ const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
 const useDeleteProductMock = useDeleteProduct as jest.MockedFunction<
 	typeof useDeleteProduct
 >;
+const useRestoreProductMock = useRestoreProduct as jest.MockedFunction<
+	typeof useRestoreProduct
+>;
+const restoreMutate = jest.fn();
 
 function product(overrides: Partial<ProductModel> = {}): ProductModel {
 	return {
@@ -106,6 +115,10 @@ function setup({
 	useDeleteProductMock.mockReturnValue(
 		stubMutation() as unknown as ReturnType<typeof useDeleteProduct>,
 	);
+	useRestoreProductMock.mockReturnValue({
+		...stubMutation(),
+		mutate: restoreMutate,
+	} as unknown as ReturnType<typeof useRestoreProduct>);
 }
 
 describe("Product", () => {
@@ -118,7 +131,7 @@ describe("Product", () => {
 
 		render(<Product />);
 
-		expect(useProductsMock).toHaveBeenCalledWith("c1", "");
+		expect(useProductsMock).toHaveBeenCalledWith("c1", "", undefined);
 		expect(screen.getByRole("heading", { name: "Productos" })).toBeTruthy();
 		expect(screen.getByText("Café molido 500g")).toBeTruthy();
 		expect(screen.getByText("CAF-500")).toBeTruthy();
@@ -160,7 +173,7 @@ describe("Product", () => {
 		});
 
 		await waitFor(() => {
-			expect(useProductsMock).toHaveBeenLastCalledWith("c1", "café");
+			expect(useProductsMock).toHaveBeenLastCalledWith("c1", "café", undefined);
 		});
 		expect(
 			screen.getByText(/No encontramos productos para «café»/),
@@ -208,5 +221,81 @@ describe("Product", () => {
 		).toBe("/dashboard/products/create");
 		expect(screen.getByRole("link", { name: "Editar" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Eliminar" })).toBeTruthy();
+	});
+
+	it("switches the list to the trash and back", () => {
+		setup();
+
+		render(<Product />);
+
+		expect(useProductsMock).toHaveBeenLastCalledWith("c1", "", undefined);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+
+		expect(useProductsMock).toHaveBeenLastCalledWith("c1", "", {
+			deleted: true,
+		});
+
+		fireEvent.click(screen.getByRole("button", { name: "Catálogo" }));
+
+		expect(useProductsMock).toHaveBeenLastCalledWith("c1", "", undefined);
+	});
+
+	it("hides create, edit and delete in the trash and offers only Restaurar", () => {
+		setup({ role: "ADMIN", rows: [product()] });
+
+		render(<Product />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+
+		expect(screen.queryByRole("link", { name: /Nuevo Producto/ })).toBeNull();
+		expect(screen.queryByRole("link", { name: "Editar" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Eliminar" })).toBeNull();
+		expect(screen.getByRole("button", { name: "Restaurar" })).toBeTruthy();
+		expect(screen.getByRole("heading", { name: "Papelera" })).toBeTruthy();
+	});
+
+	it("restores a product from the trash without a confirmation", () => {
+		setup({ role: "ADMIN", rows: [product()] });
+
+		render(<Product />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+		fireEvent.click(screen.getByRole("button", { name: "Restaurar" }));
+
+		expect(useRestoreProductMock).toHaveBeenCalledWith("c1");
+		expect(restoreMutate).toHaveBeenCalledTimes(1);
+		expect(restoreMutate.mock.calls[0][0]).toEqual({ productId: "p1" });
+	});
+
+	it("shows the trash empty state, distinct from the active one", () => {
+		setup({ rows: [] });
+
+		render(<Product />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+
+		expect(screen.getByText("No hay productos en la papelera.")).toBeTruthy();
+		expect(screen.queryByText(/Todavía no cargaste productos/)).toBeNull();
+	});
+
+	it("searches inside the trash", async () => {
+		setup({ rows: [] });
+
+		render(<Product />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Papelera" }));
+		fireEvent.change(screen.getByLabelText("Buscar productos"), {
+			target: { value: "café" },
+		});
+
+		await waitFor(() => {
+			expect(useProductsMock).toHaveBeenLastCalledWith("c1", "café", {
+				deleted: true,
+			});
+		});
+		expect(
+			screen.getByText(/No encontramos productos para «café» en la papelera/),
+		).toBeTruthy();
 	});
 });

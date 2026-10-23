@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Alert, type Column, DataTable } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel } from "@/lib/api/schemas";
@@ -32,19 +33,30 @@ const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
  * the API would answer `403 insufficient_role` — while the API stays the real
  * guard.
  *
+ * The **Papelera** toggle swaps the list for the soft-deleted products (the same
+ * read with `deleted=true`). In the trash every row offers Restaurar, which asks
+ * for no confirmation because it is safe and reversible, and the catalogue's
+ * create/edit/delete are hidden: they belong to the active catalogue, not to a
+ * product that is already deleted.
+ *
  * The search box is debounced so each keystroke does not fire a request; the
- * query key includes the term, so a filtered read never overwrites the
- * unfiltered one.
+ * query key includes the term and the mode, so a filtered read never overwrites
+ * the unfiltered one and the trash never overwrites the catalogue.
  */
 export function Product() {
 	const company = useActiveCompany();
 	const { data: me } = useMe();
 	const [search, setSearch] = useState("");
+	const [showTrash, setShowTrash] = useState(false);
 	const debouncedSearch = useDebouncedValue(search, 300);
 
 	const companyId = company?.id;
 	const term = debouncedSearch.trim();
-	const products = useProducts(companyId, debouncedSearch);
+	const products = useProducts(
+		companyId,
+		debouncedSearch,
+		showTrash ? { deleted: true } : undefined,
+	);
 	const canManage = canManageProducts(roleForCompany(me, companyId));
 	const rows = products.data ?? [];
 
@@ -85,13 +97,20 @@ export function Product() {
 			align: "right",
 			render: (row) =>
 				companyId ? (
-					<ProductRowActions companyId={companyId} product={row} />
+					<ProductRowActions
+						companyId={companyId}
+						product={row}
+						mode={showTrash ? "trash" : "active"}
+					/>
 				) : null,
 		});
 	}
 
-	const emptyMessage =
-		term === ""
+	const emptyMessage = showTrash
+		? term === ""
+			? "No hay productos en la papelera."
+			: `No encontramos productos para «${term}» en la papelera.`
+		: term === ""
 			? "Todavía no cargaste productos. Creá el primero con «Nuevo Producto»."
 			: `No encontramos productos para «${term}».`;
 
@@ -106,9 +125,13 @@ export function Product() {
 			<ViewHeader
 				title="Productos"
 				className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-				subTitle={`${rows.length} productos en ${company?.name ?? "Sin empresa"}`}
+				subTitle={
+					showTrash
+						? `${rows.length} productos en la papelera de ${company?.name ?? "Sin empresa"}`
+						: `${rows.length} productos en ${company?.name ?? "Sin empresa"}`
+				}
 			>
-				{canManage ? (
+				{canManage && !showTrash ? (
 					<Link href="/dashboard/products/create" className="w-full sm:w-auto">
 						<Button className="h-12 w-full sm:w-auto">
 							<Plus className="mr-2 size-5" />
@@ -118,9 +141,38 @@ export function Product() {
 				) : null}
 			</ViewHeader>
 
-			<ProductSearch value={search} onChange={setSearch} />
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+				<ProductSearch value={search} onChange={setSearch} />
+				<ButtonGroup
+					role="group"
+					aria-label="Vista de productos"
+					className="w-full sm:w-auto"
+				>
+					<Button
+						type="button"
+						variant={showTrash ? "outline" : "default"}
+						aria-pressed={!showTrash}
+						className="h-10 flex-1 sm:flex-none"
+						onClick={() => setShowTrash(false)}
+					>
+						Catálogo
+					</Button>
+					<Button
+						type="button"
+						variant={showTrash ? "default" : "outline"}
+						aria-pressed={showTrash}
+						className="h-10 flex-1 sm:flex-none"
+						onClick={() => setShowTrash(true)}
+					>
+						Papelera
+					</Button>
+				</ButtonGroup>
+			</div>
 
-			<SectionTitle ariaLabel="Catálogo" title="Catálogo">
+			<SectionTitle
+				ariaLabel={showTrash ? "Papelera" : "Catálogo"}
+				title={showTrash ? "Papelera" : "Catálogo"}
+			>
 				{companyId === undefined ? (
 					<p className="text-sm text-text-muted">
 						Seleccioná una empresa para ver sus productos.

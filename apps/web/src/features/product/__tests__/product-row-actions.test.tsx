@@ -2,16 +2,25 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel } from "@/lib/api/schemas";
 import { useDeleteProduct } from "../api/use-delete-product";
+import { useRestoreProduct } from "../api/use-restore-product";
 import { ProductRowActions } from "../components/product-row-actions";
 
 jest.mock("../api/use-delete-product", () => ({
 	useDeleteProduct: jest.fn(),
 }));
 
+jest.mock("../api/use-restore-product", () => ({
+	useRestoreProduct: jest.fn(),
+}));
+
 const useDeleteProductMock = useDeleteProduct as jest.MockedFunction<
 	typeof useDeleteProduct
 >;
+const useRestoreProductMock = useRestoreProduct as jest.MockedFunction<
+	typeof useRestoreProduct
+>;
 const mutate = jest.fn();
+const restoreMutate = jest.fn();
 
 function product(): ProductModel {
 	return {
@@ -40,8 +49,24 @@ function mockDelete(state: Record<string, unknown> = {}) {
 	} as unknown as ReturnType<typeof useDeleteProduct>);
 }
 
+function mockRestore(state: Record<string, unknown> = {}) {
+	useRestoreProductMock.mockReturnValue({
+		mutate: restoreMutate,
+		isPending: false,
+		isError: false,
+		error: undefined,
+		...state,
+	} as unknown as ReturnType<typeof useRestoreProduct>);
+}
+
 function renderActions() {
 	return render(<ProductRowActions companyId="c1" product={product()} />);
+}
+
+function renderTrashActions() {
+	return render(
+		<ProductRowActions companyId="c1" product={product()} mode="trash" />,
+	);
 }
 
 /** Opens the confirmation dialog from the trash button in the row. */
@@ -54,6 +79,7 @@ describe("ProductRowActions", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockDelete();
+		mockRestore();
 	});
 
 	it("links to the edit view of the product", () => {
@@ -147,10 +173,63 @@ describe("ProductRowActions", () => {
 
 		const dialog = openDialog();
 
+		// The pending label of the confirm button is the WIP's "Eliminando...".
 		expect(
 			within(dialog)
-				.getByRole("button", { name: "Eliminar" })
+				.getByRole("button", { name: /Eliminando/ })
 				.hasAttribute("disabled"),
 		).toBe(true);
+	});
+});
+
+describe("ProductRowActions in the trash", () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+		mockDelete();
+		mockRestore();
+	});
+
+	it("offers only Restaurar, with no edit or delete", () => {
+		renderTrashActions();
+
+		expect(screen.getByRole("button", { name: "Restaurar" })).toBeTruthy();
+		expect(screen.queryByRole("link", { name: "Editar" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Eliminar" })).toBeNull();
+	});
+
+	it("restores without asking for confirmation", () => {
+		renderTrashActions();
+
+		fireEvent.click(screen.getByRole("button", { name: "Restaurar" }));
+
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(restoreMutate).toHaveBeenCalledTimes(1);
+		expect(restoreMutate.mock.calls[0][0]).toEqual({ productId: "p1" });
+		expect(mutate).not.toHaveBeenCalled();
+	});
+
+	it("blocks Restaurar while the restore is in flight", () => {
+		mockRestore({ isPending: true });
+		renderTrashActions();
+
+		const button = screen.getByRole("button", { name: /Restaurando/ });
+
+		expect(button.hasAttribute("disabled")).toBe(true);
+	});
+
+	it("surfaces the API message when the product was already restored", () => {
+		mockRestore({
+			isError: true,
+			error: new ApiError(
+				"El producto ya está activo.",
+				409,
+				"product_not_deleted",
+			),
+		});
+		renderTrashActions();
+
+		expect(screen.getByRole("alert").textContent).toContain(
+			"El producto ya está activo.",
+		);
 	});
 });

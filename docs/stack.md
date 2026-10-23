@@ -694,59 +694,68 @@ una membership está acotada a una empresa, un privilegio de plataforma no.
 
 ---
 
-### 5.9 Despliegue en Vercel: web y API como dos proyectos
+### 5.9 Despliegue en Vercel: un solo proyecto, un solo origen
 
-Railway quedó descartado (su plan gratuito apaga el backend a los 15 días), así que **todo el
-proyecto vive en Vercel**: la web como proyecto Next.js y el API como Vercel Function. Son **dos
-proyectos** del mismo repositorio, cada uno con su *Root Directory* (`apps/web` y `apps/api`), Node
-**24.x** (el default para proyectos nuevos) y `bun` como gestor de paquetes.
+Railway quedó descartado (su plan gratuito apaga el backend a los 15 días) y **no hay presupuesto para un
+dominio**, así que todo vive en **un único proyecto de Vercel** (Root Directory `apps/web`, Node 24.x, `bun`).
+La web y el API comparten **host y origen**.
 
-**El API como función.** `apps/api/src/create-application.ts` compone la aplicación y la expone con
-`createApplication()`; `src/main.ts` sólo agrega `listen` (entry de proceso), y `apps/api/api/index.ts`
-**exporta la app** como entry de función. `apps/api/vercel.json` hace el resto:
+**Por qué un solo proyecto y no dos.** Las cookies de sesión son `httpOnly` + `SameSite=Lax`, y `Lax` se
+evalúa por **sitio** (dominio registrable): `vercel.app` está en la Public Suffix List, así que dos proyectos
+darían dos sitios distintos y el refresh nunca viajaría. La alternativa, `SameSite=None`, depende de cookies
+de terceros, que **Safari/iOS y Firefox bloquean por defecto**. Separar el repo en dos tampoco cambia nada:
+seguirían siendo dos hosts. Un solo origen elimina el problema de raíz, sin dominio ni plan pago.
 
-| Clave | Para qué |
+**Cómo se sirve el API.** `apps/web/pages/api/[...path].ts` importa `createApplication()` del paquete
+`api` (el build, no las fuentes) y le pasa el `req`/`res` de Node. `next.config.js` reescribe los prefijos
+públicos a esa ruta:
+
+| Público (lo que ve el navegador) | Destino interno |
 | --- | --- |
-| `"rewrites": [{ "source": "/(.*)", "destination": "/api" }]` | Toda ruta entra por la función, así `/auth/refresh` sigue estando en la raíz y la cookie con `Path=/auth` viaja |
-| `"buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then bun run db:deploy; ..."` | Las migraciones corren **en el deploy de producción** (Vercel nunca ejecuta `start`) y **no** en previews, que apuntan a la misma base; `migrate deploy` toma un advisory lock, así que dos builds simultáneos no se pisan |
-| `"includeFiles": "openapi.yaml"` | El contrato viaja con la función para que `/docs` no responda 500 |
+| `/auth/*` | `/api/auth/*` |
+| `/companies/*` · `/me` · `/health` · `/docs/*` | `/api/...` |
 
-`apps/api/api/index.ts` importa **sin sufijo `.js`** y queda fuera de `tsconfig.check.json`: el
-paquete compila con NodeNext (que exige el sufijo) y el bundler de funciones resuelve el archivo
-TypeScript desde el especificador pelado. Está comentado en el archivo para que no se "arregle" por
-error.
+El handler **quita** el prefijo `/api` antes de entregar la request a Express, así las rutas siguen
+declaradas como siempre. Es un detalle funcional, no cosmético: la cookie tiene `Path=/auth`, y el navegador
+sólo la manda si el path público empieza con `/auth`.
 
-**La restricción que manda: las cookies.** La sesión usa dos cookies `httpOnly` con
-`SameSite=Lax` y `Path=/auth`. `Lax` se evalúa por **sitio** (dominio registrable), y `vercel.app`
-está en la **Public Suffix List**: `mi-app.vercel.app` y `mi-api.vercel.app` son **dos sitios
-distintos** para el navegador y el refresh no viaja. Por eso el despliegue exige **un dominio propio
-con la web y el API como subdominios** (`app.<dominio>` y `api.<dominio>`); sin eso hay que pasar a
-`SameSite=None` **con protección CSRF**, que es un cambio de código y de superficie de ataque.
+Dos decisiones que parecen raras y no lo son:
 
-**Variables por proyecto** (las del API son obligatorias en producción: `env.ts` falla al arrancar y
-nombra la que falta):
+- **Pages API route y no un handler del App Router.** Los handlers del App Router reciben `Request`/`Response`
+  del estándar web; Express necesita `IncomingMessage`/`ServerResponse` de Node, que es exactamente lo que
+  sigue dando el Pages Router. Cero adaptadores, cero dependencias nuevas.
+- **Se importa `api` (el paquete construido) y no `api/src/...`.** Las fuentes del API usan NodeNext, con
+  sufijo `.js` en cada import; Turbopack (el bundler por defecto de Next 16) no resuelve `./x.js` a `./x.ts`.
+  Por eso `apps/api` compila a `dist/` con declaraciones (`"main"`/`"types"` en su `package.json`) y la web
+  importa el build. Consecuencia para desarrollo: **después de tocar el API hay que correr
+  `bun run build:api`** (en `apps/web`) para que la ruta de Next vea el código nuevo.
 
-| Proyecto | Variable | Nota |
-| --- | --- | --- |
-| web | `NEXT_PUBLIC_API_URL` | `https://api.<dominio>`; **se inlinea en el build**, si cambia hay que redeployar |
-| web | `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` | opcional, default `15` |
-| API | `DATABASE_URL` | pooler de Supabase (6543, `?pgbouncer=true`) — la usa el runtime |
-| API | `DIRECT_URL` | conexión directa (5432) — la usa **sólo el build**, para migrar |
-| API | `WEB_ORIGIN` | `https://app.<dominio>`, exacto: CORS con credenciales no acepta comodín |
-| API | `AUTH0_DOMAIN` · `AUTH0_AUDIENCE` · `AUTH0_CLIENT_ID` · `AUTH0_CLIENT_SECRET` · `AUTH0_CONNECTION` | ROPG; el tenant no necesita callback URLs |
-| API | `CLOUDINARY_CLOUD_NAME` · `CLOUDINARY_API_KEY` · `CLOUDINARY_API_SECRET` | firma de subida directa |
-| API | `SESSION_IDLE_TIMEOUT_MINUTES` | opcional, default `7200` (5 días) |
+**Build y migraciones.** `apps/web/vercel.json` define el `buildCommand`:
+`if [ "$VERCEL_ENV" = "production" ]; then (cd ../api && bun run db:deploy); fi && bun run build`.
+Las migraciones corren **sólo en producción** (un preview apunta a la misma base) y el build de la web
+encadena `build:api` = `prisma generate` + `tsc` del API. `prisma generate` va explícito porque un proyecto
+con Root Directory `apps/web` no ejecuta el `postinstall` del API.
 
-**Lo que sigue siendo cierto en serverless** (por eso §5.2 no se borra): `express-rate-limit` guarda
-los contadores **en memoria**, así que con varias instancias el límite de login es por instancia y no
-global; hay cold starts; cada instancia abre su propio pool `pg` contra el pooler; y las *preview
-deployments* tienen un host aleatorio, así que con `WEB_ORIGIN` fijo se caen por CORS (sirven para
-páginas públicas o hay que setear `WEB_ORIGIN` por entorno).
+**Variables (todas en el proyecto único).** En producción, `env.ts` falla al arrancar y nombra la que falta.
 
-**Verificación mínima después de desplegar:** `GET /health` → 200 · login → 200 con **dos**
-`Set-Cookie` (`refresh_token`, `session_id`), `Secure`+`HttpOnly`+`SameSite=Lax`+`Path=/auth` ·
-recargar restaura la sesión · logout y replay de las cookies viejas → 401 · `OPTIONS` con
-`Origin: https://app.<dominio>` devuelve ese origen y `credentials` · `/docs` carga el contrato.
+| Variable | Nota |
+| --- | --- |
+| `DATABASE_URL` | pooler de Supabase (6543, `?pgbouncer=true`) — la usa el runtime |
+| `DIRECT_URL` | conexión directa (5432) — la usa **sólo el build**, para migrar |
+| `AUTH0_DOMAIN` · `AUTH0_AUDIENCE` · `AUTH0_CLIENT_ID` · `AUTH0_CLIENT_SECRET` · `AUTH0_CONNECTION` | ROPG; el tenant no necesita callback URLs |
+| `CLOUDINARY_CLOUD_NAME` · `CLOUDINARY_API_KEY` · `CLOUDINARY_API_SECRET` | firma de subida directa |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | opcional, default `7200` (5 días) |
+| `WEB_ORIGIN` | el origen del proyecto; con un solo origen ya no es load-bearing (CORS sobra), se mantiene porque `env.ts` la exige en producción |
+| `NEXT_PUBLIC_API_URL` | **origen relativo** (`/`): el cliente Axios pega contra el mismo host |
+| `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` | opcional, default `15` |
+
+**Sigue siendo cierto en serverless:** `express-rate-limit` guarda los contadores en memoria (el límite de
+login es por instancia, no global), hay cold starts y cada instancia abre su propio pool `pg` contra el
+pooler. Los previews no migran, así que un preview ve el esquema de producción.
+
+**Opción guardada para el futuro:** si algún día hay dominio (comprado o gratis en `eu.org`, que no está en
+la PSL), el API puede volver a desplegarse como proyecto propio: `apps/api/api/index.ts` +
+`apps/api/vercel.json` ya están y funcionan con `app.` y `api.` como subdominios. Es configuración, no código.
 
 ## 6. Pendientes y su resolución
 

@@ -4,6 +4,16 @@ config();
 
 const DEFAULT_PORT = 3001;
 
+/**
+ * Five days without activity is what makes a session's credential unusable.
+ *
+ * It is a default, not a law: `SESSION_IDLE_TIMEOUT_MINUTES` exists so the
+ * behaviour can be observed without waiting days, and because the browser
+ * window (15 minutes, enforced by the web client) is the other half of the
+ * same policy.
+ */
+const DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES = 5 * 24 * 60;
+
 const NODE_ENVIRONMENTS = ["development", "test", "production"] as const;
 
 export type NodeEnvironment = (typeof NODE_ENVIRONMENTS)[number];
@@ -30,6 +40,26 @@ function readPort(source: EnvSource = process.env): number {
 	}
 
 	return port;
+}
+
+function readSessionIdleTimeoutMinutes(
+	source: EnvSource = process.env,
+): number {
+	const raw = readOptional("SESSION_IDLE_TIMEOUT_MINUTES", source);
+	if (raw === undefined) {
+		return DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES;
+	}
+
+	// A decimal is accepted on purpose: a test or a local run sets `0.05` and
+	// sees the session expire in three seconds instead of five days. Zero and
+	// negatives are rejected — a zero window would expire every session on the
+	// spot and look like a broken login.
+	const minutes = Number(raw);
+	if (!Number.isFinite(minutes) || minutes <= 0) {
+		throw new Error(`Invalid SESSION_IDLE_TIMEOUT_MINUTES value: "${raw}"`);
+	}
+
+	return minutes;
 }
 
 function readNodeEnvironment(source: EnvSource = process.env): NodeEnvironment {
@@ -179,6 +209,12 @@ export function loadEnv(source: EnvSource = process.env) {
 			cloudName: readRequired("CLOUDINARY_CLOUD_NAME", nodeEnv, source),
 			apiKey: readRequired("CLOUDINARY_API_KEY", nodeEnv, source),
 			apiSecret: readRequired("CLOUDINARY_API_SECRET", nodeEnv, source),
+		},
+		// The credential window enforced on `POST /auth/refresh`. Optional in
+		// every environment: the default is the shipped policy, the variable is
+		// the knob used to test it.
+		session: {
+			idleTimeoutMinutes: readSessionIdleTimeoutMinutes(source),
 		},
 	} as const;
 }

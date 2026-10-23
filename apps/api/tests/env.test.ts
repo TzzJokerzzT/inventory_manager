@@ -44,6 +44,33 @@ describe("loadEnv defaults", () => {
 		expect(env.auth0.domain).toBeUndefined();
 	});
 
+	it("defaults the session idle window to five days", () => {
+		const env = loadEnv({});
+
+		// 5 * 24 * 60: the credential window that ships.
+		expect(env.session.idleTimeoutMinutes).toBe(7200);
+	});
+
+	it("accepts a decimal session idle window so it can be exercised in seconds", () => {
+		const env = loadEnv({ SESSION_IDLE_TIMEOUT_MINUTES: "0.05" });
+
+		expect(env.session.idleTimeoutMinutes).toBe(0.05);
+	});
+
+	it("rejects a session idle window that is zero, negative or not a number", () => {
+		// A zero window would expire every session on the spot and read as a
+		// broken login, so it fails at boot instead of at the first refresh.
+		expect(() => loadEnv({ SESSION_IDLE_TIMEOUT_MINUTES: "0" })).toThrow(
+			/Invalid SESSION_IDLE_TIMEOUT_MINUTES/,
+		);
+		expect(() => loadEnv({ SESSION_IDLE_TIMEOUT_MINUTES: "-5" })).toThrow(
+			/Invalid SESSION_IDLE_TIMEOUT_MINUTES/,
+		);
+		expect(() => loadEnv({ SESSION_IDLE_TIMEOUT_MINUTES: "soon" })).toThrow(
+			/Invalid SESSION_IDLE_TIMEOUT_MINUTES/,
+		);
+	});
+
 	it("reads every value when the source is complete", () => {
 		const env = loadEnv(validSource);
 

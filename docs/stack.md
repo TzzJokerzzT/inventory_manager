@@ -347,6 +347,18 @@ Qué implica en el código:
   protección CSRF** (decisión de despliegue).
 - **AUTH-04 (recuperación de contraseña), MFA y login social salen del alcance de desarrollo**:
   los provee Auth0.
+- **Tabla `sessions` y ventana de inactividad:** la cookie de refresh no se puede revocar, así que
+  el servidor guarda una fila por sesión (`sessions`, con `last_activity_at` y `revoked_at`) y la
+  cookie `session_id` (`httpOnly`, `Path=/auth`, mismos flags) viaja junto al refresh token. Las
+  dos ventanas son distintas a propósito: **15 minutos** sin interacción en una pestaña abierta
+  cierran la sesión en el cliente (con un modal de aviso y el botón *Seguir conectado* dos minutos
+  antes), y **5 días** sin actividad hacen que `POST /auth/refresh` responda 401, de modo que la
+  persona tenga que volver a entrar. La ventana de credencial se configura con
+  `SESSION_IDLE_TIMEOUT_MINUTES` (minutos, admite decimales para probar; por defecto `7200`) y la
+  del navegador con `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` (por defecto `15`). El logout marca
+  `revoked_at`, así que reusar las cookies viejas devuelve 401; la revocación del token en Auth0
+  sigue fuera de alcance (Management API). Las cookies emitidas **antes** de este cambio no traen
+  `session_id`: el primer refresh responde 401 y pide un único login.
 - **Tabla `users` local:** el vínculo con Auth0 es el claim `sub`. Guardar `auth0_sub UNIQUE` y
   **no** almacenar contraseñas.
 - **Frontend: sin SDK de Auth0 y sin variables `NEXT_PUBLIC_AUTH0_*`.** Con ROPG el SPA envía las

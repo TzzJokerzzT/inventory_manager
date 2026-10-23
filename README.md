@@ -528,12 +528,12 @@ Todos desde la raíz del monorepo:
 
 ### Despliegue
 
-El proyecto se despliega en **Vercel** como dos proyectos del monorepo: la web (`apps/web`) y el API
-(`apps/api`) como función, con un dominio propio y la web y el API en subdominios del mismo dominio
-registrable (las cookies de sesión son `SameSite=Lax` y `*.vercel.app` son sitios distintos).
-El API migra la base en su build, y sus variables están en la tabla de arriba. El detalle completo,
-con el `vercel.json`, la tabla de variables por proyecto y las advertencias de serverless, está en
-`docs/stack.md` §5.9.
+Todo se despliega en **Vercel como un solo proyecto** (Root Directory `apps/web`): la web y el API comparten
+host y origen, así la cookie de sesión (`SameSite=Lax`, `Path=/auth`) es first-party y no hace falta dominio
+propio. El API se sirve desde `apps/web/pages/api/[...path].ts`, que monta la aplicación Express, y
+`next.config.js` reescribe `/auth/*`, `/companies/*`, `/me`, `/health` y `/docs/*` hacia esa ruta. Las
+migraciones corren en el build sólo en producción (`apps/web/vercel.json`). El detalle completo, la tabla de
+variables y las advertencias de serverless están en `docs/stack.md` §5.9.
 
 ### Build de producción
 

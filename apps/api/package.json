@@ -3,6 +3,8 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
+	"main": "dist/create-application.js",
+	"types": "dist/create-application.d.ts",
 	"scripts": {
 		"dev": "prisma migrate deploy && bun --watch src/main.ts",
 		"build": "tsc -p tsconfig.json",

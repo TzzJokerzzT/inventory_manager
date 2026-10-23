@@ -13,7 +13,9 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"sourceMap": true,
-		"noEmitOnError": true
+		"noEmitOnError": true,
+		// The web project imports the compiled app, so the types travel with it.
+		"declaration": true
 	},
 	"include": ["src/**/*.ts"],
 	"exclude": ["node_modules", "dist"]

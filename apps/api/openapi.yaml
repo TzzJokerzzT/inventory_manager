@@ -672,9 +672,11 @@ paths:
       tags: [products]
       summary: List the company's products
       description: |
-        Lists the products of the company the caller has context for. Products
-        with `deletedAt` set are never returned: a soft-deleted product is not
-        part of the catalogue any more.
+        Lists the products of the company the caller has context for. By
+        default the soft-deleted products are never returned: a product with
+        `deletedAt` set is not part of the catalogue any more. With
+        `deleted=true` the same read returns **exactly** those products (the
+        trash), with the same search and ordering.
 
         The list is always scoped to the company, and the `companyId` goes into
         the query rather than into a post-filter. The order is deterministic

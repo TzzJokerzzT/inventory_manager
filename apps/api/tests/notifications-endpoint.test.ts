@@ -79,6 +79,9 @@ describe("me notifications endpoints", () => {
 			loginWithCredentials: {} as never,
 			registerUser: {} as never,
 			refreshSession: {} as never,
+			startSession: {} as never,
+			resumeSession: {} as never,
+			endSession: {} as never,
 			updateUserFullName: {} as never,
 			mediaUploadSigner: {} as never,
 			requireAuth: createRequireAuth({

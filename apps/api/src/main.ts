@@ -6,6 +6,7 @@ import { CreateCustomerUseCase } from "./application/use-cases/create-customer.j
 import { CreateProductUseCase } from "./application/use-cases/create-product.js";
 import { DeleteCustomerUseCase } from "./application/use-cases/delete-customer.js";
 import { DeleteProductUseCase } from "./application/use-cases/delete-product.js";
+import { EndSessionUseCase } from "./application/use-cases/end-session.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
 import { GetCustomerUseCase } from "./application/use-cases/get-customer.js";
 import { GetMovementTrendUseCase } from "./application/use-cases/get-movement-trend.js";
@@ -26,7 +27,9 @@ import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.j
 import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { RestoreProductUseCase } from "./application/use-cases/restore-product.js";
+import { ResumeSessionUseCase } from "./application/use-cases/resume-session.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
+import { StartSessionUseCase } from "./application/use-cases/start-session.js";
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
 import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
@@ -38,6 +41,7 @@ import { PrismaCustomerRepository } from "./infrastructure/database/prisma-custo
 import { PrismaMembershipRepository } from "./infrastructure/database/prisma-membership-repository.js";
 import { PrismaNotificationRepository } from "./infrastructure/database/prisma-notification-repository.js";
 import { PrismaProductRepository } from "./infrastructure/database/prisma-product-repository.js";
+import { PrismaSessionRepository } from "./infrastructure/database/prisma-session-repository.js";
 import { PrismaStockMovementRepository } from "./infrastructure/database/prisma-stock-movement-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { CloudinaryUploadSigner } from "./infrastructure/storage/cloudinary-upload-signer.js";
@@ -61,6 +65,7 @@ const notificationRepository = new PrismaNotificationRepository({ prisma });
 const productRepository = new PrismaProductRepository({ prisma });
 const customerRepository = new PrismaCustomerRepository({ prisma });
 const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
+const sessionRepository = new PrismaSessionRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
 // but both the login endpoint and the protected routes cannot work without
@@ -151,6 +156,15 @@ const app = buildApp({
 	}),
 	registerUser: new RegisterUserUseCase({ identityProvider }),
 	refreshSession: new RefreshSessionUseCase({ identityProvider }),
+	startSession: new StartSessionUseCase({ sessionRepository }),
+	// The idle window owns the credential: the entity stores when the session
+	// was last used, and this injected limit decides whether that is still
+	// enough. Converting minutes to milliseconds happens once, here.
+	resumeSession: new ResumeSessionUseCase({
+		sessionRepository,
+		idleTimeoutMs: env.session.idleTimeoutMinutes * 60_000,
+	}),
+	endSession: new EndSessionUseCase({ sessionRepository }),
 	updateUserFullName: new UpdateUserFullNameUseCase({ userRepository }),
 	requireAuth: createRequireAuth({
 		issuerBaseURL: `https://${domain}/`,

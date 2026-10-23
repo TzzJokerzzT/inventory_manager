@@ -55,6 +55,9 @@ describe("me endpoint", () => {
 			getCurrentUser,
 			updateUserFullName,
 			refreshSession: {} as never,
+			startSession: {} as never,
+			resumeSession: {} as never,
+			endSession: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,

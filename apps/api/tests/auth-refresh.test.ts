@@ -6,22 +6,29 @@ import type {
 	IdentityProviderCredentials,
 	IdentityTokens,
 } from "../src/application/ports/identity-provider.js";
+import { hashRefreshToken } from "../src/application/session-token-hash.js";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
+import { EndSessionUseCase } from "../src/application/use-cases/end-session.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "../src/application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "../src/application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "../src/application/use-cases/register-user.js";
+import { ResumeSessionUseCase } from "../src/application/use-cases/resume-session.js";
+import { StartSessionUseCase } from "../src/application/use-cases/start-session.js";
+import { Session } from "../src/domain/entities/session.js";
 import { IdentityProviderUnavailableError } from "../src/domain/errors/identity-provider-unavailable-error.js";
 import {
 	REFRESH_TOKEN_REJECTED_MESSAGE,
 	RefreshTokenRejectedError,
 } from "../src/domain/errors/refresh-token-rejected-error.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
+import { InMemorySessionRepository } from "../src/infrastructure/database/in-memory-session-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import {
 	type AuthCookieOptions,
 	REFRESH_TOKEN_COOKIE_NAME,
 	REFRESH_TOKEN_MAX_AGE_MS,
+	SESSION_COOKIE_NAME,
 } from "../src/interfaces/http/controllers/auth-controller.js";
 import { AUTH_REFRESH_RATE_LIMIT } from "../src/interfaces/http/middlewares/rate-limit.js";
 import { createFakeUserRepository } from "./support/fake-user-repository.js";
@@ -31,6 +38,21 @@ const ACCESS_TOKEN = "fresh-access-token";
 const OLD_REFRESH_TOKEN = "old-refresh-token";
 const NEW_REFRESH_TOKEN = "new-refresh-token";
 const EXPIRES_IN = 3600;
+const SESSION_ID = "44444444-4444-4444-8444-444444444444";
+const USER_ID = "55555555-5555-4555-8555-555555555555";
+/** Fixed "now": the seeded session is active at this instant and no test sleeps. */
+const NOW = new Date("2026-01-01T00:00:00.000Z");
+/** Wide enough that every test in this file works on a live session. */
+const LIVE_IDLE_TIMEOUT_MS = REFRESH_TOKEN_MAX_AGE_MS;
+
+/**
+ * The pair the browser sends once a session exists. Both cookies are required:
+ * the refresh token alone is no longer exchangeable, which is what makes the
+ * server-side session revocable.
+ */
+function sessionCookies(refreshToken: string = OLD_REFRESH_TOKEN): string {
+	return `${REFRESH_TOKEN_COOKIE_NAME}=${refreshToken}; ${SESSION_COOKIE_NAME}=${SESSION_ID}`;
+}
 
 class FakeIdentityProvider implements IdentityProvider {
 	refreshResult: IdentityTokens | Error = {
@@ -81,6 +103,14 @@ function createTestApp(options: {
 }) {
 	const companyRepository = new InMemoryCompanyRepository();
 	const userRepository = createFakeUserRepository();
+	const sessionRepository = new InMemorySessionRepository([
+		Session.create({
+			id: SESSION_ID,
+			userId: USER_ID,
+			createdAt: NOW,
+			refreshTokenHash: hashRefreshToken(OLD_REFRESH_TOKEN),
+		}),
+	]);
 
 	return buildApp({
 		createCompany: new CreateCompanyUseCase({ companyRepository }),
@@ -94,6 +124,19 @@ function createTestApp(options: {
 		}),
 		refreshSession: new RefreshSessionUseCase({
 			identityProvider: options.provider,
+		}),
+		startSession: new StartSessionUseCase({
+			sessionRepository,
+			clock: () => NOW,
+		}),
+		resumeSession: new ResumeSessionUseCase({
+			sessionRepository,
+			idleTimeoutMs: LIVE_IDLE_TIMEOUT_MS,
+			clock: () => NOW,
+		}),
+		endSession: new EndSessionUseCase({
+			sessionRepository,
+			clock: () => NOW,
 		}),
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
@@ -159,7 +202,7 @@ describe("POST /auth/refresh", () => {
 
 		const response = await request(createTestApp({ provider }))
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies());
 
 		expect(response.status).toBe(200);
 		expect(response.body).toEqual({
@@ -171,16 +214,20 @@ describe("POST /auth/refresh", () => {
 
 		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
-		expect(cookies).toHaveLength(1);
+		// The rotated refresh cookie plus the session cookie, which slides with
+		// every successful refresh so an active session never loses half of the
+		// pair.
+		expect(cookies).toHaveLength(2);
 		expect(cookies?.[0]).toContain(
 			`${REFRESH_TOKEN_COOKIE_NAME}=${NEW_REFRESH_TOKEN}`,
 		);
 		expect(cookies?.[0]).toContain("Path=/auth");
 		expect(cookies?.[0]).toContain("HttpOnly");
 		expect(cookies?.[0]).toContain("SameSite=Lax");
+		expect(cookies?.[1]).toContain(`${SESSION_COOKIE_NAME}=${SESSION_ID}`);
 	});
 
-	it("omits Set-Cookie when the provider does not rotate the refresh token", async () => {
+	it("re-sets only the session cookie when the provider does not rotate the refresh token", async () => {
 		const provider = new FakeIdentityProvider();
 		provider.refreshResult = {
 			accessToken: ACCESS_TOKEN,
@@ -189,14 +236,17 @@ describe("POST /auth/refresh", () => {
 
 		const response = await request(createTestApp({ provider }))
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies());
 
 		expect(response.status).toBe(200);
 		expect(response.body).toEqual({
 			accessToken: ACCESS_TOKEN,
 			expiresIn: EXPIRES_IN,
 		});
-		expect(response.headers["set-cookie"]).toBeUndefined();
+		const cookies = responseCookies(response.headers["set-cookie"]);
+		expect(cookies).toHaveLength(1);
+		expect(cookies?.[0]).toContain(`${SESSION_COOKIE_NAME}=${SESSION_ID}`);
+		expect(cookies?.[0]).not.toContain(REFRESH_TOKEN_COOKIE_NAME);
 	});
 
 	it("returns 401 with the uniform message when the cookie is absent", async () => {
@@ -222,7 +272,7 @@ describe("POST /auth/refresh", () => {
 			createTestApp({ provider: rejectedProvider }),
 		)
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies());
 
 		expect(rejected.status).toBe(401);
 		expect(rejected.body).toEqual(noCookie.body);
@@ -239,7 +289,7 @@ describe("POST /auth/refresh", () => {
 
 		const response = await request(createTestApp({ provider }))
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies());
 
 		expect(response.status).toBe(503);
 		expect(response.status).not.toBe(401);
@@ -251,16 +301,20 @@ describe("POST /auth/refresh", () => {
 	it("returns 429 once the configured refresh attempts are exceeded", async () => {
 		const app = createTestApp({ provider: new FakeIdentityProvider() });
 
+		// Every successful exchange rotates the token and the session re-binds to
+		// it, so the loop follows the cookie the browser would send next.
+		let currentToken = OLD_REFRESH_TOKEN;
 		for (let attempt = 0; attempt < AUTH_REFRESH_RATE_LIMIT; attempt++) {
 			const response = await request(app)
 				.post("/auth/refresh")
-				.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+				.set("Cookie", sessionCookies(currentToken));
 			expect(response.status).toBe(200);
+			currentToken = NEW_REFRESH_TOKEN;
 		}
 
 		const exceeded = await request(app)
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies(currentToken));
 
 		expect(exceeded.status).toBe(429);
 	});
@@ -272,14 +326,14 @@ describe("POST /auth/refresh", () => {
 			createTestApp({ provider: new FakeIdentityProvider() }),
 		)
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies());
 		expect(success.status).toBe(200);
 
 		const rejectedProvider = new FakeIdentityProvider();
 		rejectedProvider.refreshResult = new RefreshTokenRejectedError();
 		const failure = await request(createTestApp({ provider: rejectedProvider }))
 			.post("/auth/refresh")
-			.set("Cookie", `${REFRESH_TOKEN_COOKIE_NAME}=${OLD_REFRESH_TOKEN}`);
+			.set("Cookie", sessionCookies());
 		expect(failure.status).toBe(401);
 
 		const output = spies.output();

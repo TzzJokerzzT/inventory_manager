@@ -95,6 +95,9 @@ describe("POST /companies/:companyId/members", () => {
 			loginWithCredentials: {} as never,
 			registerUser: {} as never,
 			refreshSession: {} as never,
+			startSession: {} as never,
+			resumeSession: {} as never,
+			endSession: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,

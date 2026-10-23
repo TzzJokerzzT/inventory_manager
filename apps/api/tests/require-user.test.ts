@@ -44,6 +44,9 @@ describe("requireUser", () => {
 				createCompany: new CreateCompanyUseCase({ companyRepository }),
 				listCompanies: new ListCompaniesUseCase({ companyRepository }),
 				refreshSession: {} as never,
+				startSession: {} as never,
+				resumeSession: {} as never,
+				endSession: {} as never,
 				requireAuth: createRequireAuth({
 					issuerBaseURL: issuer.issuerBaseURL,
 					audience: TEST_AUDIENCE,

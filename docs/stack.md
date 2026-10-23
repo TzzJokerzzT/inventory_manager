@@ -201,12 +201,15 @@ consistencia fuerte: una salida de stock y su movimiento deben confirmarse o fal
   migraciones editadas a mano (ver §3.2).
 - Comandos: `db:generate` · `db:migrate` (desarrollo local) · `db:deploy` (aplicar migraciones) ·
   `db:status` · `db:studio`.
-- **Producción — `TODO(migrations)`:** **hoy nada aplica las migraciones a la base real.** El job
-  `migrations` de CI corre `db:deploy` contra un Postgres **efímero** (`postgres:17` como service
-  container, nunca el proyecto de Supabase), el `build` del API es sólo `tsc -p tsconfig.json` y no
-  hay `vercel.json`, así que **ningún** paso del deploy ejecuta `db:deploy` contra producción.
-  Mientras siga así, aplicar una migración es un **paso manual obligatorio**:
-  `cd apps/api && bun run db:deploy`.
+- **Migraciones al arrancar:** los dos puntos de entrada del API (`bun run dev` y `bun run start`
+  en `apps/api`) corren **`prisma migrate deploy` antes de levantar** el proceso, así que una
+  migración pendiente se aplica sola y un modelo nuevo no puede llegar al runtime como tabla
+  faltante. `migrate deploy` toma un lock de aviso en la base, así que dos réplicas arrancando a la
+  vez no se pisan.
+- **Excepción — serverless:** un deploy como función (Vercel) **no ejecuta `start`**, así que ahí el
+  pipeline tiene que correr `cd apps/api && bun run db:deploy` por su cuenta. Hoy no hay
+  `vercel.json`; si se agrega, este paso va con él. El job `migrations` de CI sigue aplicando
+  `db:deploy` contra un Postgres **efímero** (`postgres:17`), nunca contra el proyecto de Supabase.
 - **Por qué esto muerde:** una migración sin aplicar no rompe los tests. El modelo está en el schema,
   el cliente Prisma lo conoce y la suite pasa, porque los tests usan dobles in-memory y **nunca**
   tocan la base. El síntoma aparece sólo en producción: la tabla no existe y cada query sobre ella
@@ -321,7 +324,8 @@ solución ya está **decidida y construida**:
 - El **CLI y las migraciones** usan la **URL directa** (session pooler, puerto 5432), configurada en
   `prisma.config.ts` desde `DIRECT_URL`.
 
-Las **migraciones no corren en el runtime** de la función: van en el pipeline de CI (`db:deploy`).
+Las **migraciones no corren en el runtime** de la función: en un deploy serverless van en el
+pipeline (`db:deploy`). Un deploy como proceso (`bun run start`) sí las aplica al arrancar.
 
 ### 5.4 Autenticación con Auth0
 
@@ -347,6 +351,21 @@ Qué implica en el código:
   protección CSRF** (decisión de despliegue).
 - **AUTH-04 (recuperación de contraseña), MFA y login social salen del alcance de desarrollo**:
   los provee Auth0.
+- **Tabla `sessions` y ventana de inactividad:** la cookie de refresh no se puede revocar, así que
+  el servidor guarda una fila por sesión (`sessions`, con `last_activity_at` y `revoked_at`) y la
+  cookie `session_id` (`httpOnly`, `Path=/auth`, mismos flags) viaja junto al refresh token. Las
+  dos ventanas son distintas a propósito: **15 minutos** sin interacción en una pestaña abierta
+  cierran la sesión en el cliente (con un modal de aviso y el botón *Seguir conectado* dos minutos
+  antes), y **5 días** sin actividad hacen que `POST /auth/refresh` responda 401, de modo que la
+  persona tenga que volver a entrar. La ventana de credencial se configura con
+  `SESSION_IDLE_TIMEOUT_MINUTES` (minutos, admite decimales para probar; por defecto `7200`) y la
+  del navegador con `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` (por defecto `15`). La fila guarda
+  el **digest sha256 del refresh token** con el que nació (`refresh_token_hash`, el token nunca se
+  almacena), y el gate lo compara en cada refresh: así una cookie robada no se puede canjear al lado
+  del `session_id` de otra sesión, y el digest rota cuando el proveedor rota el token. El logout marca
+  `revoked_at`, así que reusar las cookies viejas devuelve 401; la revocación del token en Auth0
+  sigue fuera de alcance (Management API). Las cookies emitidas **antes** de este cambio no traen
+  `session_id`: el primer refresh responde 401 y pide un único login.
 - **Tabla `users` local:** el vínculo con Auth0 es el claim `sub`. Guardar `auth0_sub UNIQUE` y
   **no** almacenar contraseñas.
 - **Frontend: sin SDK de Auth0 y sin variables `NEXT_PUBLIC_AUTH0_*`.** Con ROPG el SPA envía las

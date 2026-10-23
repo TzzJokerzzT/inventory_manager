@@ -46,6 +46,15 @@ paths:
       description: |
         On success the refresh token is set in an httpOnly cookie and only the
         access token (plus its lifetime) is returned in the body.
+
+        Two httpOnly cookies are set, both with `path=/auth`:
+
+        - `refresh_token` — the provider's long-lived token;
+        - `session_id` — the id of the server-side session that makes the pair
+          revocable and idle-limited. It is useless on its own: `POST
+          /auth/refresh` requires both.
+
+        A provider that issues no refresh token sets neither cookie.
       requestBody:
         required: true
         content:
@@ -122,20 +131,34 @@ paths:
       summary: Exchange the refresh cookie for a fresh token pair
       description: |
         The refresh token is read from the httpOnly cookie, never from the
-        body. On success the cookie is rotated when the provider issues a new
-        refresh token.
+        body, and the request requires **both** the `refresh_token` and the
+        `session_id` cookies: the session is what makes the credential
+        revocable and idle-limited.
+
+        The two have to belong together. The session row stores a digest of the
+        refresh token it was issued for, so pairing a stolen token with somebody
+        else's live session id is rejected exactly like an expired session.
+
+        On success the cookie is rotated when the provider issues a new
+        refresh token, and the session cookie is re-set so an active session
+        never loses half of the pair.
+
+        The session gate runs before the token exchange: a session that is
+        unknown, revoked or idle for longer than `SESSION_IDLE_TIMEOUT_MINUTES`
+        (default five days) is rejected without spending the refresh token.
       responses:
         "200":
-          description: Refresh token accepted.
+          description: Refresh token accepted and the session activity renewed.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
         "401":
           description: |
-            The refresh cookie is missing or the provider rejected it. The
-            message is uniform so a missing cookie and an expired token are
-            indistinguishable.
+            The pair is missing, the session is unknown, revoked or idle past
+            its window, or the provider rejected the refresh token. The message
+            is uniform so none of those causes is distinguishable, and the
+            response clears both cookies.
           content:
             application/json:
               schema:
@@ -150,13 +173,22 @@ paths:
   /auth/logout:
     post:
       tags: [auth]
-      summary: Clear the refresh-token cookie
+      summary: End the session and clear both session cookies
       description: |
         Deliberately not behind authentication: an expired access token must
-        not block signing out. No provider revocation is performed.
+        not block signing out.
+
+        Logout revokes the server-side session (`revoked_at`), so replaying the
+        same cookies against `POST /auth/refresh` answers 401 and the person
+        must sign in again. No provider-side revocation is performed: revoking
+        the issued refresh token needs the Auth0 Management API and is out of
+        scope, so what becomes unusable is this API's only path to exchange it.
+
+        Idempotent: no cookie, an unknown session id and an already revoked
+        session all answer the same 204.
       responses:
         "204":
-          description: The refresh cookie is cleared; no body is returned.
+          description: Both session cookies are cleared; no body is returned.
         "429":
           $ref: "#/components/responses/RateLimited"
         "500":

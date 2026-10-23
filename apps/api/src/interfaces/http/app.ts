@@ -14,6 +14,7 @@ import type { CreateCustomerUseCase } from "../../application/use-cases/create-c
 import type { CreateProductUseCase } from "../../application/use-cases/create-product.js";
 import type { DeleteCustomerUseCase } from "../../application/use-cases/delete-customer.js";
 import type { DeleteProductUseCase } from "../../application/use-cases/delete-product.js";
+import type { EndSessionUseCase } from "../../application/use-cases/end-session.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
 import type { GetCustomerUseCase } from "../../application/use-cases/get-customer.js";
 import type { GetMovementTrendUseCase } from "../../application/use-cases/get-movement-trend.js";
@@ -34,7 +35,9 @@ import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RestoreProductUseCase } from "../../application/use-cases/restore-product.js";
+import type { ResumeSessionUseCase } from "../../application/use-cases/resume-session.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
+import type { StartSessionUseCase } from "../../application/use-cases/start-session.js";
 import type { UpdateCustomerUseCase } from "../../application/use-cases/update-customer.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
 import type { UpdateUserFullNameUseCase } from "../../application/use-cases/update-user-full-name.js";
@@ -92,6 +95,9 @@ export interface AppDependencies {
 	loginWithCredentials: LoginWithCredentialsUseCase;
 	registerUser: RegisterUserUseCase;
 	refreshSession: RefreshSessionUseCase;
+	startSession: StartSessionUseCase;
+	resumeSession: ResumeSessionUseCase;
+	endSession: EndSessionUseCase;
 	updateUserFullName: UpdateUserFullNameUseCase;
 	requireAuth: RequestHandler;
 	requireUser: RequestHandler;
@@ -183,6 +189,9 @@ export function buildApp(dependencies: AppDependencies): Express {
 				loginWithCredentials: dependencies.loginWithCredentials,
 				registerUser: dependencies.registerUser,
 				refreshSession: dependencies.refreshSession,
+				startSession: dependencies.startSession,
+				resumeSession: dependencies.resumeSession,
+				endSession: dependencies.endSession,
 				cookieOptions: dependencies.authCookieOptions,
 			}),
 			requireAuth: dependencies.requireAuth,

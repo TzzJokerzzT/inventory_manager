@@ -7,19 +7,24 @@ import type {
 	IdentityTokens,
 } from "../src/application/ports/identity-provider.js";
 import { CreateCompanyUseCase } from "../src/application/use-cases/create-company.js";
+import { EndSessionUseCase } from "../src/application/use-cases/end-session.js";
 import { ListCompaniesUseCase } from "../src/application/use-cases/list-companies.js";
 import { LoginWithCredentialsUseCase } from "../src/application/use-cases/login-with-credentials.js";
 import { RefreshSessionUseCase } from "../src/application/use-cases/refresh-session.js";
 import { RegisterUserUseCase } from "../src/application/use-cases/register-user.js";
+import { ResumeSessionUseCase } from "../src/application/use-cases/resume-session.js";
+import { StartSessionUseCase } from "../src/application/use-cases/start-session.js";
 import { IdentityProviderUnavailableError } from "../src/domain/errors/identity-provider-unavailable-error.js";
 import { InvalidCredentialsError } from "../src/domain/errors/invalid-credentials-error.js";
 import type { UserRepository } from "../src/domain/repositories/user-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
+import { InMemorySessionRepository } from "../src/infrastructure/database/in-memory-session-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import {
 	type AuthCookieOptions,
 	REFRESH_TOKEN_COOKIE_NAME,
 	REFRESH_TOKEN_MAX_AGE_MS,
+	SESSION_COOKIE_NAME,
 } from "../src/interfaces/http/controllers/auth-controller.js";
 import { AUTH_LOGIN_RATE_LIMIT } from "../src/interfaces/http/middlewares/rate-limit.js";
 import { createFakeUserRepository } from "./support/fake-user-repository.js";
@@ -111,6 +116,9 @@ function createTestApp(options: {
 }) {
 	const companyRepository = new InMemoryCompanyRepository();
 	const userRepository = options.userRepository ?? createFakeUserRepository();
+	// One repository for the three session use cases, so the wiring is the same
+	// shape production has: a login in this suite would be resumable.
+	const sessionRepository = new InMemorySessionRepository();
 
 	return buildApp({
 		createCompany: new CreateCompanyUseCase({ companyRepository }),
@@ -125,6 +133,16 @@ function createTestApp(options: {
 		refreshSession: new RefreshSessionUseCase({
 			identityProvider: options.provider,
 		}),
+		startSession: new StartSessionUseCase({
+			sessionRepository,
+		}),
+		// This suite never resumes a session: refresh owns that gate. The idle
+		// limit is only here so the wiring is complete, not to be exercised.
+		resumeSession: new ResumeSessionUseCase({
+			sessionRepository,
+			idleTimeoutMs: REFRESH_TOKEN_MAX_AGE_MS,
+		}),
+		endSession: new EndSessionUseCase({ sessionRepository }),
 		requireAuth: passthroughAuth,
 		requireUser: passthroughAuth,
 		requireCompanyContext: passthroughAuth,
@@ -205,7 +223,7 @@ describe("LoginWithCredentialsUseCase", () => {
 });
 
 describe("POST /auth/login", () => {
-	it("returns the access token, expiry, and an httpOnly refresh cookie", async () => {
+	it("returns the access token, expiry, an httpOnly refresh cookie and the session id", async () => {
 		const response = await request(
 			createTestApp({ provider: new FakeIdentityProvider() }),
 		)
@@ -220,13 +238,26 @@ describe("POST /auth/login", () => {
 
 		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
-		expect(cookies).toHaveLength(1);
-		const cookie = cookies?.[0];
-		expect(cookie).toContain("HttpOnly");
-		expect(cookie).toContain("Path=/auth");
-		expect(cookie).toContain(`${REFRESH_TOKEN_COOKIE_NAME}=${REFRESH_TOKEN}`);
-		expect(cookie).toContain("SameSite=Lax");
-		expect(cookie).not.toContain("Secure");
+		expect(cookies).toHaveLength(2);
+
+		const refreshCookie = cookies?.[0];
+		expect(refreshCookie).toContain("HttpOnly");
+		expect(refreshCookie).toContain("Path=/auth");
+		expect(refreshCookie).toContain(
+			`${REFRESH_TOKEN_COOKIE_NAME}=${REFRESH_TOKEN}`,
+		);
+		expect(refreshCookie).toContain("SameSite=Lax");
+		expect(refreshCookie).not.toContain("Secure");
+
+		// The session id is a server-generated id, so the assertion pins the
+		// shape and the flags, not a value the test would have to invent.
+		const sessionCookie = cookies?.[1];
+		expect(sessionCookie).toContain("HttpOnly");
+		expect(sessionCookie).toContain("Path=/auth");
+		expect(sessionCookie).toContain("SameSite=Lax");
+		expect(sessionCookie).toMatch(
+			new RegExp(`^${SESSION_COOKIE_NAME}=[0-9a-f-]{36};`),
+		);
 	});
 
 	it("marks the cookie Secure when the injected options are production-mode", async () => {
@@ -242,7 +273,11 @@ describe("POST /auth/login", () => {
 		expect(response.status).toBe(200);
 		const cookies = responseCookies(response.headers["set-cookie"]);
 		expect(cookies).toBeDefined();
+		// Both cookies of the session carry the production flags, not just the
+		// refresh one: the session id is a credential handle too.
+		expect(cookies).toHaveLength(2);
 		expect(cookies?.[0]).toContain("Secure");
+		expect(cookies?.[1]).toContain("Secure");
 	});
 
 	it("returns 401 for invalid credentials", async () => {

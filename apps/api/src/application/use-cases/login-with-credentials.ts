@@ -1,3 +1,4 @@
+import type { User } from "../../domain/entities/user.js";
 import { EmailNotVerifiedError } from "../../domain/errors/email-not-verified-error.js";
 import type { UserRepository } from "../../domain/repositories/user-repository.js";
 import type {
@@ -13,6 +14,19 @@ export interface LoginWithCredentialsInput {
 export interface LoginWithCredentialsDependencies {
 	identityProvider: IdentityProvider;
 	userRepository: UserRepository;
+}
+
+/**
+ * What a successful login hands back to the HTTP layer.
+ *
+ * The persisted `user` travels with the tokens because the caller has to bind
+ * the new server-side session to it: the session row references the `users`
+ * row, and re-reading it by `sub` in the controller would be a second lookup
+ * of the identity this use case just wrote.
+ */
+export interface LoginWithCredentialsResult {
+	tokens: IdentityTokens;
+	user: User;
 }
 
 /**
@@ -35,7 +49,9 @@ export class LoginWithCredentialsUseCase {
 		this.userRepository = dependencies.userRepository;
 	}
 
-	async execute(input: LoginWithCredentialsInput): Promise<IdentityTokens> {
+	async execute(
+		input: LoginWithCredentialsInput,
+	): Promise<LoginWithCredentialsResult> {
 		const email = input.email.trim();
 
 		const tokens = await this.identityProvider.exchangePasswordCredentials({
@@ -58,11 +74,11 @@ export class LoginWithCredentialsUseCase {
 			throw new EmailNotVerifiedError();
 		}
 
-		await this.userRepository.upsertFromIdentity({
+		const user = await this.userRepository.upsertFromIdentity({
 			auth0Sub: identity.auth0Sub,
 			email: identity.email,
 		});
 
-		return tokens;
+		return { tokens, user };
 	}
 }

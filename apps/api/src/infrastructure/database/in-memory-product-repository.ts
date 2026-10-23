@@ -3,6 +3,7 @@ import { SkuAlreadyExistsError } from "../../domain/errors/sku-already-exists-er
 import type {
 	ListProductsOptions,
 	ProductRepository,
+	PurgeProductResult,
 } from "../../domain/repositories/product-repository.js";
 
 /**
@@ -208,6 +209,32 @@ export class InMemoryProductRepository implements ProductRepository {
 		this.products.set(restored.id, restored);
 
 		return restored;
+	}
+
+	async purge(
+		companyId: string,
+		productId: string,
+	): Promise<PurgeProductResult> {
+		const existing = this.products.get(productId);
+
+		// The same predicates as the Prisma adapter's DELETE: the company and
+		// `deletedAt: { not: null }`, so an active product is `not_deleted`,
+		// and an absent or foreign one is `not_found`.
+		if (existing === undefined || existing.companyId !== companyId) {
+			return "not_found";
+		}
+
+		if (existing.deletedAt === null) {
+			return "not_deleted";
+		}
+
+		// The row is removed for good, which also frees its SKU. `has_movements`
+		// is unreachable here: the ledger lives in the movement adapter, so the
+		// use case's count is the only guard against purging a product with
+		// history.
+		this.products.delete(productId);
+
+		return "purged";
 	}
 
 	/** Adapter-specific: lets the test suite insert products directly. */

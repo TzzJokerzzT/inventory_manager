@@ -4,6 +4,7 @@ import { SkuAlreadyExistsError } from "../../domain/errors/sku-already-exists-er
 import type {
 	ListProductsOptions,
 	ProductRepository,
+	PurgeProductResult,
 } from "../../domain/repositories/product-repository.js";
 import type {
 	PrismaClient,
@@ -56,6 +57,20 @@ function isUniqueViolation(error: unknown): boolean {
 		typeof error === "object" &&
 		error !== null &&
 		(error as { code?: unknown }).code === "P2002"
+	);
+}
+
+/**
+ * A movement of the product makes the database reject the delete
+ * (`ON DELETE RESTRICT`), which Prisma reports as `P2003`. The check is
+ * structural for the same reason as the one above: there is no
+ * `Prisma.PrismaClientKnownRequestError` value to narrow against.
+ */
+function isForeignKeyViolation(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { code?: unknown }).code === "P2003"
 	);
 }
 
@@ -271,6 +286,43 @@ export class PrismaProductRepository implements ProductRepository {
 		}
 
 		return this.toDomain(row);
+	}
+
+	async purge(
+		companyId: string,
+		productId: string,
+	): Promise<PurgeProductResult> {
+		let count: number;
+		try {
+			// `deleteMany` (not `delete`) because it accepts the extra `deletedAt`
+			// predicate: the trash is the only entry point (L3), so the guard is
+			// part of the DELETE and not a read before it.
+			({ count } = await this.prisma.product.deleteMany({
+				where: { id: productId, companyId, deletedAt: { not: null } },
+			}));
+		} catch (error) {
+			// A movement landed between the count and this DELETE: the database's
+			// `ON DELETE RESTRICT` rejects the row and the caller gets the same
+			// conflict the count would have produced (L4), never a 500.
+			if (isForeignKeyViolation(error)) {
+				return "has_movements";
+			}
+
+			throw error;
+		}
+
+		if (count > 0) {
+			return "purged";
+		}
+
+		// Nothing matched: re-read the row to tell an absent (or foreign) product
+		// from an active one. The `companyId` stays in the WHERE clause, so a row
+		// of another company is absent too.
+		const row = await this.prisma.product.findFirst({
+			where: { id: productId, companyId },
+		});
+
+		return row === null ? "not_found" : "not_deleted";
 	}
 
 	/** Maps a raw Prisma row back into the domain entity. */

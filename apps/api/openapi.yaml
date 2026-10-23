@@ -1590,6 +1590,77 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/products/{productId}/permanent:
+    delete:
+      tags: [products]
+      summary: Permanently delete a soft-deleted product
+      description: |
+        Removes the row from the database. It is the second half of the trash:
+        a product can be **restored** or **purged**.
+
+        Only the **OWNER** may purge (`purge_products`): it is irreversible. The
+        product must already be soft-deleted (the trash is the only entry point)
+        and must have **no stock movements**: the ledger is the audit trail
+        (MOV-05) and is never deleted. A product with movements answers
+        `409 product_has_movements`; the database's `ON DELETE RESTRICT` is the
+        last guard, so a movement created between the count and the delete also
+        answers that 409 instead of a 500.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Product permanently deleted. No body.
+        "400":
+          description: The company id or the product id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`), the
+            caller has no ACTIVE membership (`company_access_forbidden`), or
+            their role is not OWNER (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist or belongs to another company; the `code`
+            is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The product is not soft-deleted (`product_not_deleted`) or it has
+            stock movements (`product_has_movements`); nothing is deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /me:
     get:
       tags: [me]

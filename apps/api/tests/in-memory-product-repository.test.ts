@@ -382,3 +382,63 @@ describe("InMemoryProductRepository.findByIds", () => {
 		await expect(repository.findByIds(COMPANY, [])).resolves.toEqual([]);
 	});
 });
+
+describe("InMemoryProductRepository.purge", () => {
+	const DELETED_AT = new Date("2026-10-22T12:00:00.000Z");
+
+	it("removes a soft-deleted product of the company for good", async () => {
+		const repository = repositoryWith([product({ deletedAt: DELETED_AT })]);
+
+		await expect(repository.purge(COMPANY, "product-1")).resolves.toBe(
+			"purged",
+		);
+
+		// The row is gone from both halves of the store.
+		await expect(repository.findByIds(COMPANY, ["product-1"])).resolves.toEqual(
+			[],
+		);
+		await expect(repository.list(COMPANY, { deleted: true })).resolves.toEqual(
+			[],
+		);
+	});
+
+	it("frees the sku, so a new product may take it", async () => {
+		const repository = repositoryWith([product({ deletedAt: DELETED_AT })]);
+
+		await repository.purge(COMPANY, "product-1");
+
+		await expect(
+			repository.create(product({ id: "product-2", name: "Otro" })),
+		).resolves.toMatchObject({ id: "product-2", sku: "CAF-500" });
+	});
+
+	it("returns not_found for a product that does not exist", async () => {
+		await expect(repositoryWith([]).purge(COMPANY, "product-1")).resolves.toBe(
+			"not_found",
+		);
+	});
+
+	it("returns not_found for another company's product, without deleting it", async () => {
+		const repository = repositoryWith([
+			product({ companyId: OTHER_COMPANY, deletedAt: DELETED_AT }),
+		]);
+
+		await expect(repository.purge(COMPANY, "product-1")).resolves.toBe(
+			"not_found",
+		);
+		await expect(
+			repository.findByIds(OTHER_COMPANY, ["product-1"]),
+		).resolves.toHaveLength(1);
+	});
+
+	it("returns not_deleted for an active product, without deleting it", async () => {
+		const repository = repositoryWith([product()]);
+
+		await expect(repository.purge(COMPANY, "product-1")).resolves.toBe(
+			"not_deleted",
+		);
+		await expect(
+			repository.findActiveById(COMPANY, "product-1"),
+		).resolves.not.toBeNull();
+	});
+});

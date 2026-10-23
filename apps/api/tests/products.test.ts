@@ -2,17 +2,22 @@ import { CreateProductUseCase } from "../src/application/use-cases/create-produc
 import { DeleteProductUseCase } from "../src/application/use-cases/delete-product.js";
 import { GetProductUseCase } from "../src/application/use-cases/get-product.js";
 import { ListProductsUseCase } from "../src/application/use-cases/list-products.js";
+import { PurgeProductUseCase } from "../src/application/use-cases/purge-product.js";
 import { RestoreProductUseCase } from "../src/application/use-cases/restore-product.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
 import type { MembershipRole } from "../src/domain/entities/membership.js";
 import { Product } from "../src/domain/entities/product.js";
+import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { DomainError } from "../src/domain/errors/domain-error.js";
 import { InsufficientRoleError } from "../src/domain/errors/insufficient-role-error.js";
+import { ProductHasMovementsError } from "../src/domain/errors/product-has-movements-error.js";
 import { ProductNotDeletedError } from "../src/domain/errors/product-not-deleted-error.js";
 import { ProductNotFoundError } from "../src/domain/errors/product-not-found-error.js";
 import { SkuAlreadyExistsError } from "../src/domain/errors/sku-already-exists-error.js";
 import type { ProductRepository } from "../src/domain/repositories/product-repository.js";
+import type { StockMovementRepository } from "../src/domain/repositories/stock-movement-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
 
 const COMPANY = "company-1";
 const OTHER_COMPANY = "company-2";
@@ -774,5 +779,251 @@ describe("RestoreProductUseCase", () => {
 				context("MEMBER"),
 			),
 		).rejects.toThrow(InsufficientRoleError);
+	});
+});
+
+/**
+ * A ledger whose count is scripted by the test. It lets the suite script the
+ * race the port describes: the count sees nothing and the delete still loses
+ * against a movement that landed in between.
+ */
+function scriptedMovementCounts(counts: number[]): StockMovementRepository {
+	let call = 0;
+
+	return {
+		countByProduct: async () => {
+			const value = counts[Math.min(call, counts.length - 1)];
+			call += 1;
+
+			return value;
+		},
+	} as unknown as StockMovementRepository;
+}
+
+/**
+ * A product repository whose guarded write is scripted by the test, and whose
+ * `purge` records that it was called at all: the count-first rule means a
+ * product with movements must never reach the delete.
+ */
+function scriptedPurge(
+	result: "purged" | "not_found" | "not_deleted" | "has_movements",
+): { repository: ProductRepository; purgeCalls: () => number } {
+	let calls = 0;
+
+	return {
+		repository: {
+			purge: async () => {
+				calls += 1;
+
+				return result;
+			},
+		} as unknown as ProductRepository,
+		purgeCalls: () => calls,
+	};
+}
+
+function movement(
+	overrides: Partial<Parameters<typeof StockMovement.create>[0]> = {},
+) {
+	return StockMovement.create({
+		id: `movement-${Math.random().toString(36).slice(2)}`,
+		companyId: COMPANY,
+		productId: "product-1",
+		userId: "user-1",
+		type: "IN",
+		quantity: 1,
+		createdAt: new Date("2026-10-21T10:00:00.000Z"),
+		...overrides,
+	});
+}
+
+function movementLedger(...movements: StockMovement[]) {
+	const ledger = new InMemoryStockMovementRepository(new Map());
+
+	for (const row of movements) {
+		ledger.save(row);
+	}
+
+	return ledger;
+}
+
+describe("PurgeProductUseCase", () => {
+	function purgeProduct(
+		productRepository: ProductRepository,
+		stockMovementRepository: StockMovementRepository = movementLedger(),
+	) {
+		return new PurgeProductUseCase({
+			productRepository,
+			stockMovementRepository,
+		});
+	}
+
+	it("purges a deleted product without movements as an OWNER", async () => {
+		// S2: the trash is the only entry point, so a deleted row is what the
+		// purge removes.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+
+		await expect(
+			purgeProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).resolves.toBeUndefined();
+
+		// The row is gone, not stamped: the history read no longer finds it.
+		await expect(
+			repository_.findByIds(COMPANY, ["product-1"]),
+		).resolves.toEqual([]);
+		await expect(repository_.list(COMPANY, { deleted: true })).resolves.toEqual(
+			[],
+		);
+	});
+
+	it("frees the sku, so a new product may take it", async () => {
+		const repository_ = repository();
+		const deleted = seed(repository_, { id: "product-1", deleted: true });
+
+		await purgeProduct(repository_).execute(
+			{ productId: "product-1" },
+			context("OWNER"),
+		);
+
+		await expect(
+			repository_.create(
+				Product.create({
+					id: "product-2",
+					companyId: COMPANY,
+					name: "Cafe",
+					sku: deleted.sku,
+					price: "1500",
+				}),
+			),
+		).resolves.toMatchObject({ id: "product-2", sku: deleted.sku });
+	});
+
+	it("rejects an ADMIN with InsufficientRoleError, before reading anything", async () => {
+		// S3/L2: purging is irreversible, so it is OWNER-only and separate from
+		// `manage_products`; the ADMIN never reaches the count nor the delete.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+
+		await expect(
+			purgeProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("ADMIN"),
+			),
+		).rejects.toThrow(InsufficientRoleError);
+
+		await expect(
+			repository_.findByIds(COMPANY, ["product-1"]),
+		).resolves.toHaveLength(1);
+	});
+
+	it("rejects a MEMBER with InsufficientRoleError", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+
+		await expect(
+			purgeProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("MEMBER"),
+			),
+		).rejects.toThrow(InsufficientRoleError);
+	});
+
+	it("answers ProductNotDeletedError for an active product and keeps it", async () => {
+		// L3: purging an active product would skip the soft delete.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1" });
+
+		await expect(
+			purgeProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotDeletedError);
+
+		await expect(
+			repository_.findActiveById(COMPANY, "product-1"),
+		).resolves.not.toBeNull();
+	});
+
+	it("answers ProductHasMovementsError with the count and deletes nothing", async () => {
+		// L4: the count answers a readable 409 without attempting the delete.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", deleted: true });
+		const ledger = movementLedger(movement(), movement({ type: "OUT" }));
+
+		const error = await purgeProduct(repository_, ledger)
+			.execute({ productId: "product-1" }, context("OWNER"))
+			.catch((rejection: unknown) => rejection);
+
+		expect(error).toBeInstanceOf(ProductHasMovementsError);
+		expect((error as ProductHasMovementsError).movementCount).toBe(2);
+		expect((error as ProductHasMovementsError).message).toContain("2");
+
+		// The ledger is the audit trail (MOV-05) and the row is still in the
+		// trash: nothing was deleted.
+		await expect(
+			repository_.findByIds(COMPANY, ["product-1"]),
+		).resolves.toHaveLength(1);
+		await expect(ledger.countByProduct(COMPANY, "product-1")).resolves.toBe(2);
+	});
+
+	it("never attempts the delete when the product has movements", async () => {
+		const { repository: scripted, purgeCalls } = scriptedPurge("purged");
+
+		await expect(
+			purgeProduct(scripted, movementLedger(movement())).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductHasMovementsError);
+		expect(purgeCalls()).toBe(0);
+	});
+
+	it("answers ProductNotFoundError for another company's product", async () => {
+		const repository_ = repository();
+		seed(repository_, {
+			id: "product-1",
+			companyId: OTHER_COMPANY,
+			deleted: true,
+		});
+
+		await expect(
+			purgeProduct(repository_).execute(
+				{ productId: "product-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotFoundError);
+
+		await expect(
+			repository_.findByIds(OTHER_COMPANY, ["product-1"]),
+		).resolves.toHaveLength(1);
+	});
+
+	it("answers ProductNotFoundError for a product that does not exist", async () => {
+		await expect(
+			purgeProduct(repository()).execute(
+				{ productId: "product-nope" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(ProductNotFoundError);
+	});
+
+	it("answers ProductHasMovementsError when the delete loses the race to a movement", async () => {
+		// S4/L4: a movement can land between the count and the DELETE; the
+		// database's FK rejects the row (the adapter's `has_movements`) and the
+		// caller gets the same 409, never a 500.
+		const { repository: scripted } = scriptedPurge("has_movements");
+
+		const error = await purgeProduct(scripted, scriptedMovementCounts([0, 3]))
+			.execute({ productId: "product-1" }, context("OWNER"))
+			.catch((rejection: unknown) => rejection);
+
+		expect(error).toBeInstanceOf(ProductHasMovementsError);
+		// The re-count reports what is true now, not the stale zero.
+		expect((error as ProductHasMovementsError).movementCount).toBe(3);
 	});
 });

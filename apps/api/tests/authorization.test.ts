@@ -50,6 +50,15 @@ describe("can(role, action)", () => {
 			expect(can("ADMIN", "manage_products")).toBe(true);
 			expect(can("MEMBER", "manage_products")).toBe(false);
 		});
+
+		it("lets only an OWNER purge a product permanently", () => {
+			// S3/L2: the purge is irreversible, so it is its own row and not a
+			// flag of `manage_products`: an ADMIN may manage the catalogue but
+			// never destroy a row.
+			expect(can("OWNER", "purge_products")).toBe(true);
+			expect(can("ADMIN", "purge_products")).toBe(false);
+			expect(can("MEMBER", "purge_products")).toBe(false);
+		});
 	});
 
 	describe("bootstrap and visibility rows", () => {

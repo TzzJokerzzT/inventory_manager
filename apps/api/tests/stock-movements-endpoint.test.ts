@@ -136,6 +136,7 @@ describe("stock movement endpoints", () => {
 				update: {} as never,
 				remove: {} as never,
 				restore: {} as never,
+				purge: {} as never,
 			},
 			// Not exercised by this suite: the customer slice keeps the app
 			// buildable, and its own suite wires it for real.

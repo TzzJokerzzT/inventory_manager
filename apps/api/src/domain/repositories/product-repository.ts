@@ -16,6 +16,25 @@ export interface ListProductsOptions {
 }
 
 /**
+ * The outcome of {@link ProductRepository.purge}.
+ *
+ * It is a discriminated union for the same reason `RegisterMovementResult` is:
+ * three of its four cases are *expected* outcomes of a guarded delete, not
+ * failures. The use case maps each one to its domain error, so no adapter
+ * decides an HTTP status.
+ *
+ * `has_movements` is the race L4 describes: a movement landed between the
+ * count and the `DELETE`, so the database's `ON DELETE RESTRICT` rejected the
+ * row. The in-memory adapter cannot observe it (the ledger is another store),
+ * so there the use case's count is the only guard.
+ */
+export type PurgeProductResult =
+	| "purged"
+	| "not_found"
+	| "not_deleted"
+	| "has_movements";
+
+/**
  * Port for product persistence.
  *
  * Two things are part of the contract rather than an optimisation:
@@ -35,7 +54,9 @@ export interface ListProductsOptions {
  * The write surface is deliberately narrow: `stockQuantity`,
  * `lowStockThreshold`, `categoryId` and the soft-delete stamp are not settable
  * from the product endpoints (MI-8, MI-12, L4), so no method accepts them;
- * only `softDelete` and `restore` move the stamp, each with its own guard.
+ * only `softDelete` and `restore` move the stamp, each with its own guard, and
+ * `purge` is the single method that removes a row -- guarded on the stamp it
+ * requires, so the trash is the only way in.
  */
 export interface ProductRepository {
 	/**
@@ -116,4 +137,21 @@ export interface ProductRepository {
 	 * concurrent restores resolve to one winner.
 	 */
 	restore(companyId: string, productId: string): Promise<Product | null>;
+
+	/**
+	 * Removes the row for good, but only while it is soft-deleted and only
+	 * inside the company.
+	 *
+	 * The trash is the only entry point (odd/tasks/product-purge.md L3), so the
+	 * `deletedAt: { not: null }` guard is part of the `DELETE` and not a read
+	 * before it. Nothing is deleted when it does not match: the adapter re-reads
+	 * the row to tell an absent (or foreign) product (`not_found`) from an
+	 * active one (`not_deleted`).
+	 *
+	 * A movement of the product makes the database reject the delete
+	 * (`ON DELETE RESTRICT`, reported as `P2003`); the adapter translates that
+	 * into `has_movements` so the caller gets the same conflict the count would
+	 * have produced, never a 500 (L4). The ledger is never touched (MOV-05).
+	 */
+	purge(companyId: string, productId: string): Promise<PurgeProductResult>;
 }

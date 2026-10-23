@@ -34,6 +34,10 @@ import {
 	MembershipNotFoundError,
 } from "../../../domain/errors/membership-not-found-error.js";
 import {
+	PRODUCT_HAS_MOVEMENTS_CODE,
+	ProductHasMovementsError,
+} from "../../../domain/errors/product-has-movements-error.js";
+import {
 	PRODUCT_NOT_DELETED_CODE,
 	ProductNotDeletedError,
 } from "../../../domain/errors/product-not-deleted-error.js";
@@ -179,6 +183,19 @@ export const errorHandler: ErrorRequestHandler = (
 			error: {
 				message: error.message,
 				code: PRODUCT_NOT_DELETED_CODE,
+			},
+		});
+		return;
+	}
+
+	if (error instanceof ProductHasMovementsError) {
+		// 409, not 400: the body is well formed and the caller may purge, the
+		// product simply has history. The ledger is the audit trail (MOV-05) and
+		// nothing was deleted; the message carries the count (S4).
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: PRODUCT_HAS_MOVEMENTS_CODE,
 			},
 		});
 		return;

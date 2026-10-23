@@ -408,3 +408,29 @@ describe("InMemoryStockMovementRepository.findSince", () => {
 		).resolves.toEqual([]);
 	});
 });
+
+describe("InMemoryStockMovementRepository.countByProduct", () => {
+	it("counts only the movements of that product in the company", async () => {
+		const { repository } = build();
+
+		repository.save(movement({ type: "IN", quantity: 5 }));
+		repository.save(movement({ type: "OUT", quantity: 2, createdAt: T1 }));
+		repository.save(movement({ productId: "product-2", createdAt: T2 }));
+
+		await expect(repository.countByProduct(COMPANY, PRODUCT)).resolves.toBe(2);
+	});
+
+	it("is scoped to the company", async () => {
+		const { repository } = build();
+
+		repository.save(movement({ companyId: OTHER_COMPANY }));
+
+		await expect(repository.countByProduct(COMPANY, PRODUCT)).resolves.toBe(0);
+	});
+
+	it("counts zero when the product has no movements", async () => {
+		const { repository } = build();
+
+		await expect(repository.countByProduct(COMPANY, PRODUCT)).resolves.toBe(0);
+	});
+});

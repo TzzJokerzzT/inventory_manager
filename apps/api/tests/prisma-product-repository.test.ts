@@ -15,12 +15,13 @@ function buildFakeDelegate() {
 	const findFirst = jest.fn();
 	const findMany = jest.fn();
 	const updateMany = jest.fn();
+	const deleteMany = jest.fn();
 
 	const delegate = {
-		product: { create, findFirst, findMany, updateMany },
+		product: { create, findFirst, findMany, updateMany, deleteMany },
 	} as unknown as ProductDelegate;
 
-	return { delegate, create, findFirst, findMany, updateMany };
+	return { delegate, create, findFirst, findMany, updateMany, deleteMany };
 }
 
 const CREATED_AT = new Date("2026-10-20T12:00:00.000Z");
@@ -431,5 +432,87 @@ describe("PrismaProductRepository.findByIds", () => {
 			"product-1",
 			"product-2",
 		]);
+	});
+});
+
+describe("PrismaProductRepository.purge", () => {
+	it("deletes only a soft-deleted row of the company", async () => {
+		const { delegate, deleteMany } = buildFakeDelegate();
+		deleteMany.mockResolvedValue({ count: 1 });
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"purged",
+		);
+		// The trash is the only entry point: the `deletedAt: { not: null }`
+		// guard is part of the DELETE, not a read before it.
+		expect(deleteMany).toHaveBeenCalledWith({
+			where: {
+				id: "product-1",
+				companyId: "company-1",
+				deletedAt: { not: null },
+			},
+		});
+	});
+
+	it("answers not_found when nothing matched and the row does not exist", async () => {
+		const { delegate, deleteMany, findFirst } = buildFakeDelegate();
+		deleteMany.mockResolvedValue({ count: 0 });
+		findFirst.mockResolvedValue(null);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"not_found",
+		);
+		// The re-read is scoped by the company, so a foreign row is absent too.
+		expect(findFirst).toHaveBeenCalledWith({
+			where: { id: "product-1", companyId: "company-1" },
+		});
+	});
+
+	it("answers not_deleted when nothing matched because the row is active", async () => {
+		const { delegate, deleteMany, findFirst } = buildFakeDelegate();
+		deleteMany.mockResolvedValue({ count: 0 });
+		findFirst.mockResolvedValue(row());
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"not_deleted",
+		);
+	});
+
+	it("answers has_movements when the foreign key rejects the delete (P2003)", async () => {
+		const { delegate, deleteMany, findFirst } = buildFakeDelegate();
+		deleteMany.mockRejectedValue(
+			Object.assign(new Error("Foreign key constraint violated"), {
+				code: "P2003",
+			}),
+		);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		// The race L4 describes: a movement landed after the count, so the
+		// database rejects the row and the caller gets the same 409.
+		await expect(repository.purge("company-1", "product-1")).resolves.toBe(
+			"has_movements",
+		);
+		expect(findFirst).not.toHaveBeenCalled();
+	});
+
+	it("lets any other failure through untouched", async () => {
+		const { delegate, deleteMany } = buildFakeDelegate();
+		const failure = Object.assign(new Error("connection lost"), {
+			code: "P1001",
+		});
+		deleteMany.mockRejectedValue(failure);
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+
+		await expect(repository.purge("company-1", "product-1")).rejects.toBe(
+			failure,
+		);
 	});
 });

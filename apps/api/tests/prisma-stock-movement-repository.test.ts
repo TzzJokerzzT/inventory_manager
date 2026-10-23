@@ -18,6 +18,7 @@ function buildFakeDelegate() {
 	const productUpdateMany = jest.fn();
 	const stockMovementCreate = jest.fn();
 	const stockMovementFindMany = jest.fn();
+	const stockMovementCount = jest.fn();
 
 	const transactionClient = {
 		product: { findFirst: productFindFirst, updateMany: productUpdateMany },
@@ -34,6 +35,7 @@ function buildFakeDelegate() {
 		stockMovement: {
 			create: stockMovementCreate,
 			findMany: stockMovementFindMany,
+			count: stockMovementCount,
 		},
 		$transaction: transaction,
 	} as unknown as StockMovementDelegate;
@@ -45,6 +47,7 @@ function buildFakeDelegate() {
 		productUpdateMany,
 		stockMovementCreate,
 		stockMovementFindMany,
+		stockMovementCount,
 	};
 }
 
@@ -400,5 +403,38 @@ describe("PrismaStockMovementRepository.findSince", () => {
 		const repository = new PrismaStockMovementRepository({ prisma: delegate });
 
 		await expect(repository.findSince("company-1", SINCE)).resolves.toEqual([]);
+	});
+});
+
+describe("PrismaStockMovementRepository.countByProduct", () => {
+	it("counts the company's movements of one product", async () => {
+		const { delegate, stockMovementCount } = buildFakeDelegate();
+		stockMovementCount.mockResolvedValue(2);
+
+		const repository = new PrismaStockMovementRepository({
+			prisma: delegate,
+		});
+
+		await expect(
+			repository.countByProduct("company-1", "product-1"),
+		).resolves.toBe(2);
+		// The company is part of the WHERE clause, so a movement of another
+		// company never blocks the purge.
+		expect(stockMovementCount).toHaveBeenCalledWith({
+			where: { companyId: "company-1", productId: "product-1" },
+		});
+	});
+
+	it("answers zero when the product has no movements", async () => {
+		const { delegate, stockMovementCount } = buildFakeDelegate();
+		stockMovementCount.mockResolvedValue(0);
+
+		const repository = new PrismaStockMovementRepository({
+			prisma: delegate,
+		});
+
+		await expect(
+			repository.countByProduct("company-1", "product-1"),
+		).resolves.toBe(0);
 	});
 });

@@ -29,6 +29,7 @@ import type { ListProductsUseCase } from "../../application/use-cases/list-produ
 import type { ListStockMovementsUseCase } from "../../application/use-cases/list-stock-movements.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
+import type { PurgeProductUseCase } from "../../application/use-cases/purge-product.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
@@ -107,6 +108,7 @@ export interface AppDependencies {
 		update: UpdateProductUseCase;
 		remove: DeleteProductUseCase;
 		restore: RestoreProductUseCase;
+		purge: PurgeProductUseCase;
 	};
 	/**
 	 * The customer slice of MI-11. One field, not five, because the routes that

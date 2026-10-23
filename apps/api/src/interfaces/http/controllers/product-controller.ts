@@ -5,6 +5,7 @@ import type { CreateProductUseCase } from "../../../application/use-cases/create
 import type { DeleteProductUseCase } from "../../../application/use-cases/delete-product.js";
 import type { GetProductUseCase } from "../../../application/use-cases/get-product.js";
 import type { ListProductsUseCase } from "../../../application/use-cases/list-products.js";
+import type { PurgeProductUseCase } from "../../../application/use-cases/purge-product.js";
 import type { RestoreProductUseCase } from "../../../application/use-cases/restore-product.js";
 import type { UpdateProductUseCase } from "../../../application/use-cases/update-product.js";
 import {
@@ -29,6 +30,7 @@ export interface ProductControllerDependencies {
 	update: UpdateProductUseCase;
 	remove: DeleteProductUseCase;
 	restore: RestoreProductUseCase;
+	purge: PurgeProductUseCase;
 }
 
 export interface ProductController {
@@ -38,6 +40,7 @@ export interface ProductController {
 	update: RequestHandler;
 	remove: RequestHandler;
 	restore: RequestHandler;
+	purge: RequestHandler;
 }
 
 /**
@@ -196,6 +199,33 @@ export function createProductController(
 				// back active, so the client can drop its stale copy instead of
 				// re-reading the catalogue.
 				response.status(StatusCodes.OK).json(product);
+			} catch (error) {
+				next(error);
+			}
+		},
+		purge: async (request, response, next) => {
+			try {
+				const context = resolvedCompanyContext(request);
+				const productId = productIdOrUndefined(request);
+
+				if (productId === undefined) {
+					response.status(StatusCodes.BAD_REQUEST).json({
+						error: { message: "Invalid product id" },
+					});
+					return;
+				}
+
+				await dependencies.purge.execute(
+					{ productId },
+					{
+						companyId: context.companyId,
+						actorRole: context.role,
+					},
+				);
+
+				// 204 with an empty body: unlike the restore, the row is gone, so
+				// there is nothing left to hand back.
+				response.status(StatusCodes.NO_CONTENT).end();
 			} catch (error) {
 				next(error);
 			}

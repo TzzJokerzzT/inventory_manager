@@ -113,6 +113,15 @@ export class InMemoryStockMovementRepository
 			);
 	}
 
+	async countByProduct(companyId: string, productId: string): Promise<number> {
+		// Same predicates as the Prisma adapter's `count`: the company and the
+		// product, so a movement of another company never blocks a purge.
+		return Array.from(this.movements.values()).filter(
+			(movement) =>
+				movement.companyId === companyId && movement.productId === productId,
+		).length;
+	}
+
 	/** Adapter-specific: lets the test suite insert movements directly. */
 	save(movement: StockMovement): void {
 		this.movements.set(movement.id, movement);

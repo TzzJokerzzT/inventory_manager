@@ -145,6 +145,16 @@ action is informational" and does not expose the finding text through the facade
 was made from it: the specifics have to come from the maintainer's own review tooling or a re-review.
 Delivery is unaffected — a review outcome never authorizes it either way.
 
+L12 (incident, 500 on login): the `sessions` migration had never been applied to the database the API
+points at, so the first thing the login does after validating the credentials — `startSession` →
+`prisma.session.create` — hit a missing relation and the generic handler answered 500. This is exactly the
+trap the TODO at the top of `apps/api/prisma/schema.prisma` describes: nothing in this repository applies
+migrations to a deployed database. Fixed by running `bun run db:deploy` in `apps/api`; verified with
+`prisma migrate status` (up to date), the six expected columns on `sessions`, and one real session row with a
+64-character digest created by an actual login. Follow-up to decide (delivery risk, item 5): run
+`prisma migrate deploy` from the API's start script so a schema change can never reach a runtime as a missing
+table again.
+
 L8 (delivery slices): C1 session core (`6e3db96`), C2 Prisma persistence (`c592fd7`), C3 enforcement and
 contract (`9fe5da3`), C4 end-to-end endpoint tests (`d92974c`), C5 the web guard. The slice boundary is
 recorded here because the whole feature exceeds the ~400 authored-line guidance and is delivered as five

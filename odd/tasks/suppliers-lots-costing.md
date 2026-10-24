@@ -109,6 +109,13 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L25 (detalle de la pantalla de salida, F3b): el formulario ya sabe si el producto tiene unidades porque la lista
+de productos trae `availableUnits`. Con unidades, la pantalla pide la lista (`GET /products/{id}/units`) y muestra
+código, medida y costo de cada una para elegirlas; la **cantidad se deriva** de las elegidas (el campo se
+deshabilita, igual que en la compra, para que no haya dos fuentes de verdad) y el precio de venta se **precarga
+con `product.price`** como referencia editable — el precio real es el que se escribe, no el de lista. Sin
+unidades disponibles, la pantalla no cambia respecto de hoy.
+
 L23 (F3 se parte en dos, y por qué): el formulario de salida tiene que dejar **elegir qué unidades salen**, pero
 la API sólo expone cuántas unidades disponibles tiene un lote (`ProductLotSummary.availableUnits`), no **cuáles**.
 Por eso F3 empieza con una lectura nueva —`GET /companies/{companyId}/products/{productId}/units?status=`, por

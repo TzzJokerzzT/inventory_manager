@@ -109,6 +109,12 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L26 (F4, columnas de costo y margen): el catálogo muestra **costo por unidad** (`unitCost`) y **margen por
+unidad** (`marginPerUnit`), que son comparables con el precio de venta; el **costo por medida** no entra en la
+tabla del catálogo porque se compara contra el de otros proveedores, no contra el precio de una unidad (L20). Los
+movimientos muestran **precio aplicado** y **margen**; un dato desconocido es "—", nunca 0 (L11). Los montos se
+formatean con el mismo helper que el resto (`formatPrice`), y el margen negativo se muestra con su signo.
+
 L25 (detalle de la pantalla de salida, F3b): el formulario ya sabe si el producto tiene unidades porque la lista
 de productos trae `availableUnits`. Con unidades, la pantalla pide la lista (`GET /products/{id}/units`) y muestra
 código, medida y costo de cada una para elegirlas; la **cantidad se deriva** de las elegidas (el campo se

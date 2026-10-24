@@ -34,6 +34,11 @@ export function ProviderFormPanel({
 			</h2>
 
 			<ProviderForm
+				// React's own way to reset state: changing the key remounts the form.
+				// The panel stays mounted while the selected supplier changes, so
+				// without this the fields keep the previous row's values and a save
+				// could write them onto another supplier (or create one from them).
+				key={provider?.id ?? "new"}
 				companyId={companyId}
 				provider={provider}
 				onSaved={onDone}

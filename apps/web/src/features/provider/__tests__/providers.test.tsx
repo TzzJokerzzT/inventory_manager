@@ -225,6 +225,33 @@ describe("Providers", () => {
 		expect(screen.getByRole("button", { name: "Eliminar" })).toBeTruthy();
 	});
 
+	it("shows the values of the supplier being edited, not the previous one", () => {
+		// Both rows stay on screen, so the form is re-used between them: without
+		// a reset it would submit row A's values to row B.
+		setup({
+			rows: [
+				provider({ id: "su1", name: "Plásticos del Sur" }),
+				provider({ id: "su2", name: "Rollo Norte", contact: null }),
+			],
+		});
+
+		render(<Providers />);
+
+		const editButtons = screen.getAllByRole("button", { name: "Editar" });
+		fireEvent.click(editButtons[0]);
+		expect(
+			(screen.getByLabelText("Nombre del proveedor") as HTMLInputElement).value,
+		).toBe("Plásticos del Sur");
+
+		fireEvent.click(editButtons[1]);
+		expect(
+			(screen.getByLabelText("Nombre del proveedor") as HTMLInputElement).value,
+		).toBe("Rollo Norte");
+		expect((screen.getByLabelText("Contacto") as HTMLInputElement).value).toBe(
+			"",
+		);
+	});
+
 	it("opens the create form from the header button", () => {
 		setup();
 

@@ -47,7 +47,7 @@ export function LandingNav() {
 
 				<Link
 					href="/login"
-					className={buttonVariants({ variant: "primary", size: "sm" })}
+					className={buttonVariants({ variant: "primary", size: "lg" })}
 				>
 					Iniciar sesión
 				</Link>

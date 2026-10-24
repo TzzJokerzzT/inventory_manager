@@ -604,6 +604,73 @@ export function parseSupplier(data: unknown): Supplier {
 }
 
 /**
+ * One physical unit of a lot, exactly as the lot endpoints serialize it: its
+ * code (generated from the position), its own `measure` and therefore its own
+ * `cost`.
+ *
+ * Both numbers are **decimal strings**, never numbers: they are weight and
+ * money, and the column keeps three and two decimals respectively. `status` is
+ * a closed list — a unit is available until a sale takes it (S2) — so an unknown
+ * value fails here instead of reaching a badge with no label for it.
+ */
+export const lotUnitSchema = object({
+	id: string(),
+	code: string(),
+	measure: string(),
+	cost: string(),
+	status: picklist(["AVAILABLE", "SOLD"]),
+});
+
+/** One unit of a purchase lot, derived from the OpenAPI contract. */
+export type StockLotUnit = components["schemas"]["StockLotUnit"];
+
+/**
+ * One purchase lot as `POST /companies/{companyId}/lots` answers it (S6): the
+ * supplier, the price of one measure, the number of physical units and every
+ * unit with its own measure and cost.
+ *
+ * `measureTotal` is what the **server derived** from the units and is kept as a
+ * decimal string; the client never sends it and never recomputes it (L6). The
+ * unit list is required and non-optional: an absent one means the backend
+ * changed shape, and the purchase cannot be shown without its detail.
+ */
+export const lotSchema = object({
+	id: string(),
+	companyId: string(),
+	productId: string(),
+	supplierId: string(),
+	receivedAt: string(),
+	measureTotal: string(),
+	costPerMeasure: string(),
+	unitCount: number(),
+	note: nullable(string()),
+	createdAt: string(),
+	units: array(lotUnitSchema),
+});
+
+/** One purchase lot, derived from the OpenAPI contract. */
+export type StockLot = components["schemas"]["StockLot"];
+
+/** Body of `POST /companies/{companyId}/lots`, derived from the contract. */
+export type CreateLotRequest = components["schemas"]["CreateLotRequest"];
+
+/**
+ * Validates the lot of a registered purchase at the boundary.
+ *
+ * Same contract as {@link parseSupplier}: a shape change fails as an
+ * {@link ApiError} with a readable message instead of reaching the success
+ * notice, and a numeric `measure` never gets formatted as weight.
+ */
+export function parseLot(data: unknown): StockLot {
+	const result = safeParse(lotSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
  * The upload contract `POST /companies/{companyId}/media/signature` returns:
  * the Cloudinary coordinates plus the limits the server already signed into
  * the signature. The browser validates the file against **these** values, not

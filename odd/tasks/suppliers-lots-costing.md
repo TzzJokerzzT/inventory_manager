@@ -109,6 +109,17 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L22 (F2b implementado + corrección de la coma): el bloque "Registrar compra por medida" quedó cerrado por
+defecto en el formulario de entrada; abierto llama a `POST /lots`, deshabilita la cantidad y muestra el resumen
+en vivo. El lote creado **no** lleva `measureUnit`: la unidad de "$ por medida" sale del producto, así que no se
+duplica en el lote.
+
+Corrección sobre lo que entregó el worker: el parser trataba la coma como **separador**, así que "12,5" —la
+forma normal de escribir doce y medio en español— se leía como **dos unidades** (12 y 5), inventando stock y
+costo con un dato corriente. Ahora la coma es **separador decimal**, los valores se separan por líneas, espacios
+o punto y coma, y un token con dos comas se **reporta** en vez de partirse en dos medidas que nadie escribió. El
+hint y el placeholder del campo lo dicen con esas palabras.
+
 L21 (diseño de F2b): la compra vive en el formulario de movimientos con tipo `IN`, como un **bloque opcional**
 "Registrar compra por medida", cerrado por defecto. Con el bloque cerrado nada cambia: el formulario sigue
 llamando a `POST /movements` como hoy (entrada suelta). Con el bloque abierto pide **proveedor**, **$ por

@@ -5,6 +5,7 @@ import {
 	parseCustomer,
 	parseCustomers,
 	parseLoginResponse,
+	parseLot,
 	parseMediaUploadSignature,
 	parseMembership,
 	parseMembershipsResponse,
@@ -923,6 +924,99 @@ describe("parseSupplier", () => {
 
 	it("rejects a supplier whose shape changed", () => {
 		expect(() => parseSupplier({ id: "su1" })).toThrow(ApiError);
+	});
+});
+
+function lotUnit(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "lu1",
+		code: "R-01",
+		measure: "12.500",
+		cost: "73750.00",
+		status: "AVAILABLE",
+		...overrides,
+	};
+}
+
+function lot(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "lo1",
+		companyId: "c1",
+		productId: "p1",
+		supplierId: "su1",
+		receivedAt: "2026-10-23T12:00:00.000Z",
+		measureTotal: "25.000",
+		costPerMeasure: "5900.00",
+		unitCount: 2,
+		note: null,
+		createdAt: "2026-10-23T12:00:00.000Z",
+		units: [lotUnit(), lotUnit({ id: "lu2", code: "R-02" })],
+		...overrides,
+	};
+}
+
+describe("parseLot", () => {
+	it("returns the created lot with its units and the total the server derived", () => {
+		const parsed = parseLot(lot());
+
+		expect(parsed.id).toBe("lo1");
+		// La medida total y los costos son cadenas decimales, nunca números: es la
+		// misma regla que el precio del producto.
+		expect(parsed.measureTotal).toBe("25.000");
+		expect(parsed.costPerMeasure).toBe("5900.00");
+		expect(parsed.units).toHaveLength(2);
+		expect(parsed.units[1].code).toBe("R-02");
+		expect(parsed.units[0].status).toBe("AVAILABLE");
+	});
+
+	it("keeps the decimal strings as strings", () => {
+		const parsed = parseLot(lot());
+
+		expect(typeof parsed.measureTotal).toBe("string");
+		expect(typeof parsed.costPerMeasure).toBe("string");
+		expect(typeof parsed.units[0].measure).toBe("string");
+		expect(typeof parsed.units[0].cost).toBe("string");
+	});
+
+	it("rejects a numeric measure, in the lot and in a unit", () => {
+		expect(() => parseLot(lot({ measureTotal: 25 }))).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() =>
+			parseLot(lot({ units: [lotUnit({ measure: 12.5 })] })),
+		).toThrow(/respuesta inesperada/);
+		expect(() => parseLot(lot({ units: [lotUnit({ cost: 73750 })] }))).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a lot without its unit list", () => {
+		const { units: _units, ...withoutUnits } = lot();
+
+		// La lista de unidades es el detalle del lote: si falta, el backend cambió
+		// de forma y no se puede mostrar la compra.
+		expect(() => parseLot(withoutUnits)).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a unit whose status is not one the contract allows", () => {
+		expect(() =>
+			parseLot(lot({ units: [lotUnit({ status: "LOST" })] })),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a lot whose unit count is not a number", () => {
+		expect(() => parseLot(lot({ unitCount: "2" }))).toThrow(ApiError);
+	});
+
+	it("accepts a note, and a lot without one", () => {
+		expect(parseLot(lot({ note: "Compra a proveedor" })).note).toBe(
+			"Compra a proveedor",
+		);
+		expect(parseLot(lot({ note: null })).note).toBeNull();
+	});
+
+	it("rejects a non-object response", () => {
+		expect(() => parseLot([lot()])).toThrow(ApiError);
 	});
 });
 

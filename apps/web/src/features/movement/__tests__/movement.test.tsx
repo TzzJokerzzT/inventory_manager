@@ -28,6 +28,12 @@ jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
 }));
 
+// La compra por medida vive en el formulario compartido: se mockea también para
+// que estas pruebas no necesiten un QueryClient.
+jest.mock("@/src/features/lot/api/use-register-lot", () => ({
+	useRegisterLot: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+}));
+
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;

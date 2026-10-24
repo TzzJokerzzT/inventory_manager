@@ -22,6 +22,12 @@ jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
 }));
 
+// El formulario compartido también monta el bloque de compra: se mockea su hook
+// para no necesitar un QueryClient en esta suite.
+jest.mock("@/src/features/lot/api/use-register-lot", () => ({
+	useRegisterLot: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+}));
+
 jest.mock("@/src/shared/components/AlertToast", () => ({
 	AlertToast: jest.fn(),
 }));

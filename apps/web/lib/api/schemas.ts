@@ -570,6 +570,10 @@ const movementFields = {
 	lotId: nullable(string()),
 	unitPrice: nullable(string()),
 	units: array(movementUnitSchema),
+	// Server-computed: `unitPrice × quantity − Σ units.cost`, or `null` when the
+	// price or the units are unknown (a sale from before the lot feature). The
+	// front never recomputes it: money is not a place for client arithmetic.
+	margin: nullable(string()),
 } as const;
 
 /** One stock movement exactly as the movements endpoints serialize it. */

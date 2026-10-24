@@ -61,6 +61,18 @@ export class InMemorySupplierRepository implements SupplierRepository {
 		return supplier;
 	}
 
+	async findByIds(companyId: string, ids: string[]): Promise<Supplier[]> {
+		// No `deletedAt` filter on purpose: this is the history read of the
+		// purchase lots, so a lot of a supplier that was soft-deleted later
+		// must still resolve. The company filter stays, so a deleted supplier
+		// of another company never resolves.
+		const wanted = new Set(ids);
+
+		return Array.from(this.suppliers.values()).filter(
+			(row) => row.companyId === companyId && wanted.has(row.id),
+		);
+	}
+
 	async listByCompany(companyId: string): Promise<Supplier[]> {
 		return Array.from(this.suppliers.values())
 			.filter((row) => row.companyId === companyId && row.deletedAt === null)

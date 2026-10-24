@@ -17,7 +17,9 @@ import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
+import { InMemorySupplierRepository } from "../src/infrastructure/database/in-memory-supplier-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { apiRateLimiter } from "../src/interfaces/http/middlewares/rate-limit.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
@@ -71,6 +73,10 @@ describe("product endpoints", () => {
 		const store = new Map<string, Product>();
 		const productRepository = new InMemoryProductRepository([], store);
 		const stockMovementRepository = new InMemoryStockMovementRepository(store);
+		const stockLotRepository = new InMemoryStockLotRepository(
+			stockMovementRepository,
+		);
+		const supplierRepository = new InMemorySupplierRepository();
 
 		const owner = User.create({ auth0Sub: OWNER_SUB, email: "owner@x.com" });
 		const admin = User.create({ auth0Sub: ADMIN_SUB, email: "admin@x.com" });
@@ -133,9 +139,16 @@ describe("product endpoints", () => {
 			endSession: {} as never,
 			updateUserFullName: {} as never,
 			products: {
-				list: new ListProductsUseCase({ productRepository }),
+				list: new ListProductsUseCase({
+					productRepository,
+					stockLotRepository,
+				}),
 				create: new CreateProductUseCase({ productRepository }),
-				get: new GetProductUseCase({ productRepository }),
+				get: new GetProductUseCase({
+					productRepository,
+					stockLotRepository,
+					supplierRepository,
+				}),
 				update: new UpdateProductUseCase({ productRepository }),
 				remove: new DeleteProductUseCase({ productRepository }),
 				restore: new RestoreProductUseCase({ productRepository }),
@@ -534,7 +547,15 @@ describe("product endpoints", () => {
 				.set("authorization", authorization(MEMBER_SUB));
 
 			expect(response.status).toBe(200);
-			expect(response.body).toEqual(product);
+			expect(response.body).toEqual({
+				...product,
+				availableUnits: 0,
+				availableMeasure: "0.000",
+				costPerMeasure: null,
+				unitCost: null,
+				marginPerUnit: null,
+				lots: [],
+			});
 		});
 
 		it("answers 404 product_not_found for another company's product", async () => {

@@ -748,13 +748,15 @@ paths:
             default: false
       responses:
         "200":
-          description: The company's products, ordered by name and then id.
+          description: |
+            The company's products, ordered by name and then id, each with the
+            costs derived from its available units (L12).
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Product"
+                  $ref: "#/components/schemas/ProductListItem"
         "400":
           description: The company id is not a UUID, or `search` is too long.
           content:
@@ -866,11 +868,13 @@ paths:
             format: uuid
       responses:
         "200":
-          description: The product.
+          description: |
+            The product with the costs derived from its available units and its
+            latest lots, newest first (L12).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Product"
+                $ref: "#/components/schemas/ProductDetail"
         "400":
           description: The company id or the product id is not a UUID.
           content:
@@ -1532,13 +1536,15 @@ paths:
             format: uuid
       responses:
         "200":
-          description: The company's active suppliers.
+          description: |
+            The company's active suppliers, each with its latest purchase lot
+            (L12) or `null` when the company never bought from it.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Supplier"
+                  $ref: "#/components/schemas/SupplierListItem"
         "400":
           description: The company id is not a UUID.
           content:
@@ -2525,6 +2531,132 @@ components:
           type: string
           format: date-time
 
+    ProductCosts:
+      type: object
+      required:
+        [availableUnits, availableMeasure, costPerMeasure, unitCost, marginPerUnit]
+      description: |
+        The cost figures of a product, **derived** from its `AVAILABLE` units
+        (L12), never stored: `costPerMeasure` is `Σ cost / Σ measure`,
+        `unitCost` is `Σ cost / count` and `marginPerUnit` is the product's
+        listed `price` minus `unitCost`. A sold unit contributes neither cost
+        nor measure, so the numbers always describe what is still in stock.
+
+        Money is a decimal string with two decimals and the measure has three;
+        both are computed with exact arithmetic on the server and rounded half
+        up. `costPerMeasure`, `unitCost` and `marginPerUnit` are `null` -- never
+        `0` -- while the product has no available unit: no cost is not a zero
+        cost. `availableUnits` and `availableMeasure` are real zeros then,
+        because they count units and sum a measure, not money.
+      properties:
+        availableUnits:
+          type: integer
+          minimum: 0
+          description: How many units of the product are still `AVAILABLE`.
+        availableMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{3}$"
+          example: "10.000"
+          description: |
+            Σ `measure` of those units, in the product's measure unit, with
+            three decimals.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          nullable: true
+          example: "5900.00"
+          description: |
+            Σ cost / Σ measure: what one measure of the remaining stock cost.
+            `null` with no available units.
+        unitCost:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          nullable: true
+          example: "29500.00"
+          description: |
+            Σ cost / number of available units: the average cost of one unit.
+            `null` with no available units.
+        marginPerUnit:
+          type: string
+          pattern: "^-?\\d+\\.\\d{2}$"
+          nullable: true
+          example: "-20500.00"
+          description: |
+            The product's listed `price` minus `unitCost`; negative when the
+            list price is below the cost. `null` with no `unitCost`.
+
+    ProductListItem:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - $ref: "#/components/schemas/ProductCosts"
+      description: |
+        A product as the catalogue list shows it: the stored fields plus the
+        costs derived from its available units (L12). The list deliberately
+        carries no lots; those are the detail's answer.
+
+    ProductLotSummary:
+      type: object
+      required:
+        [id, supplierId, supplierName, receivedAt, measureTotal, costPerMeasure, unitCount, availableUnits]
+      description: |
+        One purchase lot of a product, as the "which supplier should I buy
+        from" view shows it (L12): what arrived, from whom, at what price per
+        measure, and how much of it is still available.
+      properties:
+        id:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        supplierName:
+          type: string
+          maxLength: 120
+          description: |
+            Resolved by the API, including a supplier that was soft-deleted
+            afterwards: the lot keeps showing whose purchase it was.
+        receivedAt:
+          type: string
+          format: date-time
+        measureTotal:
+          type: string
+          pattern: "^\\d+\\.\\d{3}$"
+          example: "10.000"
+          description: Σ measure of the lot's units, with three decimals.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          example: "5900.00"
+          description: The price of one measure of this lot, with two decimals.
+        unitCount:
+          type: integer
+          minimum: 1
+          maximum: 500
+        availableUnits:
+          type: integer
+          minimum: 0
+          description: How many units of this lot are still `AVAILABLE`.
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - $ref: "#/components/schemas/ProductCosts"
+        - type: object
+          required: [lots]
+          properties:
+            lots:
+              type: array
+              maxItems: 50
+              description: |
+                The latest 50 lots of the product, newest first (`receivedAt`,
+                then `createdAt`, then id). Empty for a product that never came
+                in a lot.
+              items:
+                $ref: "#/components/schemas/ProductLotSummary"
+      description: |
+        The detail of one product: the stored fields, the costs derived from its
+        available units and its latest lots (L12).
+
     CreateProductRequest:
       type: object
       required: [name, sku, price]
@@ -2580,7 +2712,7 @@ components:
     StockMovement:
       type: object
       required:
-        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer, lotId, unitPrice, units]
+        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer, lotId, unitPrice, units, margin]
       description: |
         One immutable stock movement -- the audit trail of the inventory
         (MOV-05). `type` is `IN` for an entry and `OUT` for an exit, and
@@ -2594,6 +2726,11 @@ components:
         for an entry and for any movement recorded before the field existed
         (S9), which is reported as "no cost" instead of assuming a value. An
         entry also carries the `lotId` it brought in, and never carries units.
+
+        `margin` is computed by the server (L11) as `unitPrice × quantity` minus
+        the sum of the units' costs, and it is `null` -- never `0` -- when the
+        price was not written or the movement took no units, which is the "sin
+        costo" the client shows.
       properties:
         id:
           type: string
@@ -2668,6 +2805,17 @@ components:
             cost of each one is what the margin is computed from (S3).
           items:
             $ref: "#/components/schemas/MovementUnit"
+        margin:
+          type: string
+          pattern: "^-?\\d+\\.\\d{2}$"
+          nullable: true
+          example: "4298.75"
+          description: |
+            `unitPrice × quantity` minus the sum of the units' costs, as money
+            with two decimals (L11). A negative value is a sale below cost. It is
+            `null` when there is no price (a movement recorded before the field
+            existed, S9) or no units (an entry, or a sale of a product that never
+            came in a lot) -- never `0`, which would mean "sold at cost".
 
     MovementUnit:
       type: object
@@ -2817,6 +2965,60 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    SupplierLastLot:
+      type: object
+      required:
+        [id, productId, productName, costPerMeasure, measureUnit, receivedAt]
+      description: |
+        The most recent purchase lot of a supplier, as the roster summarizes it
+        (L12): which product it was, its price per measure, the unit that
+        measure is expressed in, and when it arrived.
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        productName:
+          type: string
+          maxLength: 120
+          description: |
+            Resolved by the API, including a product that was soft-deleted
+            afterwards: the lot keeps answering what was bought.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          example: "5900.00"
+          description: The price of one measure of that lot, with two decimals.
+        measureUnit:
+          type: string
+          enum: [KILOGRAM, LITRE, METRE]
+          description: |
+            The measure unit the product is bought in, which is what gives
+            `costPerMeasure` its unit.
+        receivedAt:
+          type: string
+          format: date-time
+
+    SupplierListItem:
+      allOf:
+        - $ref: "#/components/schemas/Supplier"
+        - type: object
+          required: [lastLot]
+          properties:
+            lastLot:
+              description: |
+                The supplier's most recent lot, or `null` when the company never
+                bought from it -- never a fabricated row.
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/SupplierLastLot"
+      description: |
+        A supplier as the roster list shows it: the stored fields plus its latest
+        lot (L12). The write endpoints keep answering the plain `Supplier`: a
+        supplier that was just created has no lots yet.
 
     CreateSupplierRequest:
       type: object

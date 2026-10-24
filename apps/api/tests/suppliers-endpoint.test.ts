@@ -11,6 +11,9 @@ import {
 import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
+import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
+import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
 import { InMemorySupplierRepository } from "../src/infrastructure/database/in-memory-supplier-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
@@ -48,6 +51,12 @@ describe("supplier endpoints", () => {
 	function createTestApp() {
 		const membershipRepository = new InMemoryMembershipRepository();
 		const supplierRepository = new InMemorySupplierRepository();
+		// The roster summarizes every supplier with its latest lot (L12), so the
+		// reads share one product store and one lot store.
+		const productRepository = new InMemoryProductRepository();
+		const stockLotRepository = new InMemoryStockLotRepository(
+			new InMemoryStockMovementRepository(new Map()),
+		);
 
 		const owner = User.create({ auth0Sub: OWNER_SUB, email: "owner@x.com" });
 		const admin = User.create({ auth0Sub: ADMIN_SUB, email: "admin@x.com" });
@@ -110,7 +119,11 @@ describe("supplier endpoints", () => {
 			customers: {} as never,
 			products: {} as never,
 			suppliers: {
-				list: new ListSuppliersUseCase({ supplierRepository }),
+				list: new ListSuppliersUseCase({
+					supplierRepository,
+					stockLotRepository,
+					productRepository,
+				}),
 				create: new CreateSupplierUseCase({ supplierRepository }),
 				update: new UpdateSupplierUseCase({ supplierRepository }),
 				remove: new DeleteSupplierUseCase({ supplierRepository }),

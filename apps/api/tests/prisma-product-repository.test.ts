@@ -86,6 +86,7 @@ describe("PrismaProductRepository.create", () => {
 				photoUrl: null,
 				stockQuantity: 0,
 				lowStockThreshold: 0,
+				measureUnit: "KILOGRAM",
 				categoryId: null,
 				createdAt: input.createdAt,
 				updatedAt: input.updatedAt,

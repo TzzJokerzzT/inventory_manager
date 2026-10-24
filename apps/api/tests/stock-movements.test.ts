@@ -130,6 +130,8 @@ describe("RegisterStockMovementUseCase", () => {
 			lotId: null,
 			unitPrice: null,
 			units: [],
+			// An entry never has a margin: it took no units and wrote no price.
+			margin: null,
 			product: { id: PRODUCT, name: "Cafe molido 500g", sku: "CAF-500" },
 			actor: { id: ACTOR.id, fullName: "Ana", email: "ana@x.com" },
 		});
@@ -364,6 +366,8 @@ describe("ListStockMovementsUseCase", () => {
 			lotId: null,
 			unitPrice: null,
 			units: [],
+			// An entry never has a margin: it took no units and wrote no price.
+			margin: null,
 			product: { id: PRODUCT, name: "Cafe molido 500g", sku: "CAF-500" },
 			actor: { id: ACTOR.id, fullName: "Ana", email: "ana@x.com" },
 		});

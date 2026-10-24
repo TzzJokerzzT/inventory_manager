@@ -17,7 +17,9 @@ import { SkuAlreadyExistsError } from "../src/domain/errors/sku-already-exists-e
 import type { ProductRepository } from "../src/domain/repositories/product-repository.js";
 import type { StockMovementRepository } from "../src/domain/repositories/stock-movement-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
+import { InMemorySupplierRepository } from "../src/infrastructure/database/in-memory-supplier-repository.js";
 
 const COMPANY = "company-1";
 const OTHER_COMPANY = "company-2";
@@ -195,7 +197,12 @@ describe("CreateProductUseCase", () => {
 
 describe("ListProductsUseCase", () => {
 	function listProducts(repository_: InMemoryProductRepository) {
-		return new ListProductsUseCase({ productRepository: repository_ });
+		return new ListProductsUseCase({
+			productRepository: repository_,
+			stockLotRepository: new InMemoryStockLotRepository(
+				new InMemoryStockMovementRepository(new Map()),
+			),
+		});
 	}
 
 	it("lists the company's active products ordered by name, as a MEMBER may do", async () => {
@@ -315,19 +322,33 @@ describe("ListProductsUseCase", () => {
 
 describe("GetProductUseCase", () => {
 	function getProduct(repository_: InMemoryProductRepository) {
-		return new GetProductUseCase({ productRepository: repository_ });
+		return new GetProductUseCase({
+			productRepository: repository_,
+			stockLotRepository: new InMemoryStockLotRepository(
+				new InMemoryStockMovementRepository(new Map()),
+			),
+			supplierRepository: new InMemorySupplierRepository(),
+		});
 	}
 
-	it("returns the product of the company", async () => {
+	it("returns the product of the company with the costs of its available units", async () => {
 		const repository_ = repository();
 		const product = seed(repository_, { id: "product-1" });
 
-		await expect(
-			getProduct(repository_).execute(
-				{ productId: "product-1" },
-				{ companyId: COMPANY },
-			),
-		).resolves.toBe(product);
+		const read = await getProduct(repository_).execute(
+			{ productId: "product-1" },
+			{ companyId: COMPANY },
+		);
+
+		expect(read).toEqual({
+			...product.toJSON(),
+			availableUnits: 0,
+			availableMeasure: "0.000",
+			costPerMeasure: null,
+			unitCost: null,
+			marginPerUnit: null,
+			lots: [],
+		});
 	});
 
 	it("answers ProductNotFoundError for another company's product", async () => {

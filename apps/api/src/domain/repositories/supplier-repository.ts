@@ -41,6 +41,19 @@ export interface SupplierRepository {
 	findById(companyId: string, supplierId: string): Promise<Supplier | null>;
 
 	/**
+	 * Resolves the suppliers of the company with the given ids in one batch
+	 * read, **including the soft-deleted rows**.
+	 *
+	 * It is the read a history needs, not a roster lookup: a lot of a supplier
+	 * that was soft-deleted afterwards must still show whose lot it was, the
+	 * same way a movement of a deleted product stays readable. The `companyId`
+	 * stays in the WHERE clause, so another company's supplier never resolves,
+	 * and an id with no row is simply absent from the answer for the caller to
+	 * join in memory.
+	 */
+	findByIds(companyId: string, ids: string[]): Promise<Supplier[]>;
+
+	/**
 	 * Lists the company's active suppliers, ordered by name and then id so two
 	 * reads of the same state answer the same array.
 	 *

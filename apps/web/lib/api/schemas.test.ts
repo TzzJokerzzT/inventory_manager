@@ -581,6 +581,7 @@ function movement(overrides: Record<string, unknown> = {}) {
 		lotId: null,
 		unitPrice: null,
 		units: [],
+		margin: null,
 		...overrides,
 	};
 }

@@ -8,6 +8,9 @@ import { DomainError } from "../src/domain/errors/domain-error.js";
 import { InsufficientRoleError } from "../src/domain/errors/insufficient-role-error.js";
 import { SupplierNameAlreadyExistsError } from "../src/domain/errors/supplier-name-already-exists-error.js";
 import { SupplierNotFoundError } from "../src/domain/errors/supplier-not-found-error.js";
+import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
+import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
 import { InMemorySupplierRepository } from "../src/infrastructure/database/in-memory-supplier-repository.js";
 
 const COMPANY = "company-1";
@@ -40,6 +43,20 @@ function seed(
 
 function repository(): InMemorySupplierRepository {
 	return new InMemorySupplierRepository();
+}
+
+/**
+ * The roster read resolves each supplier's latest lot, so it needs the three
+ * stores even when a suite seeds no lot at all.
+ */
+function listSuppliers(repository_: InMemorySupplierRepository) {
+	return new ListSuppliersUseCase({
+		supplierRepository: repository_,
+		stockLotRepository: new InMemoryStockLotRepository(
+			new InMemoryStockMovementRepository(new Map()),
+		),
+		productRepository: new InMemoryProductRepository(),
+	});
 }
 
 function context(actorRole: MembershipRole = "OWNER") {
@@ -160,9 +177,9 @@ describe("ListSuppliersUseCase", () => {
 		seed(repository_, { id: "supplier-a", name: "Alfa" });
 		seed(repository_, { id: "supplier-m", name: "Alfa" });
 
-		const suppliers = await new ListSuppliersUseCase({
-			supplierRepository: repository_,
-		}).execute({ companyId: COMPANY });
+		const suppliers = await listSuppliers(repository_).execute({
+			companyId: COMPANY,
+		});
 
 		expect(suppliers.map((supplier) => supplier.id)).toEqual([
 			"supplier-a",
@@ -181,18 +198,16 @@ describe("ListSuppliersUseCase", () => {
 			companyId: OTHER_COMPANY,
 		});
 
-		const suppliers = await new ListSuppliersUseCase({
-			supplierRepository: repository_,
-		}).execute({ companyId: COMPANY });
+		const suppliers = await listSuppliers(repository_).execute({
+			companyId: COMPANY,
+		});
 
 		expect(suppliers.map((supplier) => supplier.name)).toEqual(["Propio"]);
 	});
 
 	it("answers an empty array for a company without suppliers", async () => {
 		await expect(
-			new ListSuppliersUseCase({
-				supplierRepository: repository(),
-			}).execute({ companyId: COMPANY }),
+			listSuppliers(repository()).execute({ companyId: COMPANY }),
 		).resolves.toEqual([]);
 	});
 });

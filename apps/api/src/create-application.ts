@@ -186,9 +186,15 @@ const app = buildApp({
 		companyRepository,
 	}),
 	products: {
-		list: new ListProductsUseCase({ productRepository }),
+		// The reads derive the cost per measure and the margin from the lots
+		// (L12), so they need the lot store next to the catalogue.
+		list: new ListProductsUseCase({ productRepository, stockLotRepository }),
 		create: new CreateProductUseCase({ productRepository }),
-		get: new GetProductUseCase({ productRepository }),
+		get: new GetProductUseCase({
+			productRepository,
+			stockLotRepository,
+			supplierRepository,
+		}),
 		update: new UpdateProductUseCase({ productRepository }),
 		remove: new DeleteProductUseCase({ productRepository }),
 		restore: new RestoreProductUseCase({ productRepository }),
@@ -222,7 +228,13 @@ const app = buildApp({
 		trend: new GetMovementTrendUseCase({ stockMovementRepository }),
 	},
 	suppliers: {
-		list: new ListSuppliersUseCase({ supplierRepository }),
+		// The roster summarizes each supplier with its latest lot, so it reads
+		// the lots and the products those lots bought (L12).
+		list: new ListSuppliersUseCase({
+			supplierRepository,
+			stockLotRepository,
+			productRepository,
+		}),
 		create: new CreateSupplierUseCase({ supplierRepository }),
 		update: new UpdateSupplierUseCase({ supplierRepository }),
 		remove: new DeleteSupplierUseCase({ supplierRepository }),

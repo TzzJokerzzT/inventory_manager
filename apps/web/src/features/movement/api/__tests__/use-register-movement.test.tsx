@@ -32,6 +32,7 @@ function registered(overrides: Record<string, unknown> = {}) {
 		lotId: null,
 		unitPrice: null,
 		units: [],
+		margin: null,
 		stockQuantity: 10,
 		...overrides,
 	};

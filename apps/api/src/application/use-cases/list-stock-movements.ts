@@ -1,3 +1,4 @@
+import { deriveMovementMargin } from "../../domain/costing/derived-costs.js";
 import type {
 	StockMovement,
 	StockMovementType,
@@ -46,6 +47,11 @@ export interface StockMovementActor {
  * computed from, and both are `null`/empty for an entry or for a sale recorded
  * before the feature existed (S9). `lotId` is the lot an entry brought in, and
  * entries never carry units.
+ *
+ * `margin` is that computation (L11): `unitPrice × quantity` minus the sum of
+ * the units' costs, in money and computed on the server. It is `null` -- never
+ * `0` -- when the price was not written or the movement took no units, which is
+ * what the UI shows as "sin costo".
  */
 export interface StockMovementView {
 	id: string;
@@ -62,6 +68,7 @@ export interface StockMovementView {
 	lotId: string | null;
 	unitPrice: string | null;
 	units: StockMovementUnit[];
+	margin: string | null;
 }
 
 /**
@@ -106,6 +113,11 @@ export function toStockMovementView(
 			measure: unit.measure,
 			cost: unit.cost,
 		})),
+		margin: deriveMovementMargin(
+			movement.unitPrice,
+			movement.quantity,
+			units.map((unit) => unit.cost),
+		),
 	};
 }
 

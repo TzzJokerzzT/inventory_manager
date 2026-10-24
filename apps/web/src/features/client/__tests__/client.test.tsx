@@ -94,6 +94,7 @@ function sale(overrides: Partial<StockMovement> = {}): StockMovement {
 		lotId: null,
 		unitPrice: null,
 		units: [],
+		margin: null,
 		...overrides,
 	};
 }

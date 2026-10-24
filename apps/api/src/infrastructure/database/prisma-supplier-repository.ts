@@ -88,6 +88,17 @@ export class PrismaSupplierRepository implements SupplierRepository {
 		return this.toDomain(row);
 	}
 
+	async findByIds(companyId: string, ids: string[]): Promise<Supplier[]> {
+		// No `deletedAt` filter: the purchase lots of a supplier that was
+		// soft-deleted afterwards must stay readable. The `companyId` stays in
+		// the WHERE clause, so the isolation is the query's.
+		const rows = await this.prisma.supplier.findMany({
+			where: { companyId, id: { in: ids } },
+		});
+
+		return rows.map((row) => this.toDomain(row));
+	}
+
 	async listByCompany(companyId: string): Promise<Supplier[]> {
 		const rows = await this.prisma.supplier.findMany({
 			where: { companyId, deletedAt: null },

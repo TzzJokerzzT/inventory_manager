@@ -1,6 +1,19 @@
-import type { Product } from "../../domain/entities/product.js";
 import { ProductNotFoundError } from "../../domain/errors/product-not-found-error.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
+import type { StockLotRepository } from "../../domain/repositories/stock-lot-repository.js";
+import type { SupplierRepository } from "../../domain/repositories/supplier-repository.js";
+import type { ProductLotView } from "./product-view.js";
+import {
+	type ProductDetailView,
+	toProductDetailView,
+	toProductLotView,
+} from "./product-view.js";
+
+/**
+ * How many lots the product detail shows (L12: "los últimos 50"). It lives
+ * next to the read that applies it so the contract and the query agree.
+ */
+export const PRODUCT_LOTS_LIMIT = 50;
 
 export interface GetProductInput {
 	productId: string;
@@ -13,6 +26,8 @@ export interface GetProductContext {
 
 export interface GetProductDependencies {
 	productRepository: ProductRepository;
+	stockLotRepository: StockLotRepository;
+	supplierRepository: SupplierRepository;
 }
 
 /**
@@ -23,20 +38,32 @@ export interface GetProductDependencies {
  * `companyId` and `deletedAt: null`, so the endpoint cannot be used to probe
  * other companies' product ids (S4).
  *
+ * The answer is the product **plus what its lots say** (L12): the cost per
+ * measure and per unit derived from the units still available, and the latest
+ * lots with the supplier of each. That is the comparison "which supplier
+ * should I buy from", answered by the server because it is money.
+ *
+ * The read is four queries -- the product, the sums of its available units,
+ * its latest lots and one batch of their suppliers -- never one per lot.
+ *
  * Reading needs no role: the company context already proved an ACTIVE
  * membership.
  */
 export class GetProductUseCase {
 	private readonly productRepository: ProductRepository;
+	private readonly stockLotRepository: StockLotRepository;
+	private readonly supplierRepository: SupplierRepository;
 
 	constructor(dependencies: GetProductDependencies) {
 		this.productRepository = dependencies.productRepository;
+		this.stockLotRepository = dependencies.stockLotRepository;
+		this.supplierRepository = dependencies.supplierRepository;
 	}
 
 	async execute(
 		input: GetProductInput,
 		context: GetProductContext,
-	): Promise<Product> {
+	): Promise<ProductDetailView> {
 		const product = await this.productRepository.findActiveById(
 			context.companyId,
 			input.productId,
@@ -46,6 +73,49 @@ export class GetProductUseCase {
 			throw new ProductNotFoundError();
 		}
 
-		return product;
+		const totals = await this.stockLotRepository.findAvailableUnitTotals(
+			context.companyId,
+			[product.id],
+		);
+		const lots = await this.stockLotRepository.findLatestByProduct(
+			context.companyId,
+			product.id,
+			PRODUCT_LOTS_LIMIT,
+		);
+
+		// Deduplicated: the same supplier usually sold several of the lots, and
+		// each one must cost one lookup, not one query.
+		const supplierIds = [...new Set(lots.map((lot) => lot.supplierId))];
+		const suppliers =
+			supplierIds.length === 0
+				? []
+				: await this.supplierRepository.findByIds(
+						context.companyId,
+						supplierIds,
+					);
+		const suppliersById = new Map(
+			suppliers.map((supplier) => [supplier.id, supplier]),
+		);
+
+		const lotViews: ProductLotView[] = lots.map((lot) => {
+			const supplier = suppliersById.get(lot.supplierId);
+
+			// The lot's supplier is a foreign key, and a soft-deleted supplier is
+			// still resolved by `findByIds`, so a missing one is an inconsistent
+			// store -- reported, never papered over with an invented name.
+			if (supplier === undefined) {
+				throw new Error(
+					`Stock lot ${lot.id} points at supplier ${lot.supplierId}, which does not exist`,
+				);
+			}
+
+			return toProductLotView(lot, supplier.name);
+		});
+
+		return toProductDetailView(
+			product,
+			totals.get(product.id) ?? null,
+			lotViews,
+		);
 	}
 }

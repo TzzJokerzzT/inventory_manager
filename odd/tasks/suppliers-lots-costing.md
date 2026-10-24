@@ -103,6 +103,18 @@ F1 proveedores (ABM + navegación, lo necesita el selector de la compra), F2 ent
 formulario de movimientos, F3 salida con selección de rollos y precio escrito, F4 columnas de costo y margen
 (producto y movimientos) más `lastLot` del proveedor.
 
+L18 (corrección del humano sobre el vocabulario, verbatim): "veo que te estas enfocando en rollos, te mencione
+rollos como ejemplo pero pueden ser otros productos. Para que lo tengas en cuenta". Regla para todo el front y
+para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **unidad**, **medida** (con su
+unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
+las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
+
+L19 (dependencia que destapó L18): `Product.measureUnit` existe en la base y en la entidad desde T5, pero se
+dejó **fuera del contrato y de las respuestas** para no cambiar su forma. El formulario de compra necesita
+mostrar "$ por kg" o "$ por litro" con el dato real, así que F2 arranca exponiéndolo: lectura en
+`Product`/`ProductListItem`/`ProductDetail`, escritura en `CreateProductRequest`/`UpdateProductRequest`, y el
+selector correspondiente en el formulario de producto.
+
 L13 (cierre del backend): las cinco rebanadas de datos y API están commiteadas (`f9bb1b3` esquema, `c5dd5d4`
 proveedores, `b59ad34` lotes, `a07c705` venta, `7b23f0d` lecturas). Superficie resultante:
 

@@ -3,9 +3,13 @@ import type {
 	ProductCosts,
 } from "../../domain/costing/derived-costs.js";
 import { deriveProductCosts } from "../../domain/costing/derived-costs.js";
+import type { LotUnitStatus } from "../../domain/entities/lot-unit.js";
 import type { MeasureUnit } from "../../domain/entities/measure-unit.js";
 import type { Product } from "../../domain/entities/product.js";
-import type { ProductLotSummary } from "../../domain/repositories/stock-lot-repository.js";
+import type {
+	ProductLotSummary,
+	ProductUnitSummary,
+} from "../../domain/repositories/stock-lot-repository.js";
 
 /**
  * The product fields every product response carries, spelled out instead of
@@ -110,5 +114,44 @@ export function toProductLotView(
 		costPerMeasure: lot.costPerMeasure,
 		unitCount: lot.unitCount,
 		availableUnits: lot.availableUnits,
+	};
+}
+
+/**
+ * One physical unit of a product, as `GET .../products/{productId}/units`
+ * answers it (L23).
+ *
+ * It is the unit plus the lot it came in, because the sale screen shows the
+ * concrete unit and offers the oldest stock first: `receivedAt` is the lot's
+ * date and `lotId` lets the client group the units of one purchase. There is no
+ * `companyId` nor `productId`: the answer is always inside the product and the
+ * company of the path.
+ */
+export interface ProductUnitView {
+	id: string;
+	code: string;
+	measure: string;
+	cost: string;
+	status: LotUnitStatus;
+	lotId: string;
+	receivedAt: string;
+}
+
+/**
+ * Maps a unit read to the contract's shape.
+ *
+ * `measure` and `cost` are the stored normalized decimals, so the client gets
+ * exactly the columns' precision (`"2.000"`, `"2000.00"`) instead of a float
+ * the server would have had to build first.
+ */
+export function toProductUnitView(unit: ProductUnitSummary): ProductUnitView {
+	return {
+		id: unit.id,
+		code: unit.code,
+		measure: unit.measure,
+		cost: unit.cost,
+		status: unit.status,
+		lotId: unit.lotId,
+		receivedAt: unit.receivedAt.toISOString(),
 	};
 }

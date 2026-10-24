@@ -30,6 +30,7 @@ import type { ListCustomersUseCase } from "../../application/use-cases/list-cust
 import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
 import type { ListNotificationsUseCase } from "../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../application/use-cases/list-pending-invitations.js";
+import type { ListProductUnitsUseCase } from "../../application/use-cases/list-product-units.js";
 import type { ListProductsUseCase } from "../../application/use-cases/list-products.js";
 import type { ListStockMovementsUseCase } from "../../application/use-cases/list-stock-movements.js";
 import type { ListSuppliersUseCase } from "../../application/use-cases/list-suppliers.js";
@@ -132,6 +133,7 @@ export interface AppDependencies {
 		list: ListProductsUseCase;
 		create: CreateProductUseCase;
 		get: GetProductUseCase;
+		units: ListProductUnitsUseCase;
 		update: UpdateProductUseCase;
 		remove: DeleteProductUseCase;
 		restore: RestoreProductUseCase;

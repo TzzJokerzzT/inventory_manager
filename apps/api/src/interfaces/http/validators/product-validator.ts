@@ -129,3 +129,21 @@ export const listProductsQuerySchema = v.object({
 	),
 	deleted: v.optional(deletedSchema, "false"),
 });
+
+/**
+ * The status filter of `GET .../products/{productId}/units` (L23).
+ *
+ * It arrives as a string, so the closed list lives here: an unknown value is a
+ * 400 with the issue list instead of a silently different read. The default is
+ * the raw query string the schema receives, so an absent parameter answers the
+ * stock a sale can still take.
+ */
+export const listProductUnitsQuerySchema = v.object({
+	status: v.optional(
+		v.picklist(
+			["AVAILABLE", "SOLD", "ALL"],
+			"status must be one of AVAILABLE, SOLD or ALL",
+		),
+		"AVAILABLE",
+	),
+});

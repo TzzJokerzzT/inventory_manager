@@ -207,6 +207,7 @@ describe("costing endpoints", () => {
 					supplierRepository,
 				}),
 				create: {} as never,
+				units: {} as never,
 				update: {} as never,
 				remove: {} as never,
 				restore: {} as never,

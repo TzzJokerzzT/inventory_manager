@@ -188,6 +188,7 @@ function buildRoutesForEnumeration(): Router {
 			list: noop,
 			create: noop,
 			get: noop,
+			units: noop,
 			update: noop,
 			remove: noop,
 			restore: noop,

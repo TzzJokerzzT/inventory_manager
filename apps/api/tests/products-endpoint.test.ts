@@ -149,6 +149,7 @@ describe("product endpoints", () => {
 					stockLotRepository,
 					supplierRepository,
 				}),
+				units: {} as never,
 				update: new UpdateProductUseCase({ productRepository }),
 				remove: new DeleteProductUseCase({ productRepository }),
 				restore: new RestoreProductUseCase({ productRepository }),

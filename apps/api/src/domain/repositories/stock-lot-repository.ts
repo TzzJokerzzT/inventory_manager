@@ -1,5 +1,35 @@
 import type { AvailableUnitTotals } from "../costing/derived-costs.js";
+import type { LotUnitStatus } from "../entities/lot-unit.js";
 import type { StockLot } from "../entities/stock-lot.js";
+
+/**
+ * Which units a read wants, by their status (L23). `ALL` is the whole history of
+ * the product's units, sold ones included; the other two are one state each.
+ */
+export type ProductUnitStatusFilter = LotUnitStatus | "ALL";
+
+/**
+ * One physical unit of a product, as the sale screen lists it (L23).
+ *
+ * It is the unit row plus the **date of the lot it came in**: the client has to
+ * show which concrete unit is being sold and how old its stock is, and the lot's
+ * date is what orders the list. Both decimals travel as the normalized strings
+ * of their columns (`measure` with three decimals, `cost` with two), so a client
+ * never reads money out of a float.
+ */
+export interface ProductUnitSummary {
+	id: string;
+	/** The lot the unit belongs to, so the client can group by purchase. */
+	lotId: string;
+	code: string;
+	/** `Decimal(12,3)` string. */
+	measure: string;
+	/** `Decimal(12,2)` string: this unit's own share of the lot's cost. */
+	cost: string;
+	status: LotUnitStatus;
+	/** The lot's business date. */
+	receivedAt: Date;
+}
 
 /**
  * One purchase lot as the reads that compare suppliers summarize it (L12).
@@ -116,4 +146,27 @@ export interface StockLotRepository {
 		companyId: string,
 		supplierIds: string[],
 	): Promise<Map<string, SupplierLatestLot>>;
+
+	/**
+	 * Reads the units of one product of the company, filtered by status.
+	 *
+	 * The order is part of the contract: **the oldest lot first**, and inside a lot
+	 * by `code`. A sale offers the oldest stock first, so the order is a rule of
+	 * the read and not a convenience of the adapter. "Oldest" is `receivedAt`, then
+	 * `createdAt`, then the id -- the same tie-breaks `findLatestByProduct` uses,
+	 * reversed, so two reads of the same state answer the same array.
+	 *
+	 * `status` is the filter the caller asked for: one state, or `ALL` for the whole
+	 * history. Both the company and the product are in the query, so ids of another
+	 * company resolve to nothing.
+	 *
+	 * The status of a unit is the one the `lot_units` row carries, which is the row
+	 * a sale writes; the adapter that composes another store reads it from there
+	 * instead of from its own copy, so both answer the same state.
+	 */
+	findUnitsByProduct(
+		companyId: string,
+		productId: string,
+		status: ProductUnitStatusFilter,
+	): Promise<ProductUnitSummary[]>;
 }

@@ -143,6 +143,7 @@ describe("stock movement endpoints", () => {
 				}),
 				create: {} as never,
 				get: {} as never,
+				units: {} as never,
 				update: {} as never,
 				remove: {} as never,
 				restore: {} as never,

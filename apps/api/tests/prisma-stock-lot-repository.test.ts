@@ -18,6 +18,7 @@ function buildFakeDelegate() {
 	const stockLotCreate = jest.fn();
 	const stockLotFindMany = jest.fn();
 	const lotUnitGroupBy = jest.fn();
+	const lotUnitFindMany = jest.fn();
 	const productUpdateMany = jest.fn();
 	const stockMovementCreate = jest.fn();
 
@@ -34,7 +35,7 @@ function buildFakeDelegate() {
 
 	const delegate = {
 		stockLot: { create: stockLotCreate, findMany: stockLotFindMany },
-		lotUnit: { groupBy: lotUnitGroupBy },
+		lotUnit: { groupBy: lotUnitGroupBy, findMany: lotUnitFindMany },
 		product: { updateMany: productUpdateMany },
 		stockMovement: { create: stockMovementCreate },
 		$transaction: transaction,
@@ -46,6 +47,7 @@ function buildFakeDelegate() {
 		stockLotCreate,
 		stockLotFindMany,
 		lotUnitGroupBy,
+		lotUnitFindMany,
 		productUpdateMany,
 		stockMovementCreate,
 	};
@@ -343,5 +345,91 @@ describe("PrismaStockLotRepository reads", () => {
 			costPerMeasure: "5900.00",
 		});
 		expect(latest.has("supplier-2")).toBe(false);
+	});
+});
+
+describe("PrismaStockLotRepository.findUnitsByProduct", () => {
+	it("reads the units of the product oldest lot first, then by code", async () => {
+		const { delegate, lotUnitFindMany } = buildFakeDelegate();
+		lotUnitFindMany.mockResolvedValue([
+			{
+				id: "unit-1",
+				code: "R-01",
+				measure: decimal("2"),
+				cost: decimal("2000"),
+				status: "AVAILABLE",
+				lot: { id: "lot-1", receivedAt: CREATED_AT },
+			},
+			{
+				id: "unit-2",
+				code: "R-02",
+				measure: decimal("4.5"),
+				cost: decimal("4500.50"),
+				status: "SOLD",
+				lot: { id: "lot-1", receivedAt: CREATED_AT },
+			},
+		]);
+
+		const units = await new PrismaStockLotRepository({
+			prisma: delegate,
+		}).findUnitsByProduct("company-1", "product-1", "ALL");
+
+		// The order is the port's: the lot's date first (so a sale offers the
+		// oldest stock), then the code inside the lot.
+		expect(lotUnitFindMany).toHaveBeenCalledWith({
+			where: { lot: { companyId: "company-1", productId: "product-1" } },
+			orderBy: [
+				{ lot: { receivedAt: "asc" } },
+				{ lot: { createdAt: "asc" } },
+				{ lot: { id: "asc" } },
+				{ code: "asc" },
+			],
+			select: {
+				id: true,
+				code: true,
+				measure: true,
+				cost: true,
+				status: true,
+				lot: { select: { id: true, receivedAt: true } },
+			},
+		});
+		expect(units).toEqual([
+			{
+				id: "unit-1",
+				code: "R-01",
+				measure: "2.000",
+				cost: "2000.00",
+				status: "AVAILABLE",
+				lotId: "lot-1",
+				receivedAt: CREATED_AT,
+			},
+			{
+				id: "unit-2",
+				code: "R-02",
+				measure: "4.500",
+				cost: "4500.50",
+				status: "SOLD",
+				lotId: "lot-1",
+				receivedAt: CREATED_AT,
+			},
+		]);
+	});
+
+	it("filters by the requested status inside the WHERE clause", async () => {
+		const { delegate, lotUnitFindMany } = buildFakeDelegate();
+		lotUnitFindMany.mockResolvedValue([]);
+
+		const repository = new PrismaStockLotRepository({ prisma: delegate });
+
+		await repository.findUnitsByProduct("company-1", "product-1", "SOLD");
+
+		expect(lotUnitFindMany).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				where: {
+					status: "SOLD",
+					lot: { companyId: "company-1", productId: "product-1" },
+				},
+			}),
+		);
 	});
 });

@@ -55,6 +55,12 @@ export function companyRoutes(
 	// `manage_products` row of the matrix inside the use cases, not here.
 	companyScoped.get("/products", products.list);
 	companyScoped.post("/products", products.create);
+	// The concrete units of a product are a read of its purchase lots, so they hang
+	// off the product they belong to (L23). It is registered before
+	// `/products/:productId` for the same reason the longer delete path is: the
+	// longer path first keeps it obvious that the plain detail route can never
+	// swallow it. Any ACTIVE membership reads it, like the rest of the catalogue.
+	companyScoped.get("/products/:productId/units", products.units);
 	companyScoped.get("/products/:productId", products.get);
 	companyScoped.patch("/products/:productId", products.update);
 	// The permanent delete is declared BEFORE `/products/:productId` on purpose:

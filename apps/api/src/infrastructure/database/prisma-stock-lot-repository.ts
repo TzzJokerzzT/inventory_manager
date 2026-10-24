@@ -9,6 +9,8 @@ import type { StockLot } from "../../domain/entities/stock-lot.js";
 import { ProductNotFoundError } from "../../domain/errors/product-not-found-error.js";
 import type {
 	ProductLotSummary,
+	ProductUnitStatusFilter,
+	ProductUnitSummary,
 	StockLotRepository,
 	SupplierLatestLot,
 } from "../../domain/repositories/stock-lot-repository.js";
@@ -268,6 +270,47 @@ export class PrismaStockLotRepository implements StockLotRepository {
 		}
 
 		return latest;
+	}
+
+	async findUnitsByProduct(
+		companyId: string,
+		productId: string,
+		status: ProductUnitStatusFilter,
+	): Promise<ProductUnitSummary[]> {
+		// The order is the port's: the oldest lot first (so a sale offers the oldest
+		// stock), then the code inside the lot. The WHERE carries the company and
+		// the product through the lot relation, exactly like the unit reads the
+		// costing slice already does, so another company's units never resolve.
+		const rows = await this.prisma.lotUnit.findMany({
+			where: {
+				...(status === "ALL" ? {} : { status }),
+				lot: { companyId, productId },
+			},
+			orderBy: [
+				{ lot: { receivedAt: "asc" } },
+				{ lot: { createdAt: "asc" } },
+				{ lot: { id: "asc" } },
+				{ code: "asc" },
+			],
+			select: {
+				id: true,
+				code: true,
+				measure: true,
+				cost: true,
+				status: true,
+				lot: { select: { id: true, receivedAt: true } },
+			},
+		});
+
+		return rows.map((row) => ({
+			id: row.id,
+			lotId: row.lot.id,
+			code: row.code,
+			measure: measureText(row.measure),
+			cost: moneyText(row.cost),
+			status: row.status,
+			receivedAt: row.lot.receivedAt,
+		}));
 	}
 }
 

@@ -12,6 +12,8 @@ import { DomainError } from "../../domain/errors/domain-error.js";
 import { ProductNotFoundError } from "../../domain/errors/product-not-found-error.js";
 import type {
 	ProductLotSummary,
+	ProductUnitStatusFilter,
+	ProductUnitSummary,
 	StockLotRepository,
 	SupplierLatestLot,
 } from "../../domain/repositories/stock-lot-repository.js";
@@ -221,6 +223,52 @@ export class InMemoryStockLotRepository implements StockLotRepository {
 		return latest;
 	}
 
+	async findUnitsByProduct(
+		companyId: string,
+		productId: string,
+		status: ProductUnitStatusFilter,
+	): Promise<ProductUnitSummary[]> {
+		// The status of a unit lives in the ledger (production reads the shared
+		// `lot_units` row), so the lot's own copy would keep saying AVAILABLE after
+		// a sale. The ledger is the authority here too, exactly like in the totals
+		// and latest-lot reads.
+		const statuses = this.unitStatuses();
+
+		// The same filter and order as the Prisma adapter: the company and the
+		// product, the requested status, the oldest lot first and then the code.
+		const units: ProductUnitSummary[] = [];
+
+		for (const lot of Array.from(this.lots.values())
+			.filter(
+				(candidate) =>
+					candidate.companyId === companyId &&
+					candidate.productId === productId,
+			)
+			.sort(compareOldestFirst)) {
+			for (const unit of [...lot.units].sort((a, b) =>
+				a.code.localeCompare(b.code),
+			)) {
+				const current = statuses.get(unit.id) ?? unit.status;
+
+				if (status !== "ALL" && current !== status) {
+					continue;
+				}
+
+				units.push({
+					id: unit.id,
+					lotId: lot.id,
+					code: unit.code,
+					measure: unit.measure,
+					cost: unit.cost,
+					status: current,
+					receivedAt: lot.receivedAt,
+				});
+			}
+		}
+
+		return units;
+	}
+
 	/**
 	 * The current status of every unit, by unit id, read from the ledger.
 	 *
@@ -263,6 +311,18 @@ function compareNewestFirst(a: StockLot, b: StockLot): number {
 		b.receivedAt.getTime() - a.receivedAt.getTime() ||
 		b.createdAt.getTime() - a.createdAt.getTime() ||
 		b.id.localeCompare(a.id)
+	);
+}
+
+/**
+ * The exact reverse of {@link compareNewestFirst}, so "the oldest lot first" is
+ * the same order the latest-lot reads use, read backwards.
+ */
+function compareOldestFirst(a: StockLot, b: StockLot): number {
+	return (
+		a.receivedAt.getTime() - b.receivedAt.getTime() ||
+		a.createdAt.getTime() - b.createdAt.getTime() ||
+		a.id.localeCompare(b.id)
 	);
 }
 

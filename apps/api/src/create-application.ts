@@ -21,6 +21,7 @@ import { ListCustomersUseCase } from "./application/use-cases/list-customers.js"
 import { ListMembersUseCase } from "./application/use-cases/list-members.js";
 import { ListNotificationsUseCase } from "./application/use-cases/list-notifications.js";
 import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
+import { ListProductUnitsUseCase } from "./application/use-cases/list-product-units.js";
 import { ListProductsUseCase } from "./application/use-cases/list-products.js";
 import { ListStockMovementsUseCase } from "./application/use-cases/list-stock-movements.js";
 import { ListSuppliersUseCase } from "./application/use-cases/list-suppliers.js";
@@ -189,6 +190,13 @@ const app = buildApp({
 		// The reads derive the cost per measure and the margin from the lots
 		// (L12), so they need the lot store next to the catalogue.
 		list: new ListProductsUseCase({ productRepository, stockLotRepository }),
+		// Which concrete units a product has (L23): the sale screen lists them with
+		// their own measure and cost, so the read lives next to the other product
+		// reads and shares their lot source.
+		units: new ListProductUnitsUseCase({
+			productRepository,
+			stockLotRepository,
+		}),
 		create: new CreateProductUseCase({ productRepository }),
 		get: new GetProductUseCase({
 			productRepository,

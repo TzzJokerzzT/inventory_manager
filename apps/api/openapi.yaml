@@ -1036,6 +1036,101 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/products/{productId}/units:
+    get:
+      tags: [products]
+      summary: List the units of a product
+      description: |
+        Lists the physical units of one product of the company the caller has
+        context for, so a sale can offer **which** units leave instead of only how
+        many are left (L23). Each unit carries its own `measure` and `cost`,
+        because two units of the same lot do not weigh the same and therefore do
+        not cost the same (S3).
+
+        The order is the read's rule, not a client preference: the **oldest lot
+        first** (`receivedAt`, then `createdAt`, then the lot id) and, inside a
+        lot, by `code`. A sale offers the oldest stock first. The same product
+        bought twice therefore answers its earlier purchase first.
+
+        `status` filters the units: `AVAILABLE` (the default) is what a sale can
+        still take, `SOLD` is the history of what left, and `ALL` is both. An
+        unknown value answers `400` with the issue list.
+
+        A product that never came in a lot answers `200 []`. A product of another
+        company, a nonexistent one and a soft-deleted one all answer the same
+        `404 product_not_found`, so the endpoint cannot be used to probe other
+        companies' product ids. Any ACTIVE membership reads it, like the rest of
+        the catalogue.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          description: |
+            Which units to answer: `AVAILABLE` for the stock a sale can take
+            (default), `SOLD` for the units that already left, or `ALL` for the
+            whole history of the product's units.
+          schema:
+            type: string
+            enum: [AVAILABLE, SOLD, ALL]
+            default: AVAILABLE
+      responses:
+        "200":
+          description: |
+            The units of the product, oldest lot first and then by code. Empty
+            when the product never came in a lot or when no unit matches the
+            requested status.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductUnit"
+        "400":
+          description: |
+            The company id or the product id is not a UUID, or `status` is not
+            one of `AVAILABLE`, `SOLD` or `ALL`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist, belongs to another company, or was
+            soft-deleted; the `code` is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /companies/{companyId}/movements:
     get:
       tags: [movements]
@@ -2676,6 +2771,50 @@ components:
       description: |
         The detail of one product: the stored fields, the costs derived from its
         available units and its latest lots (L12).
+
+    ProductUnit:
+      type: object
+      required: [id, code, measure, cost, status, lotId, receivedAt]
+      description: |
+        One physical unit of a product, as the sale screen lists it (L23): which
+        unit it is, how much it measures, what it cost, and the lot it came in.
+        The list is ordered by the lot's date and then by the code, so the first
+        unit is the oldest stock.
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 32
+          example: R-01
+          description: Generated from the unit's position inside its lot.
+        measure:
+          type: string
+          pattern: "^\\d{1,9}\\.\\d{3}$"
+          example: "12.500"
+          description: |
+            The unit's measure in the product's measure unit, with exactly three
+            decimals.
+        cost:
+          type: string
+          pattern: "^\\d{1,10}\\.\\d{2}$"
+          example: "73750.00"
+          description: |
+            The unit's own share of the lot's cost, with exactly two decimals.
+        status:
+          type: string
+          enum: [AVAILABLE, SOLD]
+        lotId:
+          type: string
+          format: uuid
+          description: The purchase lot the unit came in.
+        receivedAt:
+          type: string
+          format: date-time
+          description: |
+            The lot's business date, which is what orders the list: oldest
+            first.
 
     CreateProductRequest:
       type: object

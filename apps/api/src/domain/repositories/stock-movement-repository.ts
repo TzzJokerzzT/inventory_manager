@@ -1,25 +1,35 @@
 import type {
 	StockMovement,
 	StockMovementType,
+	StockMovementUnit,
 } from "../entities/stock-movement.js";
 
 // Re-exported from the entity on purpose: the union belongs to the domain
 // model, and consumers of the port should not have to reach past it.
-export type { StockMovementType };
+export type { StockMovementType, StockMovementUnit };
 
 /**
  * The outcome of `register`.
  *
- * It is a discriminated union instead of exceptions because two of its three
- * cases are *expected* outcomes of the guarded write, not failures: the
- * product is not in the company's active catalogue, or the exit asked for more
- * than the stock. The use case maps each case to its domain error, so no
- * adapter decides an HTTP status.
+ * It is a discriminated union instead of exceptions because several of its
+ * cases are *expected* outcomes of the guarded write, not failures: the product
+ * is not in the company's active catalogue, the exit asked for more than the
+ * stock, a sale of a product with units came without them (L9), or the units it
+ * named cannot be handed over. The use case maps each case to its domain
+ * error, so no adapter decides an HTTP status.
  */
 export type RegisterMovementResult =
-	| { kind: "registered"; movement: StockMovement; stockQuantity: number }
+	| {
+			kind: "registered";
+			movement: StockMovement;
+			stockQuantity: number;
+			/** The units the movement took, empty for an entry or a unitless sale. */
+			units: StockMovementUnit[];
+	  }
 	| { kind: "product_not_found" }
-	| { kind: "insufficient_stock"; available: number };
+	| { kind: "insufficient_stock"; available: number }
+	| { kind: "units_required" }
+	| { kind: "unit_not_available" };
 
 export interface StockMovementFilters {
 	productId?: string;
@@ -43,14 +53,20 @@ export interface StockMovementFilters {
  * - **The stock never goes negative**: an `OUT` is applied by a guarded write
  *   (`stockQuantity >= quantity`), so two concurrent exits cannot both win;
  *   the loser answers `insufficient_stock` with the stock available.
+ * - **The units of a sale are taken in that same write** (L10): the adapter
+ *   decides, against the state it is about to change, whether the product has
+ *   units available, and marks the named ones `SOLD` with the same kind of
+ *   guard. A unit can therefore never be sold twice, and a rejected sale
+ *   leaves no unit marked and no stock moved.
  * - **The history is company-scoped and read-only**: there is no update nor
  *   delete method, because a movement is the audit trail of the stock
  *   (MOV-05).
  */
 export interface StockMovementRepository {
 	/**
-	 * Applies the movement's stock delta and inserts the movement in one
-	 * transaction, returning the product's stock **after** the change.
+	 * Applies the movement's stock delta, marks the units it takes and inserts
+	 * the movement with its unit links in one transaction, returning the
+	 * product's stock **after** the change and the units that were taken.
 	 */
 	register(movement: StockMovement): Promise<RegisterMovementResult>;
 
@@ -92,4 +108,18 @@ export interface StockMovementRepository {
 	 * the ledger -- the ledger itself is never written by a purge (MOV-05).
 	 */
 	countByProduct(companyId: string, productId: string): Promise<number>;
+
+	/**
+	 * Reads the units each of the given movements took, keyed by movement id.
+	 *
+	 * It is the read behind the margin: the sale's units carry their own costs
+	 * (S3), and a movement without units -- an entry, or a sale of a product
+	 * that never came in a lot -- simply does not appear in the answer. The
+	 * company is part of the query, like every other read, so ids of another
+	 * company resolve to nothing.
+	 */
+	findUnitsByMovementIds(
+		companyId: string,
+		movementIds: string[],
+	): Promise<Map<string, StockMovementUnit[]>>;
 }

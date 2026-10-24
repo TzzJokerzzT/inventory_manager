@@ -27,6 +27,12 @@ function registered(overrides: Record<string, unknown> = {}) {
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
 		customerId: null,
 		customer: null,
+		// Added with the purchase-lot feature; a legacy movement has no lot, no
+		// written price and no units.
+		lotId: null,
+		unitPrice: null,
+		units: [],
+		margin: null,
 		stockQuantity: 10,
 		...overrides,
 	};
@@ -101,6 +107,64 @@ describe("useRegisterMovement", () => {
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["movements", "c1"] });
 		// El del catálogo: el stock que se muestra en productos cambia sin recargar.
 		expect(invalidate).toHaveBeenCalledWith({ queryKey: ["products", "c1"] });
+	});
+
+	it("invalidates the units of the sold product after a sale with units", async () => {
+		const post = jest.fn(async () => ({
+			data: registered({
+				type: "OUT",
+				quantity: 2,
+				unitPrice: "1800.50",
+				units: [
+					{ id: "u1", code: "R-01", measure: "12.500", cost: "73750.00" },
+				],
+			}),
+		}));
+		getApiClientMock.mockReturnValue({
+			post,
+		} as unknown as ReturnType<typeof getApiClient>);
+		const queryClient = newQueryClient();
+		const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useRegisterMovement("c1"), {
+			wrapper: wrapperFor(queryClient),
+		});
+
+		await result.current.mutateAsync({
+			productId: "p1",
+			type: "OUT",
+			quantity: 1,
+			unitIds: ["u1"],
+			unitPrice: "1800.50",
+		});
+
+		// La venta marcó las unidades SOLD: sin esto la próxima venta ofrecería
+		// una unidad que ya salió (L25).
+		expect(invalidate).toHaveBeenCalledWith({
+			queryKey: ["product-units", "c1", "p1"],
+		});
+	});
+
+	it("does not read units that the sale did not take", async () => {
+		getApiClientMock.mockReturnValue({
+			post: jest.fn(async () => ({ data: registered() })),
+		} as unknown as ReturnType<typeof getApiClient>);
+		const queryClient = newQueryClient();
+		const invalidate = jest.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useRegisterMovement("c1"), {
+			wrapper: wrapperFor(queryClient),
+		});
+
+		await result.current.mutateAsync({
+			productId: "p1",
+			type: "OUT",
+			quantity: 2,
+		});
+
+		expect(invalidate).not.toHaveBeenCalledWith({
+			queryKey: ["product-units", "c1", "p1"],
+		});
 	});
 
 	it("sends the customer of a sale with the body", async () => {

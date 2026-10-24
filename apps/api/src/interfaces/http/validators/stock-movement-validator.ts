@@ -4,7 +4,9 @@ import {
 	MAX_MOVEMENT_TREND_DAYS,
 	MIN_MOVEMENT_TREND_DAYS,
 } from "../../../application/use-cases/get-movement-trend.js";
+import { MAX_MOVEMENT_UNITS } from "../../../domain/entities/stock-movement.js";
 import { CustomerRequiresExitError } from "../../../domain/errors/customer-requires-exit-error.js";
+import { SaleFieldRequiresExitError } from "../../../domain/errors/sale-field-requires-exit-error.js";
 
 /**
  * `quantity` is always positive: the direction of a movement lives in `type`,
@@ -37,6 +39,39 @@ const customerIdSchema = v.pipe(
 );
 
 /**
+ * The price written on the sale (S1). It is the product price's rule -- a
+ * positive `Decimal(12,2)` string -- and it travels as a string for the same
+ * reason: the column is exact and a float would lose precision at the first
+ * rounding. The entity pads the decimals, so the client never has to.
+ */
+const unitPriceSchema = v.pipe(
+	v.string(),
+	v.regex(
+		/^\d{1,10}(\.\d{1,2})?$/,
+		"unitPrice must be a decimal string with up to ten integer digits and up to two decimals",
+	),
+	v.check((value) => Number(value) > 0, "unitPrice must be greater than 0"),
+);
+
+/**
+ * The whole units the sale takes (S2). The list itself is bounded here -- ids,
+ * at most what a lot can hold, no repeats -- while *which* units are legal is
+ * decided inside the atomic write, against the state it is about to change
+ * (L10). The message names the field, so the client can point at it.
+ */
+const unitIdsSchema = v.pipe(
+	v.array(v.pipe(v.string(), v.uuid("each unitId must be a uuid"))),
+	v.maxLength(
+		MAX_MOVEMENT_UNITS,
+		`unitIds must have at most ${MAX_MOVEMENT_UNITS} units`,
+	),
+	v.check(
+		(value) => new Set(value).size === value.length,
+		"unitIds must not repeat a unit",
+	),
+);
+
+/**
  * Request schema for `POST /companies/:companyId/movements`.
  *
  * Only the fields a client may send exist here: `userId` and `createdAt` are
@@ -47,6 +82,9 @@ const customerIdSchema = v.pipe(
  * The `customerId`/`type` pairing is checked at the edge as well as in the use
  * case: a customer identifies the buyer of a sale (CLI-04), so an entry with
  * one is a 400 `customer_requires_exit` instead of a silently ignored field.
+ * `unitPrice` and `unitIds` follow exactly the same rule: they belong to a sale
+ * (S1, S2), so an entry carrying either is a coded 400 instead of a field that
+ * disappears on the way in.
  */
 export const createStockMovementSchema = v.pipe(
 	v.object({
@@ -55,18 +93,27 @@ export const createStockMovementSchema = v.pipe(
 		quantity: quantitySchema,
 		reason: v.optional(v.nullable(reasonSchema)),
 		customerId: v.optional(v.nullable(customerIdSchema)),
+		unitPrice: v.optional(v.nullable(unitPriceSchema)),
+		unitIds: v.optional(v.nullable(unitIdsSchema)),
 	}),
 	v.check((input) => {
-		if (
-			input.type !== "OUT" &&
-			input.customerId !== null &&
-			input.customerId !== undefined
-		) {
-			// Thrown instead of reported as an issue on purpose: a customer on an
-			// entry is a domain rule (`customer_requires_exit`), not a malformed
-			// field, and the contract answers that case with a coded 400. The
-			// error handler owns the status mapping.
-			throw new CustomerRequiresExitError();
+		if (input.type !== "OUT") {
+			if (input.customerId !== null && input.customerId !== undefined) {
+				// Thrown instead of reported as an issue on purpose: a customer on an
+				// entry is a domain rule (`customer_requires_exit`), not a malformed
+				// field, and the contract answers that case with a coded 400. The
+				// error handler owns the status mapping.
+				throw new CustomerRequiresExitError();
+			}
+
+			const unitPrice = input.unitPrice?.trim() ?? "";
+			if (unitPrice.length > 0) {
+				throw new SaleFieldRequiresExitError("unitPrice");
+			}
+
+			if ((input.unitIds ?? []).length > 0) {
+				throw new SaleFieldRequiresExitError("unitIds");
+			}
 		}
 
 		return true;

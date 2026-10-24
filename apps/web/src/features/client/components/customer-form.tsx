@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Customer } from "@/lib/api/schemas";
+import { useActiveCompany } from "../../company/store/company-selectors";
 import { useCreateCustomer } from "../api/use-create-customer";
 import { useUpdateCustomer } from "../api/use-update-customer";
 import {
@@ -50,16 +51,15 @@ function saveErrorMessage(error: unknown): string | undefined {
  * field — because that is the shape the contract stores.
  */
 export function CustomerForm({
-	companyId,
 	customer,
 	onSaved,
 	onCancel,
 }: {
-	companyId: string;
 	customer?: Customer;
 	onSaved: () => void;
 	onCancel: () => void;
 }) {
+	const company = useActiveCompany();
 	const isEdit = customer !== undefined;
 
 	const [name, setName] = useState(customer?.name ?? "");
@@ -69,6 +69,7 @@ export function CustomerForm({
 	const [attempted, setAttempted] = useState(false);
 	const nameRef = useRef<HTMLInputElement>(null);
 
+	const companyId = company?.id;
 	const create = useCreateCustomer(companyId);
 	const update = useUpdateCustomer(companyId);
 
@@ -181,13 +182,13 @@ export function CustomerForm({
 					Cancelar
 				</Button>
 				<Button
-					className="h-10 w-full sm:w-30"
+					className="h-10 w-full sm:w-40"
 					type="submit"
 					disabled={isPending}
 				>
 					{isPending ? (
 						<>
-							<SpinnerMotion size={16} className="mr-2" />
+							<SpinnerMotion size={20} className="mr-2" />
 							{isEdit ? "Guardando..." : "Creando..."}
 						</>
 					) : isEdit ? (

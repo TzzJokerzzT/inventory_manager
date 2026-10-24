@@ -43,11 +43,7 @@ export function CustomerFormPanel({
 			</h2>
 
 			{!isEdit ? (
-				<CustomerForm
-					companyId={companyId}
-					onSaved={onDone}
-					onCancel={onDone}
-				/>
+				<CustomerForm onSaved={onDone} onCancel={onDone} />
 			) : detail.isPending ? (
 				<div className="flex justify-center p-8">
 					<SpinnerMotion />
@@ -72,7 +68,6 @@ export function CustomerFormPanel({
 				</div>
 			) : detail.data ? (
 				<CustomerForm
-					companyId={companyId}
 					customer={detail.data}
 					onSaved={onDone}
 					onCancel={onDone}

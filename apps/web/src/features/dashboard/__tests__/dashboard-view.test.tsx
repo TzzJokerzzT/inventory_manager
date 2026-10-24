@@ -51,6 +51,14 @@ function product(overrides: Record<string, unknown> = {}) {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		measureUnit: "KILOGRAM" as const,
+		availableUnits: 2,
+		// The catalogue row carries the derived cost figures the contract requires
+		// (L27): they are what the dashboard values the stock with.
+		availableMeasure: "2.000",
+		costPerMeasure: "500.000",
+		unitCost: "1000.00",
+		marginPerUnit: "500.00",
 		photoUrl: null,
 		stockQuantity: 2,
 		lowStockThreshold: 0,
@@ -73,6 +81,12 @@ function catalogue() {
 			name: "Café molido 500g",
 			sku: "CAF-500",
 			stockQuantity: 0,
+			// Sold out: no units left, so no cost and no margin (L11).
+			availableUnits: 0,
+			availableMeasure: "0.000",
+			costPerMeasure: null,
+			unitCost: null,
+			marginPerUnit: null,
 		}),
 		product({
 			id: "p2",
@@ -81,6 +95,11 @@ function catalogue() {
 			price: "2000.00",
 			stockQuantity: 3,
 			lowStockThreshold: 5,
+			availableUnits: 3,
+			availableMeasure: "3.000",
+			costPerMeasure: "1500.000",
+			unitCost: "1500.00",
+			marginPerUnit: "500.00",
 		}),
 		product({
 			id: "p3",
@@ -89,6 +108,11 @@ function catalogue() {
 			price: "1000.00",
 			stockQuantity: 4,
 			lowStockThreshold: 0,
+			availableUnits: 4,
+			availableMeasure: "4.000",
+			costPerMeasure: "800.000",
+			unitCost: "800.00",
+			marginPerUnit: "200.00",
 		}),
 	];
 }
@@ -140,11 +164,38 @@ describe("DashboardView", () => {
 		render(<Dashboard />);
 
 		expect(cardValue("Total de productos")).toBe("3");
-		// 2000,00 × 3 + 1000,00 × 4, en centavos enteros.
-		expect(cardValue("Valor del inventario")).toBe("$ 10.000,00");
+		// L27: a costo, 1500,00 × 3 + 800,00 × 4, en centavos enteros. El precio de
+		// lista (2000,00 y 1000,00) no entra en la cuenta.
+		expect(cardValue("Valor del inventario (a costo)")).toBe("$ 7.700,00");
+		// Y el margen potencial del mismo stock: 500,00 × 3 + 200,00 × 4.
+		expect(cardValue("Margen potencial")).toBe("$ 2.300,00");
 		expect(cardValue("Productos con stock crítico")).toBe("2");
 		// entries + exits del último punto de la serie (hoy, UTC).
 		expect(cardValue("Unidades movidas hoy (UTC)")).toBe("4");
+	});
+
+	it("notes the products with stock and no known cost beside the value", () => {
+		// L27: esos productos no aportan al valor ni al margen y se informan aparte.
+		mockProducts({
+			data: [
+				product({ id: "p1", name: "Café", stockQuantity: 4 }),
+				product({
+					id: "p2",
+					name: "Yerba",
+					stockQuantity: 2,
+					availableUnits: 0,
+					availableMeasure: "0.000",
+					costPerMeasure: null,
+					unitCost: null,
+					marginPerUnit: null,
+				}),
+			],
+		});
+
+		render(<Dashboard />);
+
+		expect(cardValue("Valor del inventario (a costo)")).toBe("$ 4.000,00");
+		expect(screen.getByText("1 producto sin costo conocido")).toBeTruthy();
 	});
 
 	it("no longer shows a sample-data notice nor sample numbers", () => {
@@ -222,7 +273,7 @@ describe("DashboardView", () => {
 
 		const section = screen.getByRole("region", { name: "Indicadores" });
 		expect(section.getAttribute("aria-busy")).toBe("true");
-		expect(within(section).getAllByText("—")).toHaveLength(4);
+		expect(within(section).getAllByText("—")).toHaveLength(5);
 		expect(
 			screen.getByText("Cargando los datos de la empresa activa…"),
 		).toBeTruthy();
@@ -294,8 +345,9 @@ describe("DashboardView", () => {
 			within(valueChart).getByRole("table"),
 		).getAllByRole("row");
 		expect(within(valueRows[1]).getByText("Yerba mate 1kg")).toBeTruthy();
-		expect(within(valueRows[1]).getByText("$ 6.000,00")).toBeTruthy();
-		expect(within(valueRows[2]).getByText("$ 4.000,00")).toBeTruthy();
+		// A costo: 1500,00 × 3 y 800,00 × 4.
+		expect(within(valueRows[1]).getByText("$ 4.500,00")).toBeTruthy();
+		expect(within(valueRows[2]).getByText("$ 3.200,00")).toBeTruthy();
 
 		// Evolución: la serie que devolvió el reporte de 30 días.
 		const trendChart = within(charts).getByRole("region", {

@@ -9,15 +9,20 @@
  *
  * A value the contract does not allow is shown raw instead of throwing: a list
  * must not die because one row is malformed.
+ *
+ * A **negative** amount keeps its sign in front of the symbol (`-$ 20.500,00`):
+ * the margin of a unit or of a sale can be negative when the price is below the
+ * cost (L26), and dropping the sign would turn a loss into a profit.
  */
 export function formatPrice(price: string): string {
-	const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(price.trim());
+	const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(price.trim());
 	if (!match) {
 		return `$ ${price}`;
 	}
 
-	const whole = match[1].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-	const cents = (match[2] ?? "").padEnd(2, "0");
+	const sign = match[1] === "-" ? "-" : "";
+	const whole = match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+	const cents = (match[3] ?? "").padEnd(2, "0");
 
-	return `$ ${whole},${cents}`;
+	return `${sign}$ ${whole},${cents}`;
 }

@@ -35,6 +35,20 @@ enum StockMovementType {
 	OUT
 }
 
+// How a product is measured when it is bought in bulk. The stock itself is
+// still counted in units (`stockQuantity`): a roll is a roll, and its weight is
+// a property of the lot it came from, not of the catalogue row.
+enum MeasureUnit {
+	KILOGRAM
+	LITRE
+	METRE
+}
+
+enum LotUnitStatus {
+	AVAILABLE
+	SOLD
+}
+
 // Every relation uses `onDelete: Restrict` because this schema never
 // hard-deletes: products and customers soft-delete, memberships revoke via
 // `status = REVOKED`, and the `stock_movements` audit trail must stay
@@ -54,6 +68,8 @@ model Company {
 	products    Product[]
 	customers   Customer[]
 	movements   StockMovement[]
+	suppliers   Supplier[]
+	lots        StockLot[]
 
 	@@map("companies")
 }
@@ -129,6 +145,9 @@ model Product {
 	photoUrl          String?   @map("photo_url")
 	stockQuantity     Int       @default(0) @map("stock_quantity")
 	lowStockThreshold Int       @default(0) @map("low_stock_threshold")
+	// The measure a purchase lot is expressed in (kg, litres, metres). The stock
+	// stays in units: this only describes how the bulk weight arrives.
+	measureUnit       MeasureUnit @default(KILOGRAM) @map("measure_unit")
 	categoryId        String?   @map("category_id") @db.Uuid
 	createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 	updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -137,6 +156,7 @@ model Product {
 	company   Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
 	category  Category?       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 	movements StockMovement[]
+	lots      StockLot[]
 
 	@@unique([companyId, sku])
 	@@index([companyId, deletedAt])
@@ -208,6 +228,87 @@ model Session {
 	@@map("sessions")
 }
 
+// A supplier of bulk goods. Soft-deleted like products and customers, and
+// unique by name inside a company so two rows cannot mean the same vendor.
+model Supplier {
+	id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+	companyId String    @map("company_id") @db.Uuid
+	name      String
+	contact   String?
+	createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+	updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+	deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+	company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+	lots    StockLot[]
+
+	@@unique([companyId, name])
+	@@index([companyId, deletedAt])
+	@@map("suppliers")
+}
+
+// One purchase: a measured quantity bought from a supplier at a price per
+// measure, received as `unitCount` physical units. The lot total cost is
+// `measureTotal * costPerMeasure`; it is never stored twice, and the sum of its
+// units' costs is that total by construction.
+model StockLot {
+	id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+	companyId      String      @map("company_id") @db.Uuid
+	productId      String      @map("product_id") @db.Uuid
+	supplierId     String      @map("supplier_id") @db.Uuid
+	receivedAt     DateTime    @default(now()) @map("received_at") @db.Timestamptz(3)
+	measureTotal   Decimal     @map("measure_total") @db.Decimal(12, 3)
+	costPerMeasure Decimal     @map("cost_per_measure") @db.Decimal(12, 2)
+	unitCount      Int         @map("unit_count")
+	note           String?
+	createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+	company   Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+	product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+	supplier  Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+	units     LotUnit[]
+	movements StockMovement[]
+
+	@@index([companyId, productId, receivedAt])
+	@@index([companyId, supplierId])
+	@@map("stock_lots")
+}
+
+// A physical unit of a lot: one roll, with its own weight and therefore its own
+// cost (`measure * costPerMeasure`). The sale moves it to SOLD, which is what
+// keeps "how many are left" answerable per unit and per product.
+model LotUnit {
+	id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+	lotId     String        @map("lot_id") @db.Uuid
+	code      String
+	measure   Decimal       @db.Decimal(12, 3)
+	cost      Decimal       @db.Decimal(12, 2)
+	status    LotUnitStatus @default(AVAILABLE)
+	createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+	lot       StockLot       @relation(fields: [lotId], references: [id], onDelete: Restrict)
+	movements MovementUnit[]
+
+	@@unique([lotId, code])
+	@@index([lotId, status])
+	@@map("lot_units")
+}
+
+// Which physical units a movement took out. A sale can span several rolls, and
+// the link is what lets the margin be computed from the units' real costs
+// instead of an average.
+model MovementUnit {
+	movementId String @map("movement_id") @db.Uuid
+	lotUnitId  String @map("lot_unit_id") @db.Uuid
+
+	movement StockMovement @relation(fields: [movementId], references: [id], onDelete: Restrict)
+	lotUnit  LotUnit       @relation(fields: [lotUnitId], references: [id], onDelete: Restrict)
+
+	@@id([movementId, lotUnitId])
+	@@index([lotUnitId])
+	@@map("movement_units")
+}
+
 model StockMovement {
 	id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 	companyId  String            @map("company_id") @db.Uuid
@@ -218,13 +319,22 @@ model StockMovement {
 	userId     String            @map("user_id") @db.Uuid
 	customerId String?           @map("customer_id") @db.Uuid
 	createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+	// Price actually charged in this sale. NULL on entries and on every movement
+	// recorded before the field existed: the margin of those rows is reported as
+	// unknown instead of assuming a value.
+	unitPrice  Decimal?          @map("unit_price") @db.Decimal(12, 2)
+	// Entry only: the lot this movement brought in.
+	lotId      String?           @map("lot_id") @db.Uuid
 
 	company  Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 	product  Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
 	user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 	customer Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+	lot      StockLot? @relation(fields: [lotId], references: [id], onDelete: Restrict)
+	units    MovementUnit[]
 
 	@@index([companyId, productId, createdAt])
 	@@index([companyId, customerId])
+	@@index([lotId])
 	@@map("stock_movements")
 }

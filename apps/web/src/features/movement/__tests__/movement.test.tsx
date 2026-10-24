@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Product as ProductModel, StockMovement } from "@/lib/api/schemas";
 import { useCustomers } from "@/src/features/client/api/use-customers";
@@ -28,6 +28,24 @@ jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
 }));
 
+// La compra por medida vive en el formulario compartido: se mockea también para
+// que estas pruebas no necesiten un QueryClient.
+jest.mock("@/src/features/lot/api/use-register-lot", () => ({
+	useRegisterLot: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
+}));
+
+// La salida lee las unidades del producto elegido: sin producto no lee nada,
+// pero el hook se llama igual, así que también se mockea.
+jest.mock("@/src/features/lot/api/use-product-units", () => ({
+	useProductUnits: jest.fn(() => ({
+		data: [],
+		isPending: false,
+		isError: false,
+		error: undefined,
+		refetch: jest.fn(),
+	})),
+}));
+
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;
@@ -55,6 +73,12 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
 		actor: { id: "user-1", fullName: "Ana Pérez", email: "ana@empresa.com" },
 		customerId: null,
 		customer: null,
+		// Fields the purchase-lot feature added to the contract: a legacy sale
+		// carries no lot, no written price and no units.
+		lotId: null,
+		unitPrice: null,
+		units: [],
+		margin: null,
 		...overrides,
 	};
 }
@@ -67,6 +91,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		measureUnit: "KILOGRAM",
 		photoUrl: null,
 		stockQuantity: 8,
 		lowStockThreshold: 0,
@@ -75,6 +100,23 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		updatedAt: "2026-10-20T12:00:00.000Z",
 		...overrides,
 	};
+}
+
+/**
+ * Reads one cell of a rendered row by its column header.
+ *
+ * Las columnas del historial se buscan por encabezado y no por posición para
+ * que agregar una columna no reescriba las pruebas de las demás.
+ */
+function cellText(row: HTMLElement, header: string): string {
+	const index = screen
+		.getAllByRole("columnheader")
+		.findIndex((cell) => cell.textContent === header);
+	if (index === -1) {
+		throw new Error(`No hay columna «${header}»`);
+	}
+
+	return within(row).getAllByRole("cell")[index].textContent ?? "";
 }
 
 function setup({
@@ -157,6 +199,8 @@ describe("Movement", () => {
 			"Producto",
 			"SKU",
 			"Cantidad",
+			"Precio",
+			"Margen",
 			"Motivo",
 			"Cliente",
 			"Usuario",
@@ -220,7 +264,79 @@ describe("Movement", () => {
 		render(<Movement />);
 
 		// Una entrada sin cliente no inventa un nombre: muestra el guión largo.
-		expect(screen.getByText("—")).toBeTruthy();
+		const row = screen.getByRole("row", { name: /Café molido 500g/ });
+		expect(cellText(row, "Cliente")).toBe("—");
+	});
+
+	it("shows the price written on the sale and the margin it left", () => {
+		// L26: el precio aplicado y el margen que calculó el servidor (L11).
+		setup({
+			rows: [
+				movement({
+					type: "OUT",
+					quantity: 2,
+					reason: "Venta",
+					unitPrice: "5900.00",
+					margin: "1800.00",
+					units: [
+						{ id: "u1", code: "R-01", measure: "5.000", cost: "5000.00" },
+						{ id: "u2", code: "R-02", measure: "5.500", cost: "5000.00" },
+					],
+				}),
+			],
+		});
+
+		render(<Movement />);
+
+		expect(screen.getByRole("columnheader", { name: "Precio" })).toBeTruthy();
+		expect(screen.getByRole("columnheader", { name: "Margen" })).toBeTruthy();
+		const row = screen.getByRole("row", { name: /Café molido 500g/ });
+		expect(cellText(row, "Precio")).toBe("$ 5.900,00");
+		expect(cellText(row, "Margen")).toBe("$ 1.800,00");
+	});
+
+	it("shows a negative margin with its sign", () => {
+		setup({
+			rows: [
+				movement({
+					type: "OUT",
+					unitPrice: "1200.00",
+					margin: "-300.00",
+				}),
+			],
+		});
+
+		render(<Movement />);
+
+		const row = screen.getByRole("row", { name: /Café molido 500g/ });
+		expect(cellText(row, "Margen")).toBe("-$ 300,00");
+	});
+
+	it("never shows a zero in place of an unknown price or margin", () => {
+		// Una venta anterior a la feature no tiene precio escrito ni costo (S9):
+		// el margen es desconocido y se muestra como guión, no como `0`.
+		setup({
+			rows: [
+				movement({
+					type: "OUT",
+					reason: "Venta",
+					customerId: "cu1",
+					customer: { id: "cu1", name: "Almacén Sur" },
+					unitPrice: null,
+					margin: null,
+				}),
+			],
+		});
+
+		render(<Movement />);
+
+		const row = screen.getByRole("row", { name: /Café molido 500g/ });
+		// El guión se ve; el motivo viaja al lector de pantalla.
+		expect(within(row).getAllByText("—")).toHaveLength(2);
+		expect(within(row).getByText("Sin precio")).toBeTruthy();
+		expect(within(row).getByText("Sin margen")).toBeTruthy();
+		expect(cellText(row, "Precio")).not.toContain("0");
+		expect(cellText(row, "Margen")).not.toContain("0");
 	});
 
 	it("shows a meaningful empty state", () => {

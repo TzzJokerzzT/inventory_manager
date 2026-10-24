@@ -6,6 +6,8 @@ function metrics(overrides: Partial<DashboardMetrics> = {}): DashboardMetrics {
 	return {
 		totalProducts: 3,
 		inventoryValueCents: 0,
+		marginPotentialCents: 0,
+		productsWithoutCost: 0,
 		criticalCount: 0,
 		outOfStockCount: 0,
 		lowStockOnlyCount: 0,

@@ -1,7 +1,7 @@
-import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import localFont from "next/font/local";
 import { cn } from "@/lib/utils";
+import { rootMetadata } from "@/src/features/marketing/site-metadata";
 import { Provider } from "@/src/providers/providers";
 import "./globals.css";
 
@@ -16,13 +16,12 @@ const geistMono = localFont({
 	variable: "--font-geist-mono",
 });
 
-export const metadata: Metadata = {
-	// Pages that care about their own title (login, registro) declare it
-	// themselves; this is the default a visitor gets on the landing.
-	title: "Inventory Manager — control de inventario multi-empresa",
-	description:
-		"Gestioná productos, clientes y entradas y salidas de stock en un solo panel. Multi-empresa, con equipo y roles, y gratis.",
-};
+/**
+ * Title, description and the share card live in `site-metadata.ts`: the card is
+ * copy that a test reads, and importing it here would drag `next/font` and the
+ * provider tree into every test that only wants to check a tag.
+ */
+export const metadata = rootMetadata;
 
 export default function RootLayout({
 	children,

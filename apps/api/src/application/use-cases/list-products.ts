@@ -1,5 +1,7 @@
-import type { Product } from "../../domain/entities/product.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
+import type { StockLotRepository } from "../../domain/repositories/stock-lot-repository.js";
+import type { ProductListView } from "./product-view.js";
+import { toProductListView } from "./product-view.js";
 
 export interface ListProductsInput {
 	/** Free text matched against the name or the SKU. */
@@ -19,6 +21,7 @@ export interface ListProductsContext {
 
 export interface ListProductsDependencies {
 	productRepository: ProductRepository;
+	stockLotRepository: StockLotRepository;
 }
 
 /**
@@ -36,25 +39,45 @@ export interface ListProductsDependencies {
  * `deleted` swaps the half of the store that is read -- the trash instead of
  * the active catalogue -- and changes nothing else: the search and the order
  * are the same in both (S4).
+ *
+ * Each row carries the cost figures derived from its available units (L12),
+ * resolved in **one** batch read for the whole page instead of one per product.
+ * The list has no lots: those belong to the detail, where the comparison is
+ * made, and loading 50 lots per catalogue row would be a different feature.
  */
 export class ListProductsUseCase {
 	private readonly productRepository: ProductRepository;
+	private readonly stockLotRepository: StockLotRepository;
 
 	constructor(dependencies: ListProductsDependencies) {
 		this.productRepository = dependencies.productRepository;
+		this.stockLotRepository = dependencies.stockLotRepository;
 	}
 
 	async execute(
 		input: ListProductsInput,
 		context: ListProductsContext,
-	): Promise<Product[]> {
+	): Promise<ProductListView[]> {
 		// A whitespace-only search is "no search", not "match the empty string":
 		// the client clearing the box must not hide the catalogue.
 		const search = input.search?.trim();
 
-		return this.productRepository.list(context.companyId, {
+		const products = await this.productRepository.list(context.companyId, {
 			search: search === undefined || search.length === 0 ? undefined : search,
 			deleted: input.deleted === true,
 		});
+
+		if (products.length === 0) {
+			return [];
+		}
+
+		const totals = await this.stockLotRepository.findAvailableUnitTotals(
+			context.companyId,
+			products.map((product) => product.id),
+		);
+
+		return products.map((product) =>
+			toProductListView(product, totals.get(product.id) ?? null),
+		);
 	}
 }

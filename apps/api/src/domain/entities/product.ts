@@ -1,4 +1,9 @@
 import { DomainError } from "../errors/domain-error.js";
+import {
+	DEFAULT_MEASURE_UNIT,
+	isMeasureUnit,
+	type MeasureUnit,
+} from "./measure-unit.js";
 
 /**
  * `price` regex, mirrored from the OpenAPI contract: up to ten integer digits
@@ -23,6 +28,14 @@ export interface ProductProps {
 	photoUrl: string | null;
 	stockQuantity: number;
 	lowStockThreshold: number;
+	/**
+	 * How a purchase lot of this product is measured (S6). It travels with the
+	 * catalogue row because the lot needs it to name its `$/measure`, and it is
+	 * part of the product's JSON (L19): the purchase form shows "$ per kg" or
+	 * "$ per litre" with the real value instead of assuming one. The stock keeps
+	 * answering in whole units (S7).
+	 */
+	measureUnit: MeasureUnit;
 	categoryId: string | null;
 	deletedAt: Date | null;
 	createdAt: Date;
@@ -41,6 +54,12 @@ export interface CreateProductProps {
 	stockQuantity?: number;
 	/** Server-owned: keeps the database default until NOTIF-01/MI-12. */
 	lowStockThreshold?: number;
+	/**
+	 * The measure a lot of this product is expressed in. Absent means the
+	 * column's default ({@link DEFAULT_MEASURE_UNIT}), which is what a product
+	 * created before the lot feature carries (S9: nothing is backfilled).
+	 */
+	measureUnit?: MeasureUnit;
 	/** Categories have no feature yet, so this is always `null` today. */
 	categoryId?: string | null;
 	id?: string;
@@ -60,6 +79,7 @@ export interface ProductChanges {
 	sku?: string;
 	price?: string;
 	photoUrl?: string | null;
+	measureUnit?: MeasureUnit;
 }
 
 /**
@@ -130,6 +150,24 @@ function normalizePhotoUrl(raw: string | null | undefined): string | null {
 
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
 		throw new DomainError(`Product photo url must use http or https: ${value}`);
+	}
+
+	return value;
+}
+
+/**
+ * Validates the measure unit, defaulting an absent one to the column's default.
+ *
+ * The enum is the storage's rule too, so an unknown value is a mistake to
+ * report instead of a silently stored string.
+ */
+function assertMeasureUnit(value: MeasureUnit | undefined): MeasureUnit {
+	if (value === undefined) {
+		return DEFAULT_MEASURE_UNIT;
+	}
+
+	if (!isMeasureUnit(value)) {
+		throw new DomainError(`Product measure unit is not supported: ${value}`);
 	}
 
 	return value;
@@ -208,6 +246,7 @@ export class Product {
 			photoUrl,
 			stockQuantity,
 			lowStockThreshold,
+			measureUnit: assertMeasureUnit(input.measureUnit),
 			categoryId: input.categoryId ?? null,
 			deletedAt: input.deletedAt ?? null,
 			createdAt: input.createdAt ?? new Date(),
@@ -251,6 +290,15 @@ export class Product {
 		return this.props.lowStockThreshold;
 	}
 
+	/**
+	 * How the lots of this product are measured. Part of {@link toJSON} since
+	 * L19: the purchase form has to show `$ per measure` with the unit the
+	 * product is really bought in.
+	 */
+	get measureUnit(): MeasureUnit {
+		return this.props.measureUnit;
+	}
+
 	get categoryId(): string | null {
 		return this.props.categoryId;
 	}
@@ -289,6 +337,7 @@ export class Product {
 			photoUrl: this.photoUrl,
 			stockQuantity: quantity,
 			lowStockThreshold: this.lowStockThreshold,
+			measureUnit: this.measureUnit,
 			categoryId: this.categoryId,
 			deletedAt: this.deletedAt,
 			createdAt: this.createdAt,
@@ -317,6 +366,9 @@ export class Product {
 				changes.photoUrl === undefined ? this.photoUrl : changes.photoUrl,
 			stockQuantity: this.stockQuantity,
 			lowStockThreshold: this.lowStockThreshold,
+			// An absent change keeps the stored unit; the entity re-validates a
+			// given one against the closed enum.
+			measureUnit: changes.measureUnit ?? this.measureUnit,
 			categoryId: this.categoryId,
 			deletedAt: this.deletedAt,
 			createdAt: this.createdAt,
@@ -334,6 +386,7 @@ export class Product {
 		photoUrl: string | null;
 		stockQuantity: number;
 		lowStockThreshold: number;
+		measureUnit: MeasureUnit;
 		categoryId: string | null;
 		createdAt: string;
 		updatedAt: string;
@@ -348,6 +401,7 @@ export class Product {
 			photoUrl: this.photoUrl,
 			stockQuantity: this.stockQuantity,
 			lowStockThreshold: this.lowStockThreshold,
+			measureUnit: this.measureUnit,
 			categoryId: this.categoryId,
 			createdAt: this.createdAt.toISOString(),
 			updatedAt: this.updatedAt.toISOString(),

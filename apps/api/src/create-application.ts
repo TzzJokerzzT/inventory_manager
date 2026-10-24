@@ -5,8 +5,10 @@ import { ChangeMemberRoleUseCase } from "./application/use-cases/change-member-r
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { CreateCustomerUseCase } from "./application/use-cases/create-customer.js";
 import { CreateProductUseCase } from "./application/use-cases/create-product.js";
+import { CreateSupplierUseCase } from "./application/use-cases/create-supplier.js";
 import { DeleteCustomerUseCase } from "./application/use-cases/delete-customer.js";
 import { DeleteProductUseCase } from "./application/use-cases/delete-product.js";
+import { DeleteSupplierUseCase } from "./application/use-cases/delete-supplier.js";
 import { EndSessionUseCase } from "./application/use-cases/end-session.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
 import { GetCustomerUseCase } from "./application/use-cases/get-customer.js";
@@ -19,12 +21,15 @@ import { ListCustomersUseCase } from "./application/use-cases/list-customers.js"
 import { ListMembersUseCase } from "./application/use-cases/list-members.js";
 import { ListNotificationsUseCase } from "./application/use-cases/list-notifications.js";
 import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
+import { ListProductUnitsUseCase } from "./application/use-cases/list-product-units.js";
 import { ListProductsUseCase } from "./application/use-cases/list-products.js";
 import { ListStockMovementsUseCase } from "./application/use-cases/list-stock-movements.js";
+import { ListSuppliersUseCase } from "./application/use-cases/list-suppliers.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notifications-read.js";
 import { PurgeProductUseCase } from "./application/use-cases/purge-product.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
+import { RegisterLotUseCase } from "./application/use-cases/register-lot.js";
 import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { RestoreProductUseCase } from "./application/use-cases/restore-product.js";
@@ -33,6 +38,7 @@ import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membersh
 import { StartSessionUseCase } from "./application/use-cases/start-session.js";
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
+import { UpdateSupplierUseCase } from "./application/use-cases/update-supplier.js";
 import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
@@ -43,7 +49,9 @@ import { PrismaMembershipRepository } from "./infrastructure/database/prisma-mem
 import { PrismaNotificationRepository } from "./infrastructure/database/prisma-notification-repository.js";
 import { PrismaProductRepository } from "./infrastructure/database/prisma-product-repository.js";
 import { PrismaSessionRepository } from "./infrastructure/database/prisma-session-repository.js";
+import { PrismaStockLotRepository } from "./infrastructure/database/prisma-stock-lot-repository.js";
 import { PrismaStockMovementRepository } from "./infrastructure/database/prisma-stock-movement-repository.js";
+import { PrismaSupplierRepository } from "./infrastructure/database/prisma-supplier-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { CloudinaryUploadSigner } from "./infrastructure/storage/cloudinary-upload-signer.js";
 import { buildApp } from "./interfaces/http/app.js";
@@ -66,6 +74,8 @@ const notificationRepository = new PrismaNotificationRepository({ prisma });
 const productRepository = new PrismaProductRepository({ prisma });
 const customerRepository = new PrismaCustomerRepository({ prisma });
 const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
+const supplierRepository = new PrismaSupplierRepository({ prisma });
+const stockLotRepository = new PrismaStockLotRepository({ prisma });
 const sessionRepository = new PrismaSessionRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
@@ -177,9 +187,22 @@ const app = buildApp({
 		companyRepository,
 	}),
 	products: {
-		list: new ListProductsUseCase({ productRepository }),
+		// The reads derive the cost per measure and the margin from the lots
+		// (L12), so they need the lot store next to the catalogue.
+		list: new ListProductsUseCase({ productRepository, stockLotRepository }),
+		// Which concrete units a product has (L23): the sale screen lists them with
+		// their own measure and cost, so the read lives next to the other product
+		// reads and shares their lot source.
+		units: new ListProductUnitsUseCase({
+			productRepository,
+			stockLotRepository,
+		}),
 		create: new CreateProductUseCase({ productRepository }),
-		get: new GetProductUseCase({ productRepository }),
+		get: new GetProductUseCase({
+			productRepository,
+			stockLotRepository,
+			supplierRepository,
+		}),
 		update: new UpdateProductUseCase({ productRepository }),
 		remove: new DeleteProductUseCase({ productRepository }),
 		restore: new RestoreProductUseCase({ productRepository }),
@@ -211,6 +234,27 @@ const app = buildApp({
 		}),
 		// No clock is injected in production: the trend ends on today's UTC day.
 		trend: new GetMovementTrendUseCase({ stockMovementRepository }),
+	},
+	suppliers: {
+		// The roster summarizes each supplier with its latest lot, so it reads
+		// the lots and the products those lots bought (L12).
+		list: new ListSuppliersUseCase({
+			supplierRepository,
+			stockLotRepository,
+			productRepository,
+		}),
+		create: new CreateSupplierUseCase({ supplierRepository }),
+		update: new UpdateSupplierUseCase({ supplierRepository }),
+		remove: new DeleteSupplierUseCase({ supplierRepository }),
+	},
+	// A lot is written by the entity (derived total, per-unit costs) and the
+	// adapter owns the single transaction that also moves the stock (L7).
+	lots: {
+		register: new RegisterLotUseCase({
+			productRepository,
+			supplierRepository,
+			stockLotRepository,
+		}),
 	},
 	mediaUploadSigner,
 	authCookieOptions,

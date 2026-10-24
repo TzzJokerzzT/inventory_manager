@@ -152,6 +152,23 @@ describe("Product.create server-owned fields", () => {
 	});
 });
 
+describe("Product.create measureUnit", () => {
+	it("defaults an absent measure unit to KILOGRAM", () => {
+		expect(create().measureUnit).toBe("KILOGRAM");
+	});
+
+	it("keeps every unit the domain knows", () => {
+		expect(create({ measureUnit: "LITRE" }).measureUnit).toBe("LITRE");
+		expect(create({ measureUnit: "METRE" }).measureUnit).toBe("METRE");
+	});
+
+	it("rejects a unit the domain does not know", () => {
+		expect(() =>
+			create({ measureUnit: "POUND" as unknown as "KILOGRAM" }),
+		).toThrow(DomainError);
+	});
+});
+
 describe("Product.toJSON", () => {
 	it("serializes exactly the contract fields, with a decimal price and ISO dates", () => {
 		const createdAt = new Date("2026-10-20T12:00:00.000Z");
@@ -174,10 +191,18 @@ describe("Product.toJSON", () => {
 			photoUrl: null,
 			stockQuantity: 0,
 			lowStockThreshold: 0,
+			measureUnit: "KILOGRAM",
 			categoryId: null,
 			createdAt: "2026-10-20T12:00:00.000Z",
 			updatedAt: "2026-10-21T12:00:00.000Z",
 		});
+	});
+
+	it("serializes the measure unit the product is measured in", () => {
+		// L19: the purchase form needs "$ per kg" / "$ per litre" with a real
+		// value, so the measure travels with every product read and write.
+		expect(create({ measureUnit: "LITRE" }).toJSON().measureUnit).toBe("LITRE");
+		expect(create({ measureUnit: "METRE" }).toJSON().measureUnit).toBe("METRE");
 	});
 
 	it("never exposes the soft-delete timestamp", () => {
@@ -227,6 +252,17 @@ describe("Product.withChanges", () => {
 		expect(updated.price).toBe("1500.00");
 		expect(updated.description).toBe("Molido medio");
 		expect(updated.photoUrl).toBe("https://example.com/a.png");
+	});
+
+	it("changes the measure unit and keeps it when the change does not name it", () => {
+		const product = create({ measureUnit: "KILOGRAM" });
+
+		expect(product.withChanges({ measureUnit: "LITRE" }).measureUnit).toBe(
+			"LITRE",
+		);
+		expect(product.withChanges({ name: "Otro nombre" }).measureUnit).toBe(
+			"KILOGRAM",
+		);
 	});
 
 	it("clears description and photoUrl when null is passed explicitly", () => {

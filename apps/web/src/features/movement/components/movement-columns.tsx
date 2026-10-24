@@ -1,5 +1,6 @@
 import type { Column } from "@/components/design-system";
 import type { StockMovement } from "@/lib/api/schemas";
+import { MoneyValue } from "@/src/features/product/components/money-value";
 import { formatMovementDate } from "../lib/format-movement-date";
 import { MovementTypeBadge } from "./movement-type-badge";
 
@@ -17,8 +18,15 @@ const NO_ACTOR = "Sin usuario";
 const NO_CUSTOMER = "—";
 
 /**
- * The history table: type, product, SKU, quantity, reason, customer, user and
- * date.
+ * Lo que se anuncia cuando el monto no existe: una entrada no tiene precio
+ * escrito, y una venta anterior a la feature no tiene ni precio ni costo (S9).
+ */
+const NO_PRICE = "Sin precio";
+const NO_MARGIN = "Sin margen";
+
+/**
+ * The history table: type, product, SKU, quantity, applied price, margin, reason,
+ * customer, user and date.
  *
  * The columns live in the feature, not in `src/utils/Columns.tsx`: those are the
  * mock tables, and a view only reads the columns it owns. Every cell reads from
@@ -47,6 +55,23 @@ export const movementColumns: Column<StockMovement>[] = [
 		header: "Cantidad",
 		align: "right",
 		render: (row) => String(row.quantity),
+	},
+	// L26: el precio **aplicado** en la venta (no el de lista) y el margen que
+	// dejó, calculado por el servidor (L11). Una entrada, o una venta anterior a
+	// la feature, no tiene esos datos: la celda dice "—", nunca `0`.
+	{
+		key: "unitPrice",
+		header: "Precio",
+		align: "right",
+		render: (row) => (
+			<MoneyValue value={row.unitPrice} unknownLabel={NO_PRICE} />
+		),
+	},
+	{
+		key: "margin",
+		header: "Margen",
+		align: "right",
+		render: (row) => <MoneyValue value={row.margin} unknownLabel={NO_MARGIN} />,
 	},
 	{
 		key: "reason",

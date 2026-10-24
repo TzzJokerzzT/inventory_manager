@@ -1,6 +1,8 @@
+import { deriveMovementMargin } from "../../domain/costing/derived-costs.js";
 import type {
 	StockMovement,
 	StockMovementType,
+	StockMovementUnit,
 } from "../../domain/entities/stock-movement.js";
 import type { CustomerRepository } from "../../domain/repositories/customer-repository.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
@@ -39,6 +41,17 @@ export interface StockMovementActor {
  * could not be resolved -- a missing actor never hides the movement, the same
  * rule the notification read applies. `customer` is `null` only when the
  * movement carries no `customerId`.
+ *
+ * `unitPrice` is the price written on the sale (S1) and `units` are the rolls it
+ * took, each with its own cost (S3): together they are what the real margin is
+ * computed from, and both are `null`/empty for an entry or for a sale recorded
+ * before the feature existed (S9). `lotId` is the lot an entry brought in, and
+ * entries never carry units.
+ *
+ * `margin` is that computation (L11): `unitPrice × quantity` minus the sum of
+ * the units' costs, in money and computed on the server. It is `null` -- never
+ * `0` -- when the price was not written or the movement took no units, which is
+ * what the UI shows as "sin costo".
  */
 export interface StockMovementView {
 	id: string;
@@ -52,6 +65,10 @@ export interface StockMovementView {
 	customer: MovementCustomer | null;
 	product: MovementProduct;
 	actor: StockMovementActor | null;
+	lotId: string | null;
+	unitPrice: string | null;
+	units: StockMovementUnit[];
+	margin: string | null;
 }
 
 /**
@@ -68,6 +85,7 @@ export function toStockMovementView(
 	product: MovementProduct,
 	actor: StockMovementActor | null,
 	customer: MovementCustomer | null,
+	units: readonly StockMovementUnit[],
 ): StockMovementView {
 	return {
 		id: movement.id,
@@ -85,6 +103,21 @@ export function toStockMovementView(
 			actor === null
 				? null
 				: { id: actor.id, fullName: actor.fullName, email: actor.email },
+		lotId: movement.lotId,
+		unitPrice: movement.unitPrice,
+		// Picked explicitly: the unit's status and its lot are not part of the
+		// movement's answer, and a spread would leak them.
+		units: units.map((unit) => ({
+			id: unit.id,
+			code: unit.code,
+			measure: unit.measure,
+			cost: unit.cost,
+		})),
+		margin: deriveMovementMargin(
+			movement.unitPrice,
+			movement.quantity,
+			units.map((unit) => unit.cost),
+		),
 	};
 }
 
@@ -202,6 +235,14 @@ export class ListStockMovementsUseCase {
 			customers.map((customer) => [customer.id, customer]),
 		);
 
+		// One batch read for the units every sale took: an entry, or a sale of a
+		// product that never came in a lot, simply answers no units.
+		const unitsByMovement =
+			await this.stockMovementRepository.findUnitsByMovementIds(
+				context.companyId,
+				movements.map((movement) => movement.id),
+			);
+
 		return movements.map((movement) => {
 			const product = productsById.get(movement.productId);
 
@@ -227,6 +268,7 @@ export class ListStockMovementsUseCase {
 				product,
 				actorsById.get(movement.userId) ?? null,
 				customer,
+				unitsByMovement.get(movement.id) ?? [],
 			);
 		});
 	}

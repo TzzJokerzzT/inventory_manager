@@ -1,5 +1,6 @@
 "use client";
 
+import { ReceiptText, SquarePen, Trash } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
@@ -85,28 +86,31 @@ export function CustomerRowActions({
 		<div className="flex items-center justify-end gap-2">
 			<Button
 				type="button"
-				size="sm"
+				size="icon-lg"
 				variant="ghost"
+				aria-label="Detalle"
 				onClick={() => onDetail(customer)}
 			>
-				Detalle
+				<ReceiptText aria-hidden="true" />
 			</Button>
 			<Button
 				type="button"
-				size="sm"
+				size="icon-lg"
 				variant="ghost"
+				aria-label="Editar"
 				onClick={() => onEdit(customer)}
 			>
-				Editar
+				<SquarePen aria-hidden="true" />
 			</Button>
 			<Button
 				type="button"
-				size="sm"
+				size="icon-lg"
 				variant="ghost"
+				aria-label="Eliminar"
 				className="text-danger-text hover:bg-danger-soft"
 				onClick={() => setConfirming(true)}
 			>
-				Eliminar
+				<Trash aria-hidden="true" />
 			</Button>
 		</div>
 	);

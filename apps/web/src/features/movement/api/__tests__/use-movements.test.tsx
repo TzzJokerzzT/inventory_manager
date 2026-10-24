@@ -30,6 +30,12 @@ function movement(overrides: Record<string, unknown> = {}) {
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
 		customerId: null,
 		customer: null,
+		// Added with the purchase-lot feature; a legacy movement has no lot, no
+		// written price and no units.
+		lotId: null,
+		unitPrice: null,
+		units: [],
+		margin: null,
 		...overrides,
 	};
 }

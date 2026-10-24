@@ -57,6 +57,16 @@ const photoUrlSchema = v.pipe(
 );
 
 /**
+ * The measure units the contract allows, spelled out here as the boundary's
+ * closed list (L19). A value outside it is a client mistake and answers 400 with
+ * the issue list, instead of reaching the entity and surfacing as a 422.
+ */
+const measureUnitSchema = v.picklist(
+	["KILOGRAM", "LITRE", "METRE"],
+	"measureUnit must be one of KILOGRAM, LITRE, METRE",
+);
+
+/**
  * Request schema for `POST /companies/:companyId/products`.
  *
  * Only the creatable fields exist here: `stockQuantity` and
@@ -70,6 +80,9 @@ export const createProductSchema = v.object({
 	price: priceSchema,
 	description: v.optional(v.nullable(descriptionSchema)),
 	photoUrl: v.optional(v.nullable(photoUrlSchema)),
+	// Absent keeps the column's default (KILOGRAM), which is what a product
+	// created before the purchase lots carries.
+	measureUnit: v.optional(measureUnitSchema),
 });
 
 /**
@@ -85,6 +98,8 @@ export const updateProductSchema = v.object({
 	price: v.optional(priceSchema),
 	description: v.optional(v.nullable(descriptionSchema)),
 	photoUrl: v.optional(v.nullable(photoUrlSchema)),
+	// Absent means "unchanged": the stored unit is kept.
+	measureUnit: v.optional(measureUnitSchema),
 });
 
 /**
@@ -113,4 +128,22 @@ export const listProductsQuerySchema = v.object({
 		),
 	),
 	deleted: v.optional(deletedSchema, "false"),
+});
+
+/**
+ * The status filter of `GET .../products/{productId}/units` (L23).
+ *
+ * It arrives as a string, so the closed list lives here: an unknown value is a
+ * 400 with the issue list instead of a silently different read. The default is
+ * the raw query string the schema receives, so an absent parameter answers the
+ * stock a sale can still take.
+ */
+export const listProductUnitsQuerySchema = v.object({
+	status: v.optional(
+		v.picklist(
+			["AVAILABLE", "SOLD", "ALL"],
+			"status must be one of AVAILABLE, SOLD or ALL",
+		),
+		"AVAILABLE",
+	),
 });

@@ -16,6 +16,7 @@ import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-mem
 import { InMemoryCustomerRepository } from "../src/infrastructure/database/in-memory-customer-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
@@ -67,6 +68,9 @@ describe("stock movement endpoints", () => {
 		const store = new Map<string, Product>();
 		const productRepository = new InMemoryProductRepository([], store);
 		const stockMovementRepository = new InMemoryStockMovementRepository(store);
+		const stockLotRepository = new InMemoryStockLotRepository(
+			stockMovementRepository,
+		);
 		const customerRepository = new InMemoryCustomerRepository();
 
 		const owner = User.create({
@@ -133,9 +137,13 @@ describe("stock movement endpoints", () => {
 			products: {
 				// The read of the catalogue is wired for real: the stock a
 				// movement produced has to be visible there (MOV-04).
-				list: new ListProductsUseCase({ productRepository }),
+				list: new ListProductsUseCase({
+					productRepository,
+					stockLotRepository,
+				}),
 				create: {} as never,
 				get: {} as never,
+				units: {} as never,
 				update: {} as never,
 				remove: {} as never,
 				restore: {} as never,
@@ -161,6 +169,10 @@ describe("stock movement endpoints", () => {
 					now: () => TREND_NOW,
 				}),
 			},
+			// Not exercised by this suite: the supplier slice keeps the app
+			// buildable, and its own suite wires it for real.
+			suppliers: {} as never,
+			lots: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,
@@ -291,6 +303,10 @@ describe("stock movement endpoints", () => {
 				createdAt: expect.any(String),
 				customerId: null,
 				customer: null,
+				lotId: null,
+				unitPrice: null,
+				units: [],
+				margin: null,
 				product: { id: product.id, name: "Cafe molido 500g", sku: "CAF-500" },
 				actor: { id: owner.id, fullName: "Olivia Owner", email: "owner@x.com" },
 				stockQuantity: 10,
@@ -757,6 +773,10 @@ describe("stock movement endpoints", () => {
 				createdAt: expect.any(String),
 				customerId: null,
 				customer: null,
+				lotId: null,
+				unitPrice: null,
+				units: [],
+				margin: null,
 				product: { id: PRODUCT_B, name: "Azucar", sku: "SUGAR-1" },
 				actor: { id: expect.any(String), fullName: null, email: "admin@x.com" },
 			});

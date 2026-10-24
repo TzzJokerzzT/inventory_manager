@@ -21,6 +21,8 @@ tags:
   - name: products
   - name: movements
   - name: customers
+  - name: suppliers
+  - name: lots
   - name: reports
   - name: me
 
@@ -746,13 +748,15 @@ paths:
             default: false
       responses:
         "200":
-          description: The company's products, ordered by name and then id.
+          description: |
+            The company's products, ordered by name and then id, each with the
+            costs derived from its available units (L12).
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Product"
+                  $ref: "#/components/schemas/ProductListItem"
         "400":
           description: The company id is not a UUID, or `search` is too long.
           content:
@@ -864,11 +868,13 @@ paths:
             format: uuid
       responses:
         "200":
-          description: The product.
+          description: |
+            The product with the costs derived from its available units and its
+            latest lots, newest first (L12).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Product"
+                $ref: "#/components/schemas/ProductDetail"
         "400":
           description: The company id or the product id is not a UUID.
           content:
@@ -1030,6 +1036,101 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/products/{productId}/units:
+    get:
+      tags: [products]
+      summary: List the units of a product
+      description: |
+        Lists the physical units of one product of the company the caller has
+        context for, so a sale can offer **which** units leave instead of only how
+        many are left (L23). Each unit carries its own `measure` and `cost`,
+        because two units of the same lot do not weigh the same and therefore do
+        not cost the same (S3).
+
+        The order is the read's rule, not a client preference: the **oldest lot
+        first** (`receivedAt`, then `createdAt`, then the lot id) and, inside a
+        lot, by `code`. A sale offers the oldest stock first. The same product
+        bought twice therefore answers its earlier purchase first.
+
+        `status` filters the units: `AVAILABLE` (the default) is what a sale can
+        still take, `SOLD` is the history of what left, and `ALL` is both. An
+        unknown value answers `400` with the issue list.
+
+        A product that never came in a lot answers `200 []`. A product of another
+        company, a nonexistent one and a soft-deleted one all answer the same
+        `404 product_not_found`, so the endpoint cannot be used to probe other
+        companies' product ids. Any ACTIVE membership reads it, like the rest of
+        the catalogue.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          description: |
+            Which units to answer: `AVAILABLE` for the stock a sale can take
+            (default), `SOLD` for the units that already left, or `ALL` for the
+            whole history of the product's units.
+          schema:
+            type: string
+            enum: [AVAILABLE, SOLD, ALL]
+            default: AVAILABLE
+      responses:
+        "200":
+          description: |
+            The units of the product, oldest lot first and then by code. Empty
+            when the product never came in a lot or when no unit matches the
+            requested status.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductUnit"
+        "400":
+          description: |
+            The company id or the product id is not a UUID, or `status` is not
+            one of `AVAILABLE`, `SOLD` or `ALL`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product does not exist, belongs to another company, or was
+            soft-deleted; the `code` is `product_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /companies/{companyId}/movements:
     get:
       tags: [movements]
@@ -1131,6 +1232,21 @@ paths:
         `stockQuantity >= quantity`, so two concurrent exits cannot both win;
         the loser answers `409 insufficient_stock` with the stock available.
 
+        A **sale of a product that has units available** -- a product bought in
+        purchase lots -- must also carry `unitPrice` (the price actually charged,
+        which is the same for every roll and varies only by customer) and
+        `unitIds` (the whole rolls it takes, one id per unit of `quantity`).
+        Missing either, or a length that does not match `quantity`, answers
+        `400 units_required`; a unit that is already sold, or that belongs to
+        another product or another company, answers `409 unit_not_available`.
+        A product that never came in a lot keeps the quantity-only sale: no
+        price and no units are required for it.
+
+        The units are marked `SOLD`, linked to the movement and the stock is
+        decremented in that same transaction, so a rejected sale leaves no unit
+        marked and no stock moved. The rules are decided against the state being
+        written, never against a previous read.
+
         Any ACTIVE membership of the company may register movements. The
         product must be active (not soft-deleted) and belong to the company.
         `userId` and `createdAt` are server-side: the caller cannot name the
@@ -1153,15 +1269,20 @@ paths:
       responses:
         "201":
           description: |
-            The recorded movement plus the product's stock after it.
+            The recorded movement, the units it took (with their own cost) and
+            the product's stock after it.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RegisterMovementResponse"
         "400":
           description: |
-            The body is invalid, or a `customerId` was sent with `type: IN`;
-            in that case the `code` is `customer_requires_exit`.
+            The body is invalid; or a sale-only field (`customerId`,
+            `unitPrice`, `unitIds`) was sent with `type: IN`, and then the
+            `code` is `customer_requires_exit`, `unit_price_requires_exit` or
+            `units_require_exit`; or the product has units available and the
+            sale does not name them and their price, and then the `code` is
+            `units_required`.
           content:
             application/json:
               schema:
@@ -1191,9 +1312,13 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "409":
           description: |
-            An exit larger than the available stock; the `code` is
-            `insufficient_stock` and the message states the stock available.
-            Nothing was recorded and the stock did not change.
+            An exit larger than the available stock (`insufficient_stock`, and
+            the message states the stock available); or a sale naming a unit
+            that cannot be handed over (`unit_not_available`): already sold, or
+            belonging to another product or another company -- the three answer
+            the same code on purpose, so a foreign unit is never confirmed.
+            Nothing was recorded, no unit was marked and the stock did not
+            change.
           content:
             application/json:
               schema:
@@ -1476,6 +1601,331 @@ paths:
           description: |
             The customer does not exist, belongs to another company, or is
             already soft-deleted; the `code` is `customer_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/suppliers:
+    get:
+      tags: [suppliers]
+      summary: List the company's suppliers
+      description: |
+        Lists the active suppliers of the company the caller has context for,
+        ordered by name and then id. Soft-deleted suppliers are never returned.
+
+        Any ACTIVE member reads: the roster is context for registering a
+        purchase, not a management screen.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: |
+            The company's active suppliers, each with its latest purchase lot
+            (L12) or `null` when the company never bought from it.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupplierListItem"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: [suppliers]
+      summary: Create a supplier
+      description: |
+        Writing the supplier roster is `manage_products`: an OWNER or an ADMIN
+        may create, edit and delete suppliers; a MEMBER reads them.
+
+        The name is unique inside the company, case-sensitively, and the
+        uniqueness includes soft-deleted rows: deleting a supplier reserves its
+        name, exactly like a product SKU. A collision answers
+        `409 supplier_name_already_exists`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierRequest"
+      responses:
+        "201":
+          description: Supplier created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "400":
+          description: |
+            The body is invalid: a missing or empty `name`, a value over 120
+            characters, or an unknown shape.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), or the role
+            is a MEMBER (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The company already has a supplier with that name. The `code` is
+            `supplier_name_already_exists`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/suppliers/{supplierId}:
+    patch:
+      tags: [suppliers]
+      summary: Update a supplier
+      description: |
+        Partial update: an absent field is unchanged, and an explicit `null`
+        clears `contact`. Sending no field is accepted and changes nothing.
+
+        Same authorization as creating: OWNER or ADMIN.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: supplierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSupplierRequest"
+      responses:
+        "200":
+          description: The supplier after the update.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "400":
+          description: The supplier id is not a UUID, or a field is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            `user_not_provisioned`, `company_access_forbidden` or
+            `insufficient_role`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The supplier does not exist in this company. The `code` is
+            `supplier_not_found`; a supplier of another company answers the
+            same, so the endpoint never reveals it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            Renaming onto a name the company already uses. The `code` is
+            `supplier_name_already_exists`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: [suppliers]
+      summary: Soft-delete a supplier
+      description: |
+        Stamps `deletedAt`: the row survives because purchase lots reference it,
+        and the roster stops returning it. The name stays reserved by the
+        uniqueness index. Idempotent from the caller's point of view: a second
+        delete of an already deleted supplier answers `404`, because it is no
+        longer part of the roster.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: supplierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Supplier deleted; no body.
+        "400":
+          description: The supplier id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            `user_not_provisioned`, `company_access_forbidden` or
+            `insufficient_role`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The supplier does not exist in this company (`supplier_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/lots:
+    post:
+      tags: [lots]
+      summary: Register a purchase lot
+      description: |
+        Records one purchase: the lot, its physical units, the `IN` movement
+        that brings them in and the increment of the product's stock, all in one
+        operation. Any of the four failing leaves nothing behind.
+
+        The `measureTotal` is **derived** from the units' `measures` and is not
+        part of the body; sending it answers `400 measure_total_derived`. Each
+        unit's `cost` is its `measure` times `costPerMeasure` rounded to two
+        decimals, and the last unit absorbs the rounding difference so the unit
+        costs add up exactly to `measureTotal × costPerMeasure`.
+
+        The stock still counts whole units: the movement's `quantity` is the
+        number of units, never the weight.
+
+        Registering a lot is `manage_products`: an OWNER or an ADMIN writes, a
+        MEMBER reads. The product and the supplier must both be active in the
+        company the caller has context for.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLotRequest"
+      responses:
+        "201":
+          description: The lot, its derived total and its units.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockLot"
+        "400":
+          description: |
+            A `measureTotal` was sent (`measure_total_derived`), or the body is
+            invalid: no measures, a non-positive measure, a measure with more
+            than three decimals, a `costPerMeasure` that is not a decimal
+            string, or a malformed id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), or the role
+            is a MEMBER (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product (`product_not_found`) or the supplier
+            (`supplier_not_found`) is not active in this company. Nothing was
+            written.
           content:
             application/json:
               schema:
@@ -2116,10 +2566,24 @@ components:
           allOf:
             - $ref: "#/components/schemas/UserSummary"
 
+    MeasureUnit:
+      type: string
+      enum: [KILOGRAM, LITRE, METRE]
+      description: |
+        The unit a purchase lot of a product is measured in (L19): kilograms,
+        litres or metres. It describes the **measure of a lot**, never the
+        stock, which keeps counting whole units (S7). A closed list on purpose:
+        an unknown value is a client mistake and answers 400, not a stored
+        string no view can name.
+
+        On a product write it is optional: absent on create means `KILOGRAM`
+        (the column's default, which is what a product created before the
+        purchase lots carries) and absent on update means "unchanged".
+
     Product:
       type: object
       required:
-        [id, companyId, name, description, sku, price, photoUrl, stockQuantity, lowStockThreshold, categoryId, createdAt, updatedAt]
+        [id, companyId, name, description, sku, price, photoUrl, stockQuantity, lowStockThreshold, measureUnit, categoryId, createdAt, updatedAt]
       description: |
         A product as the API exposes it. `price` is a decimal string with two
         decimals, not a JSON number: the column is `Decimal(12,2)` and a float
@@ -2129,6 +2593,10 @@ components:
         a product write. `lowStockThreshold` keeps the database default until
         the low-stock feature exposes it. `categoryId` is currently always
         `null`: categories have no feature of their own yet.
+
+        `measureUnit` is how the lots of this product are measured; it is what
+        gives `costPerMeasure` its unit, so a client can render `$ per kg`
+        without a second read (L19).
 
         A soft-deleted product is never returned by any operation, so it has no
         `deletedAt` field in the contract.
@@ -2165,6 +2633,8 @@ components:
         lowStockThreshold:
           type: integer
           minimum: 0
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
         categoryId:
           type: string
           format: uuid
@@ -2175,6 +2645,176 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    ProductCosts:
+      type: object
+      required:
+        [availableUnits, availableMeasure, costPerMeasure, unitCost, marginPerUnit]
+      description: |
+        The cost figures of a product, **derived** from its `AVAILABLE` units
+        (L12), never stored: `costPerMeasure` is `Σ cost / Σ measure`,
+        `unitCost` is `Σ cost / count` and `marginPerUnit` is the product's
+        listed `price` minus `unitCost`. A sold unit contributes neither cost
+        nor measure, so the numbers always describe what is still in stock.
+
+        Money is a decimal string with two decimals and the measure has three;
+        both are computed with exact arithmetic on the server and rounded half
+        up. `costPerMeasure`, `unitCost` and `marginPerUnit` are `null` -- never
+        `0` -- while the product has no available unit: no cost is not a zero
+        cost. `availableUnits` and `availableMeasure` are real zeros then,
+        because they count units and sum a measure, not money.
+      properties:
+        availableUnits:
+          type: integer
+          minimum: 0
+          description: How many units of the product are still `AVAILABLE`.
+        availableMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{3}$"
+          example: "10.000"
+          description: |
+            Σ `measure` of those units, in the product's measure unit, with
+            three decimals.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          nullable: true
+          example: "5900.00"
+          description: |
+            Σ cost / Σ measure: what one measure of the remaining stock cost.
+            `null` with no available units.
+        unitCost:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          nullable: true
+          example: "29500.00"
+          description: |
+            Σ cost / number of available units: the average cost of one unit.
+            `null` with no available units.
+        marginPerUnit:
+          type: string
+          pattern: "^-?\\d+\\.\\d{2}$"
+          nullable: true
+          example: "-20500.00"
+          description: |
+            The product's listed `price` minus `unitCost`; negative when the
+            list price is below the cost. `null` with no `unitCost`.
+
+    ProductListItem:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - $ref: "#/components/schemas/ProductCosts"
+      description: |
+        A product as the catalogue list shows it: the stored fields plus the
+        costs derived from its available units (L12). The list deliberately
+        carries no lots; those are the detail's answer.
+
+    ProductLotSummary:
+      type: object
+      required:
+        [id, supplierId, supplierName, receivedAt, measureTotal, costPerMeasure, unitCount, availableUnits]
+      description: |
+        One purchase lot of a product, as the "which supplier should I buy
+        from" view shows it (L12): what arrived, from whom, at what price per
+        measure, and how much of it is still available.
+      properties:
+        id:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        supplierName:
+          type: string
+          maxLength: 120
+          description: |
+            Resolved by the API, including a supplier that was soft-deleted
+            afterwards: the lot keeps showing whose purchase it was.
+        receivedAt:
+          type: string
+          format: date-time
+        measureTotal:
+          type: string
+          pattern: "^\\d+\\.\\d{3}$"
+          example: "10.000"
+          description: Σ measure of the lot's units, with three decimals.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          example: "5900.00"
+          description: The price of one measure of this lot, with two decimals.
+        unitCount:
+          type: integer
+          minimum: 1
+          maximum: 500
+        availableUnits:
+          type: integer
+          minimum: 0
+          description: How many units of this lot are still `AVAILABLE`.
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - $ref: "#/components/schemas/ProductCosts"
+        - type: object
+          required: [lots]
+          properties:
+            lots:
+              type: array
+              maxItems: 50
+              description: |
+                The latest 50 lots of the product, newest first (`receivedAt`,
+                then `createdAt`, then id). Empty for a product that never came
+                in a lot.
+              items:
+                $ref: "#/components/schemas/ProductLotSummary"
+      description: |
+        The detail of one product: the stored fields, the costs derived from its
+        available units and its latest lots (L12).
+
+    ProductUnit:
+      type: object
+      required: [id, code, measure, cost, status, lotId, receivedAt]
+      description: |
+        One physical unit of a product, as the sale screen lists it (L23): which
+        unit it is, how much it measures, what it cost, and the lot it came in.
+        The list is ordered by the lot's date and then by the code, so the first
+        unit is the oldest stock.
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 32
+          example: R-01
+          description: Generated from the unit's position inside its lot.
+        measure:
+          type: string
+          pattern: "^\\d{1,9}\\.\\d{3}$"
+          example: "12.500"
+          description: |
+            The unit's measure in the product's measure unit, with exactly three
+            decimals.
+        cost:
+          type: string
+          pattern: "^\\d{1,10}\\.\\d{2}$"
+          example: "73750.00"
+          description: |
+            The unit's own share of the lot's cost, with exactly two decimals.
+        status:
+          type: string
+          enum: [AVAILABLE, SOLD]
+        lotId:
+          type: string
+          format: uuid
+          description: The purchase lot the unit came in.
+        receivedAt:
+          type: string
+          format: date-time
+          description: |
+            The lot's business date, which is what orders the list: oldest
+            first.
 
     CreateProductRequest:
       type: object
@@ -2201,6 +2841,8 @@ components:
           type: string
           maxLength: 2048
           nullable: true
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
 
     UpdateProductRequest:
       type: object
@@ -2227,17 +2869,31 @@ components:
           type: string
           maxLength: 2048
           nullable: true
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
 
     StockMovement:
       type: object
       required:
-        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer]
+        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer, lotId, unitPrice, units, margin]
       description: |
         One immutable stock movement -- the audit trail of the inventory
         (MOV-05). `type` is `IN` for an entry and `OUT` for an exit, and
         `quantity` is always positive: the direction lives in `type`, never in
         the sign of the number. `product` and `actor` are resolved by the API;
         `actor` is null when the user row cannot be resolved.
+
+        `unitPrice` is the price written on the sale (S1) and `units` are the
+        whole rolls it took (S2), each with its own measure and cost (S3):
+        together they are what the real margin is computed from. Both are empty
+        for an entry and for any movement recorded before the field existed
+        (S9), which is reported as "no cost" instead of assuming a value. An
+        entry also carries the `lotId` it brought in, and never carries units.
+
+        `margin` is computed by the server (L11) as `unitPrice × quantity` minus
+        the sum of the units' costs, and it is `null` -- never `0` -- when the
+        price was not written or the movement took no units, which is the "sin
+        costo" the client shows.
       properties:
         id:
           type: string
@@ -2286,6 +2942,66 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/UserSummary"
+        lotId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            The purchase lot this entry brought in (S6), or null. Only the lot
+            registration sets it, so an exit never carries one.
+        unitPrice:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          nullable: true
+          description: |
+            The price actually charged in this sale (S1). It is the same for
+            every roll of the sale and varies only by customer; the catalogue
+            price is the list price, not this one. Null means the price was not
+            written: an entry, or a movement recorded before the field existed
+            (S9).
+        units:
+          type: array
+          maxItems: 500
+          description: |
+            The physical units this sale took, in code order. Empty for an
+            entry, and for a sale of a product that never came in a lot. The
+            cost of each one is what the margin is computed from (S3).
+          items:
+            $ref: "#/components/schemas/MovementUnit"
+        margin:
+          type: string
+          pattern: "^-?\\d+\\.\\d{2}$"
+          nullable: true
+          example: "4298.75"
+          description: |
+            `unitPrice × quantity` minus the sum of the units' costs, as money
+            with two decimals (L11). A negative value is a sale below cost. It is
+            `null` when there is no price (a movement recorded before the field
+            existed, S9) or no units (an entry, or a sale of a product that never
+            came in a lot) -- never `0`, which would mean "sold at cost".
+
+    MovementUnit:
+      type: object
+      required: [id, code, measure, cost]
+      description: |
+        One physical unit a sale took out -- a roll, for example (S2, S3). The
+        measure is a `Decimal(12,3)` string and the cost is this unit's own
+        share of the lot's cost, a `Decimal(12,2)` string; the sale's margin is
+        the written price minus the sum of these costs, never an average.
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 32
+          description: The code of the unit inside its lot (`R-01`, `R-02`...).
+        measure:
+          type: string
+          pattern: "^\\d{1,9}(\\.\\d{1,3})?$"
+        cost:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
 
     MovementProduct:
       type: object
@@ -2343,6 +3059,31 @@ components:
             Associates the sale with a customer. Only valid when `type` is
             `OUT`; an entry with a customer answers 400 `customer_requires_exit`.
             The customer must be active and belong to the company.
+        unitPrice:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          nullable: true
+          description: |
+            The price actually charged for each unit of this sale (S1), with the
+            same rule as the product price: a positive decimal string with up to
+            ten integer digits and up to two decimals. Required when the product
+            has units available, together with `unitIds`; an entry carrying it
+            answers 400 `unit_price_requires_exit`.
+        unitIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          nullable: true
+          description: |
+            The whole units this sale takes (S2), one id per unit of
+            `quantity`. Required when the product has units available: a missing
+            or mismatched list answers 400 `units_required`, and a unit that is
+            sold or belongs to another product or company answers 409
+            `unit_not_available`. An entry carrying a non-empty list answers 400
+            `units_require_exit`.
+          items:
+            type: string
+            format: uuid
 
     RegisterMovementResponse:
       allOf:
@@ -2350,12 +3091,256 @@ components:
         - type: object
           required: [stockQuantity]
           description: |
-            The movement plus the product's stock **after** it. The stock is a
-            consequence of the movement, never an input.
+            The movement, the units it took, and the product's stock **after**
+            it. The stock is a consequence of the movement, never an input.
           properties:
             stockQuantity:
               type: integer
               minimum: 0
+
+    Supplier:
+      type: object
+      required:
+        [id, companyId, name, contact, createdAt, updatedAt]
+      description: |
+        A supplier of bulk goods. `contact` is free text (a person, a phone, an
+        email or all three) and nullable: an empty value is stored as null. The
+        name is unique inside the company, case-sensitively, and soft-deleted
+        rows keep their name reserved. A deleted supplier is never returned and
+        has no `deletedAt` field in the contract.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        contact:
+          type: string
+          maxLength: 120
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SupplierLastLot:
+      type: object
+      required:
+        [id, productId, productName, costPerMeasure, measureUnit, receivedAt]
+      description: |
+        The most recent purchase lot of a supplier, as the roster summarizes it
+        (L12): which product it was, its price per measure, the unit that
+        measure is expressed in, and when it arrived.
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        productName:
+          type: string
+          maxLength: 120
+          description: |
+            Resolved by the API, including a product that was soft-deleted
+            afterwards: the lot keeps answering what was bought.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d+\\.\\d{2}$"
+          example: "5900.00"
+          description: The price of one measure of that lot, with two decimals.
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
+        receivedAt:
+          type: string
+          format: date-time
+
+    SupplierListItem:
+      allOf:
+        - $ref: "#/components/schemas/Supplier"
+        - type: object
+          required: [lastLot]
+          properties:
+            lastLot:
+              description: |
+                The supplier's most recent lot, or `null` when the company never
+                bought from it -- never a fabricated row.
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/SupplierLastLot"
+      description: |
+        A supplier as the roster list shows it: the stored fields plus its latest
+        lot (L12). The write endpoints keep answering the plain `Supplier`: a
+        supplier that was just created has no lots yet.
+
+    CreateSupplierRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        contact:
+          type: string
+          maxLength: 120
+          nullable: true
+
+    UpdateSupplierRequest:
+      type: object
+      description: |
+        Every field is optional and its absence means "unchanged", while an
+        explicit `null` clears `contact`.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        contact:
+          type: string
+          maxLength: 120
+          nullable: true
+
+    StockLot:
+      type: object
+      required:
+        [id, companyId, productId, supplierId, receivedAt, measureTotal, costPerMeasure, unitCount, note, createdAt, units]
+      description: |
+        A purchase lot: one delivery of a measured product from one supplier
+        (S6). `measureTotal` is the sum of its units' `measure` and is never
+        sent by the client; `costPerMeasure` is the price of one measure;
+        `unitCount` is the number of physical units and is what the `IN`
+        movement adds to the stock.
+
+        Each unit's `cost` is its own `measure × costPerMeasure` rounded to two
+        decimals, and the last unit absorbs the rounding difference, so the unit
+        costs add up exactly to `measureTotal × costPerMeasure` (S3).
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        receivedAt:
+          type: string
+          format: date-time
+        measureTotal:
+          type: string
+          pattern: "^\\d{1,9}\\.\\d{3}$"
+          example: "84.500"
+          description: Decimal string with exactly three decimals, derived from the units.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d{1,10}\\.\\d{2}$"
+          example: "5900.00"
+          description: Decimal string with exactly two decimals.
+        unitCount:
+          type: integer
+          minimum: 1
+          maximum: 500
+          description: The number of physical units, i.e. what the stock counts.
+        note:
+          type: string
+          maxLength: 300
+          nullable: true
+          description: |
+            Free annotation of the purchase. It also travels to the ledger as
+            the reason of the `IN` movement.
+        createdAt:
+          type: string
+          format: date-time
+        units:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockLotUnit"
+
+    StockLotUnit:
+      type: object
+      required: [id, code, measure, cost, status]
+      description: |
+        One physical unit of a lot -- a roll, for example. It carries its own
+        measure, so its cost is its own instead of an average of the lot. The
+        code is generated from the position (`R-01`, `R-02`, ...), and `status`
+        is `AVAILABLE` until a sale takes the unit (S2: whole units only).
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 32
+          example: R-01
+        measure:
+          type: string
+          pattern: "^\\d{1,9}\\.\\d{3}$"
+          example: "12.500"
+          description: Decimal string with exactly three decimals, always positive.
+        cost:
+          type: string
+          pattern: "^\\d{1,10}\\.\\d{2}$"
+          example: "73750.00"
+          description: Decimal string with exactly two decimals.
+        status:
+          type: string
+          enum: [AVAILABLE, SOLD]
+
+    CreateLotRequest:
+      type: object
+      required: [productId, supplierId, costPerMeasure, measures]
+      description: |
+        `measureTotal` is **derived** from `measures` and is not part of the
+        body: a typed total could disagree with the units it summarizes, so
+        sending one answers `400 measure_total_derived` instead of being
+        ignored.
+
+        Unit codes are generated by the API from the position, so the client
+        sends one measure per unit and nothing else.
+      properties:
+        productId:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        costPerMeasure:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          example: "5900.00"
+          description: Price of one measure, greater than 0.
+        measures:
+          type: array
+          minItems: 1
+          maxItems: 500
+          description: |
+            One measure per physical unit, in the product's unit. Every value
+            must be greater than 0, with at most three decimals.
+          items:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+            maximum: 999999999.999
+            example: 12.5
+        receivedAt:
+          type: string
+          format: date-time
+          description: Defaults to the moment the lot is registered.
+        note:
+          type: string
+          maxLength: 300
+          nullable: true
 
     Customer:
       type: object

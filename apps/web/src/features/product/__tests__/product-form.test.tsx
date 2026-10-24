@@ -93,6 +93,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		photoUrl: "https://res.cloudinary.com/demo/image/upload/cafe.jpg",
 		stockQuantity: 0,
 		lowStockThreshold: 0,
+		measureUnit: "KILOGRAM",
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
@@ -102,6 +103,19 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 
 function fill(name: string, value: string) {
 	fireEvent.change(screen.getByLabelText(name), { target: { value } });
+}
+
+/**
+ * Picks an option of a `SelectField`, which is a Base UI primitive: the
+ * trigger is a combobox button and the list opens on click, not on a native
+ * `<select>` change.
+ */
+function chooseOption(fieldLabel: string, optionLabel: string) {
+	fireEvent.click(screen.getByLabelText(fieldLabel));
+	const option = screen.getByRole("option", { name: optionLabel });
+	fireEvent.pointerDown(option);
+	fireEvent.pointerUp(option);
+	fireEvent.click(option);
 }
 
 function submit(label: string) {
@@ -157,7 +171,29 @@ describe("ProductForm (create)", () => {
 				price: "1500.00",
 				description: "Molido medio",
 				photoUrl: null,
+				measureUnit: "KILOGRAM",
 			},
+			expect.any(Object),
+		);
+	});
+
+	it("starts with Kilogramo and sends the unit the person picks", () => {
+		render(<ProductForm companyId="c1" />);
+		fill("Nombre del producto", "Pintura");
+		fill("Código SKU", "PIN-1");
+		fill("Precio unitario", "350");
+
+		// The default is the column's default: a product created before the
+		// purchase lots is measured in kilograms.
+		expect(screen.getByLabelText("Unidad de medida").textContent).toContain(
+			"Kilogramo",
+		);
+
+		chooseOption("Unidad de medida", "Litro");
+		submit("Crear producto");
+
+		expect(createMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ measureUnit: "LITRE" }),
 			expect.any(Object),
 		);
 	});
@@ -245,7 +281,29 @@ describe("ProductForm (edit)", () => {
 				price: "1500.00",
 				description: null,
 				photoUrl: null,
+				measureUnit: "KILOGRAM",
 			},
+			expect.any(Object),
+		);
+	});
+
+	it("prefills the measure unit of the product and sends a change to it", () => {
+		render(
+			<ProductForm
+				companyId="c1"
+				product={product({ measureUnit: "METRE" })}
+			/>,
+		);
+
+		expect(screen.getByLabelText("Unidad de medida").textContent).toContain(
+			"Metro",
+		);
+
+		chooseOption("Unidad de medida", "Litro");
+		submit("Guardar cambios");
+
+		expect(updateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ measureUnit: "LITRE" }),
 			expect.any(Object),
 		);
 	});

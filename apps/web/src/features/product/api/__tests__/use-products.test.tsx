@@ -25,9 +25,17 @@ function product(overrides: Record<string, unknown> = {}) {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		availableUnits: 0,
+		// Los costos derivados de las unidades disponibles (L12): sin unidades
+		// son `null`, y el listado los muestra como desconocidos.
+		availableMeasure: "0.000",
+		costPerMeasure: null,
+		unitCost: null,
+		marginPerUnit: null,
 		photoUrl: null,
 		stockQuantity: 0,
 		lowStockThreshold: 0,
+		measureUnit: "KILOGRAM",
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",

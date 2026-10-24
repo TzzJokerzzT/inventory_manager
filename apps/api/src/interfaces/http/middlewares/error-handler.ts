@@ -26,6 +26,10 @@ import {
 	LastActiveOwnerError,
 } from "../../../domain/errors/last-active-owner-error.js";
 import {
+	MEASURE_TOTAL_DERIVED_CODE,
+	MeasureTotalDerivedError,
+} from "../../../domain/errors/measure-total-derived-error.js";
+import {
 	MEMBERSHIP_ALREADY_EXISTS_CODE,
 	MembershipAlreadyExistsError,
 } from "../../../domain/errors/membership-already-exists-error.js";
@@ -45,10 +49,27 @@ import {
 	PRODUCT_NOT_FOUND_CODE,
 	ProductNotFoundError,
 } from "../../../domain/errors/product-not-found-error.js";
+import { SaleFieldRequiresExitError } from "../../../domain/errors/sale-field-requires-exit-error.js";
 import {
 	SKU_ALREADY_EXISTS_CODE,
 	SkuAlreadyExistsError,
 } from "../../../domain/errors/sku-already-exists-error.js";
+import {
+	SUPPLIER_NAME_ALREADY_EXISTS_CODE,
+	SupplierNameAlreadyExistsError,
+} from "../../../domain/errors/supplier-name-already-exists-error.js";
+import {
+	SUPPLIER_NOT_FOUND_CODE,
+	SupplierNotFoundError,
+} from "../../../domain/errors/supplier-not-found-error.js";
+import {
+	UNIT_NOT_AVAILABLE_CODE,
+	UnitNotAvailableError,
+} from "../../../domain/errors/unit-not-available-error.js";
+import {
+	UNITS_REQUIRED_CODE,
+	UnitsRequiredError,
+} from "../../../domain/errors/units-required-error.js";
 import { UserNotProvisionedError } from "../../../domain/errors/user-not-provisioned-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
@@ -114,6 +135,19 @@ export const errorHandler: ErrorRequestHandler = (
 			error: {
 				message: "Invalid request body",
 				issues: error.issues.map((issue) => issue.message),
+			},
+		});
+		return;
+	}
+
+	if (error instanceof MeasureTotalDerivedError) {
+		// 400, not 422: the value could be well formed, it simply does not belong
+		// to the request. The total of a lot is derived from its units (L6), and
+		// ignoring the field silently would let the caller believe it was stored.
+		response.status(StatusCodes.BAD_REQUEST).json({
+			error: {
+				message: error.message,
+				code: MEASURE_TOTAL_DERIVED_CODE,
 			},
 		});
 		return;
@@ -221,11 +255,66 @@ export const errorHandler: ErrorRequestHandler = (
 		return;
 	}
 
+	if (error instanceof SaleFieldRequiresExitError) {
+		// The same 400 and the same reasoning as `customer_requires_exit`: the
+		// price and the units belong to a sale (S1, S2), so an entry carrying
+		// either is rejected instead of silently dropping the field. The code
+		// names which field the client must remove.
+		response.status(StatusCodes.BAD_REQUEST).json({
+			error: { message: error.message, code: error.code },
+		});
+		return;
+	}
+
+	if (error instanceof UnitsRequiredError) {
+		// 400, not 409: the body is well formed and the stock is there, it simply
+		// does not say which rolls left nor at what price -- and the product has
+		// units available, so the sale cannot be recorded without them (L9).
+		// Nothing was written.
+		response.status(StatusCodes.BAD_REQUEST).json({
+			error: { message: error.message, code: UNITS_REQUIRED_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof UnitNotAvailableError) {
+		// 409, not 400: the body is well formed, the state moved under the caller
+		// (or the unit belongs to another product or company). The whole sale was
+		// rolled back, so no unit is marked and the stock did not move.
+		response.status(StatusCodes.CONFLICT).json({
+			error: { message: error.message, code: UNIT_NOT_AVAILABLE_CODE },
+		});
+		return;
+	}
+
 	if (error instanceof SkuAlreadyExistsError) {
 		// 409, not 400: the body is well formed, the company just already has
 		// that SKU -- deleted rows included, because they keep it reserved (S2).
 		response.status(StatusCodes.CONFLICT).json({
 			error: { message: error.message, code: SKU_ALREADY_EXISTS_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof SupplierNotFoundError) {
+		// The same 404 a foreign id, a soft-deleted supplier and an absent one
+		// get: the supplier is not in this company's roster, and which of the
+		// three it was is not something the caller needs to know (EMP-03).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: SUPPLIER_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof SupplierNameAlreadyExistsError) {
+		// 409, not 400: the body is well formed, the company just already has a
+		// supplier with that name -- deleted rows included, because they keep the
+		// name reserved (the `@@unique([companyId, name])` index covers them).
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: SUPPLIER_NAME_ALREADY_EXISTS_CODE,
+			},
 		});
 		return;
 	}

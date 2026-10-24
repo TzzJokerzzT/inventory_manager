@@ -4,7 +4,6 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Alert } from "@/components/design-system";
-import { Button } from "@/components/ui/button";
 import { Divider } from "@/components/ui/divider";
 import { LazyMotionTag } from "@/src/shared/components/Animation";
 import { useActiveCompany } from "../company/store/company-selectors";
@@ -48,11 +47,12 @@ export function ClientWrite({ customerId }: { customerId?: string }) {
 						Los campos marcados con * son obligatorios
 					</p>
 				</div>
-				<Link href={LIST_HREF} className="w-full sm:w-auto">
-					<Button variant="outline" className="h-12 w-full sm:w-auto">
-						<ArrowLeft className="mr-2 size-5" />
-						Volver a clientes
-					</Button>
+				<Link
+					href={LIST_HREF}
+					className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-medium whitespace-nowrap transition-all select-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:w-auto"
+				>
+					<ArrowLeft aria-hidden="true" className="size-5" />
+					Volver a clientes
 				</Link>
 			</header>
 

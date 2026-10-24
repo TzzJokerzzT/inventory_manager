@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
 import type { SupplierListItem } from "@/lib/api/schemas";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
@@ -8,6 +9,10 @@ import { useDeleteProvider } from "../api/use-delete-provider";
 import { useProviders } from "../api/use-providers";
 import { useUpdateProvider } from "../api/use-update-provider";
 import { Providers } from "../providers";
+
+jest.mock("next/navigation", () => ({
+	useRouter: jest.fn(),
+}));
 
 jest.mock("@/src/features/company/store/company-selectors", () => ({
 	useActiveCompany: jest.fn(),
@@ -33,6 +38,7 @@ jest.mock("../api/use-update-provider", () => ({
 	useUpdateProvider: jest.fn(),
 }));
 
+const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;
@@ -43,6 +49,8 @@ const useProvidersMock = useProviders as jest.MockedFunction<
 const useDeleteProviderMock = useDeleteProvider as jest.MockedFunction<
 	typeof useDeleteProvider
 >;
+
+const push = jest.fn();
 
 function provider(overrides: Partial<SupplierListItem> = {}): SupplierListItem {
 	return {
@@ -75,6 +83,14 @@ function setup({
 	providersState?: Record<string, unknown>;
 	company?: { id: string; name: string } | null;
 } = {}) {
+	useRouterMock.mockReturnValue({
+		push,
+		replace: jest.fn(),
+		refresh: jest.fn(),
+		back: jest.fn(),
+		forward: jest.fn(),
+		prefetch: jest.fn(),
+	} as unknown as ReturnType<typeof useRouter>);
 	useActiveCompanyMock.mockReturnValue(
 		company
 			? {
@@ -225,9 +241,7 @@ describe("Providers", () => {
 		expect(screen.getByRole("button", { name: "Eliminar" })).toBeTruthy();
 	});
 
-	it("shows the values of the supplier being edited, not the previous one", () => {
-		// Both rows stay on screen, so the form is re-used between them: without
-		// a reset it would submit row A's values to row B.
+	it("navigates to the edit route of the chosen supplier", () => {
 		setup({
 			rows: [
 				provider({ id: "su1", name: "Plásticos del Sur" }),
@@ -237,28 +251,23 @@ describe("Providers", () => {
 
 		render(<Providers />);
 
-		const editButtons = screen.getAllByRole("button", { name: "Editar" });
-		fireEvent.click(editButtons[0]);
-		expect(
-			(screen.getByLabelText("Nombre del proveedor") as HTMLInputElement).value,
-		).toBe("Plásticos del Sur");
-
-		fireEvent.click(editButtons[1]);
-		expect(
-			(screen.getByLabelText("Nombre del proveedor") as HTMLInputElement).value,
-		).toBe("Rollo Norte");
-		expect((screen.getByLabelText("Contacto") as HTMLInputElement).value).toBe(
-			"",
+		fireEvent.click(
+			screen.getAllByRole("button", { name: "Editar" })[1] as HTMLElement,
 		);
+
+		expect(push).toHaveBeenCalledWith("/dashboard/providers/su2/edit");
+		// The form lives on its own page now: the roster opens nothing.
+		expect(screen.queryByLabelText("Nombre del proveedor")).toBeNull();
 	});
 
-	it("opens the create form from the header button", () => {
+	it("navigates to the create route from the header button", () => {
 		setup();
 
 		render(<Providers />);
 
 		fireEvent.click(screen.getByRole("button", { name: /Nuevo Proveedor/ }));
 
-		expect(screen.getByRole("form", { name: "Crear proveedor" })).toBeTruthy();
+		expect(push).toHaveBeenCalledWith("/dashboard/providers/create");
+		expect(screen.queryByRole("form", { name: "Crear proveedor" })).toBeNull();
 	});
 });

@@ -159,13 +159,13 @@ export function ProviderForm({
 					Cancelar
 				</Button>
 				<Button
-					className="h-10 w-full sm:w-30"
+					className="h-10 w-full sm:w-40"
 					type="submit"
 					disabled={isPending}
 				>
 					{isPending ? (
 						<>
-							<SpinnerMotion size={16} className="mr-2" />
+							<SpinnerMotion size={20} className="mr-2" />
 							{isEdit ? "Guardando..." : "Creando..."}
 						</>
 					) : isEdit ? (

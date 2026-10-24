@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Alert, type Column, DataTable } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
@@ -19,7 +19,6 @@ import { LazyMotionTag } from "@/src/shared/components/Animation";
 import { SectionTitle } from "@/src/shared/components/SectionTitle";
 import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { useProviders } from "./api/use-providers";
-import { ProviderFormPanel } from "./components/provider-form-panel";
 import { ProviderRowActions } from "./components/provider-row-actions";
 
 const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
@@ -41,41 +40,31 @@ const NO_LOTS = "Sin compras";
  * the writes are guarded by `manage_products`, so a MEMBER sees the table with
  * no «Nuevo Proveedor», Editar or Eliminar, exactly like the catalogue.
  *
- * Writing happens **on this page**: «Nuevo Proveedor» and «Editar» open the same
- * inline form panel above the table, so there is no route to navigate to. The
- * edit form starts from the row itself because the contract has no per-supplier
- * read.
+ * Writing happens **on its own pages**: «Nuevo Proveedor» and «Editar» navigate
+ * to `/dashboard/providers/create` and `/dashboard/providers/[id]/edit`, so a
+ * reload or a shared link lands on the form. Both read what they need from this
+ * same roster — the contract has no per-supplier read.
  *
  * The last lot column is `null` for a supplier the company never bought from,
  * and it never renders a `$/medida` without its unit: the price means nothing
  * without knowing whether it is per kg, per litre or per metre.
  */
 export function Providers() {
+	const router = useRouter();
 	const company = useActiveCompany();
 	const { data: me } = useMe();
-	const [isFormOpen, setIsFormOpen] = useState(false);
-	const [editing, setEditing] = useState<SupplierListItem | undefined>(
-		undefined,
-	);
 
 	const companyId = company?.id;
 	const providers = useProviders(companyId);
 	const canManage = canManageProducts(roleForCompany(me, companyId));
 	const rows = providers.data ?? [];
 
-	function openCreateForm() {
-		setEditing(undefined);
-		setIsFormOpen(true);
+	function goToCreate() {
+		router.push("/dashboard/providers/create");
 	}
 
-	function openEditForm(provider: SupplierListItem) {
-		setEditing(provider);
-		setIsFormOpen(true);
-	}
-
-	function closeForm() {
-		setIsFormOpen(false);
-		setEditing(undefined);
+	function goToEdit(provider: SupplierListItem) {
+		router.push(`/dashboard/providers/${provider.id}/edit`);
 	}
 
 	const columns: Column<SupplierListItem>[] = [
@@ -115,7 +104,7 @@ export function Providers() {
 				<ProviderRowActions
 					companyId={companyId}
 					provider={row}
-					onEdit={openEditForm}
+					onEdit={goToEdit}
 				/>
 			),
 		});
@@ -139,24 +128,13 @@ export function Providers() {
 						type="button"
 						className="h-12 w-full sm:w-auto"
 						disabled={companyId === undefined}
-						aria-expanded={isFormOpen && editing === undefined}
-						onClick={
-							isFormOpen && editing === undefined ? closeForm : openCreateForm
-						}
+						onClick={goToCreate}
 					>
 						<Plus className="mr-2 size-5" />
 						Nuevo Proveedor
 					</Button>
 				) : null}
 			</ViewHeader>
-
-			{isFormOpen && companyId && canManage ? (
-				<ProviderFormPanel
-					companyId={companyId}
-					provider={editing}
-					onDone={closeForm}
-				/>
-			) : null}
 
 			<SectionTitle ariaLabel="Padrón de proveedores" title="Padrón">
 				{companyId === undefined ? (

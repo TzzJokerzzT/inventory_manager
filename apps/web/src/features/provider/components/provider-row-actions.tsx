@@ -1,5 +1,6 @@
 "use client";
 
+import { SquarePen, Trash } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
@@ -25,8 +26,8 @@ function deleteErrorMessage(error: unknown): string | undefined {
 }
 
 /**
- * The actions column: edit opens the inline form for that supplier and delete
- * sits behind a confirmation dialog.
+ * The actions column: edit navigates to that supplier's route and delete sits
+ * behind a confirmation dialog.
  *
  * The confirmation is the design-system `Modal`, not `window.confirm`: a native
  * dialog blocks the page and cannot be driven by a test. `open` is local state,
@@ -53,20 +54,22 @@ export function ProviderRowActions({
 			<div className="flex items-center justify-end gap-2">
 				<Button
 					type="button"
-					size="sm"
+					size="icon-lg"
 					variant="ghost"
+					aria-label="Editar"
 					onClick={() => onEdit(provider)}
 				>
-					Editar
+					<SquarePen aria-hidden="true" />
 				</Button>
 				<Button
 					type="button"
-					size="sm"
+					size="icon-lg"
 					variant="ghost"
 					className="text-danger-text hover:bg-danger-soft"
+					aria-label="Eliminar"
 					onClick={() => setConfirming(true)}
 				>
-					Eliminar
+					<Trash aria-hidden="true" />
 				</Button>
 			</div>
 

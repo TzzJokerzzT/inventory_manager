@@ -10,6 +10,7 @@ import {
 	Truck,
 	Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
@@ -103,8 +104,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 					}`}
 				>
 					<div className="flex items-center gap-3 px-4 py-5 lg:px-6">
-						<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary">
-							<div className="size-3 rounded-[3px] bg-white" />
+						{/*
+						 * The mark is the same file the tab icon and the share card
+						 * use. `size-full` + `object-contain` keep it inside the 32px
+						 * box: next/image renders the intrinsic 300px otherwise.
+						 */}
+						<div className="flex size-8 shrink-0 items-center justify-center">
+							<Image
+								src="/logo.png"
+								alt="Inventory Manager"
+								width={64}
+								height={64}
+								className="size-full object-contain"
+							/>
 						</div>
 						<span
 							className={`truncate text-base font-bold text-sidebar-foreground ${collapsibleText}`}

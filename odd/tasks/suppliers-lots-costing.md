@@ -109,6 +109,13 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L20 (corrección por revisión, hallazgo R3-001): `measureUnit` dice **cómo se compra** el producto (sus lotes
+se pesan o se miden), **no** en qué unidad se vende. `Product.price` es el precio de venta de **una unidad**.
+Etiquetar el precio del catálogo como "$ 5.900,00 / kg" fue un error mío en la instrucción de F2a: mezcla las dos
+unidades y es exactamente la confusión que esta feature viene a eliminar. La columna de precio quedó en su forma
+original (sin unidad) y una prueba pinnea que la medida **no** se agrega ahí; la medida se muestra donde se
+elige (formulario de producto y, en F2b, el bloque de compra).
+
 L19 (dependencia que destapó L18): `Product.measureUnit` existe en la base y en la entidad desde T5, pero se
 dejó **fuera del contrato y de las respuestas** para no cambiar su forma. El formulario de compra necesita
 mostrar "$ por kg" o "$ por litro" con el dato real, así que F2 arranca exponiéndolo: lectura en

@@ -160,26 +160,19 @@ describe("Product", () => {
 		expect(screen.getByText("4")).toBeTruthy();
 	});
 
-	it("shows the unit next to the price, so a price is never shown alone", () => {
+	it("does not append the purchase measure to the sale price", () => {
+		// `measureUnit` is how the product is BOUGHT (its lots are weighed); the
+		// price is what one UNIT sells for. Mixing them would price a unit as a
+		// kilogram, so the cell stays plain and the unit lives in the purchase form.
 		setup({
-			rows: [
-				product({ price: "5900.00", measureUnit: "KILOGRAM" }),
-				product({
-					id: "p2",
-					sku: "PIN-1",
-					price: "350.00",
-					measureUnit: "LITRE",
-				}),
-			],
+			rows: [product({ price: "5900.00", measureUnit: "KILOGRAM" })],
 		});
 
 		render(<Product />);
 
-		// L19: "$ 5.900,00" of what? The unit the product is bought in travels
-		// with the row and is rendered with it.
 		expect(screen.getByText("$ 5.900,00")).toBeTruthy();
-		expect(screen.getByText("/ kg")).toBeTruthy();
-		expect(screen.getByText("/ L")).toBeTruthy();
+		expect(screen.queryByText("/ kg")).toBeNull();
+		expect(screen.queryByText("$ 5.900,00 / kg")).toBeNull();
 	});
 
 	it("shows a thumbnail only when the product has a photo", () => {

@@ -17,7 +17,6 @@ import { useMe } from "../user/api/use-me";
 import { useProducts } from "./api/use-products";
 import { ProductRowActions } from "./components/product-row-actions";
 import { formatPrice } from "./lib/format-price";
-import { measureUnitLabel } from "./lib/measure-unit";
 import {
 	canManageProducts,
 	canPurgeProducts,
@@ -92,17 +91,14 @@ export function Product() {
 			key: "price",
 			header: "Precio",
 			align: "right",
-			// The price is a decimal string in the contract; it is formatted, never parsed as a float.
-			// It never shows alone: L19 asks for the unit it is expressed in, because
-			// "$ 5.900,00" of kilograms is not the same price as of litres.
+			// The price is a decimal string in the contract; it is formatted, never
+			// parsed as a float. It carries no unit on purpose: this column is the
+			// SALE price of one unit, while `measureUnit` says how the product is
+			// BOUGHT (its lots are weighed). Appending "/ kg" here would price a
+			// unit as if it were a kilogram, which is the confusion this feature
+			// exists to remove; the purchase form is where the measure belongs.
 			render: (row) => (
-				<span className="whitespace-nowrap">
-					{formatPrice(row.price)}
-					<span className="text-text-muted">
-						{" / "}
-						{measureUnitLabel(row.measureUnit)}
-					</span>
-				</span>
+				<span className="whitespace-nowrap">{formatPrice(row.price)}</span>
 			),
 		},
 		{ key: "stockQuantity", header: "Unidades", align: "right" },

@@ -20,15 +20,19 @@ const FALLBACK_ERROR = "No pudimos guardar el proveedor. Probá de nuevo.";
  * Turns the API failure into something a person can act on.
  *
  * The API's own message is the right copy for every code it sends — a duplicate
- * name (`409 supplier_name_already_exists`) and a missing role
- * (`403 insufficient_role`) both arrive already explained by the server — with
- * one exception: `supplier_not_found`, whose contract text is a developer
- * message, so it is translated here into what happened to the person editing.
+ * role (`403 insufficient_role`) arrives already explained by the server, but
+ * two codes do not: `supplier_not_found` states a developer fact, and
+ * `supplier_name_already_exists` answers in English because the API's messages
+ * are English. Both are translated here, keyed by code and never by text, so a
+ * wording change upstream cannot silently untranslate them.
  */
 function saveErrorMessage(error: unknown): string | undefined {
 	if (error instanceof ApiError) {
 		if (error.code === "supplier_not_found") {
 			return "Ese proveedor ya no existe en esta empresa.";
+		}
+		if (error.code === "supplier_name_already_exists") {
+			return "Ya existe un proveedor con ese nombre en esta empresa.";
 		}
 		return error.message;
 	}

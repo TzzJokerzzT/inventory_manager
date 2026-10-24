@@ -14,16 +14,16 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Product } from "@/lib/api/schemas";
+import {
+	DEFAULT_MEASURE_UNIT,
+	isMeasureUnit,
+	MEASURE_UNIT_OPTIONS,
+} from "@/lib/measure-unit";
 import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useCreateProduct } from "./api/use-create-product";
 import { useUpdateProduct } from "./api/use-update-product";
 import { useUploadProductPhoto } from "./api/use-upload-product-photo";
 import { ProductPhotoField } from "./components/product-photo-field";
-import {
-	DEFAULT_MEASURE_UNIT,
-	isMeasureUnit,
-	MEASURE_UNIT_OPTIONS,
-} from "./lib/measure-unit";
 import {
 	normalizePrice,
 	normalizeSku,

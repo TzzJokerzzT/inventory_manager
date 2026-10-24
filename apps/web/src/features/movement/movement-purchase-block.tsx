@@ -8,6 +8,7 @@ import {
 } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/lib/api/schemas";
+import { measureUnitLabel } from "@/lib/measure-unit";
 import { parseMeasures } from "@/src/features/lot/lib/parse-measures";
 import {
 	formatMeasure,
@@ -18,7 +19,6 @@ import type {
 	PurchaseFormValues,
 } from "@/src/features/lot/lib/validate-purchase";
 import { formatPrice } from "@/src/features/product/lib/format-price";
-import { measureUnitLabel } from "@/src/features/product/lib/measure-unit";
 import { useProviders } from "@/src/features/provider/api/use-providers";
 
 /** The disclosure's label, and the name the tests and the copy share. */

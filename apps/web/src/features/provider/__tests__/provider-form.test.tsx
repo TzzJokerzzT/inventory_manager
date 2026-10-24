@@ -139,7 +139,7 @@ describe("ProviderForm", () => {
 		expect(screen.getByText("Ingresá el nombre del proveedor.")).toBeTruthy();
 	});
 
-	it("surfaces the API message when the name is already taken", () => {
+	it("translates the duplicate-name code instead of echoing its English text", () => {
 		mockHooks({
 			create: {
 				isError: true,
@@ -154,9 +154,14 @@ describe("ProviderForm", () => {
 
 		expect(
 			screen.getByText(
-				"A supplier with that name already exists in the company",
+				"Ya existe un proveedor con ese nombre en esta empresa.",
 			),
 		).toBeTruthy();
+		expect(
+			screen.queryByText(
+				"A supplier with that name already exists in the company",
+			),
+		).toBeNull();
 	});
 
 	it("pre-fills the fields of the supplier being edited", () => {

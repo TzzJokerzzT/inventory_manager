@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { SupplierListItem } from "@/lib/api/schemas";
+import { measureUnitLabel } from "@/lib/measure-unit";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { formatPrice } from "@/src/features/product/lib/format-price";
 import {
@@ -20,7 +21,6 @@ import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { useProviders } from "./api/use-providers";
 import { ProviderFormPanel } from "./components/provider-form-panel";
 import { ProviderRowActions } from "./components/provider-row-actions";
-import { measureUnitLabel } from "./lib/measure-unit";
 
 const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
 

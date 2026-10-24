@@ -2,9 +2,9 @@
 
 import { Checkbox } from "@/components/design-system";
 import type { Product, ProductUnit } from "@/lib/api/schemas";
+import { measureUnitLabel } from "@/lib/measure-unit";
 import { formatMeasure } from "@/src/features/lot/lib/purchase-summary";
 import { formatPrice } from "@/src/features/product/lib/format-price";
-import { measureUnitLabel } from "@/src/features/product/lib/measure-unit";
 
 /** The section's label, and the name the tests and the copy share. */
 export const SALE_UNITS_LABEL = "Unidades a vender";

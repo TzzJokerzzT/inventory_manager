@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { RegisterMovementRequest } from "@/lib/api/schemas";
+import { measureUnitLabel } from "@/lib/measure-unit";
 import { useCustomers } from "@/src/features/client/api/use-customers";
 import { useProductUnits } from "@/src/features/lot/api/use-product-units";
 import { useRegisterLot } from "@/src/features/lot/api/use-register-lot";
@@ -18,7 +19,6 @@ import {
 	validatePurchase,
 } from "@/src/features/lot/lib/validate-purchase";
 import { useProducts } from "@/src/features/product/api/use-products";
-import { measureUnitLabel } from "@/src/features/product/lib/measure-unit";
 import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useRegisterMovement } from "./api/use-register-movement";
 import type { MovementType } from "./components/movement-type-badge";

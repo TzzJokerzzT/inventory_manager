@@ -89,6 +89,19 @@ son **una sola operación** del adaptador (`$transaction`), no tres llamadas enc
 puede quedar un lote huérfano ni stock descuadrado. Las reglas (cantidad de unidades, costos, suma) viven en
 la entidad, para que ni el adaptador ni el controlador las reimplementen.
 
+L11 (fórmula del margen, T5): `unitPrice` es el precio de **una** unidad, así que el ingreso de la venta es
+`unitPrice × quantity` y el costo es la suma de `cost` de las unidades que salieron. `margin = ingreso − costo`
+y se calcula **en el servidor**, no en el front: es dinero y no puede depender de la aritmética de cada cliente.
+Si falta el precio (venta anterior a la feature) o las unidades, el margen es `null` y la UI lo muestra como
+"sin costo" — nunca `0`.
+
+L12 (dónde viven las lecturas, T5): el costo por medida y el costo promedio por unidad **se derivan de las
+unidades disponibles** (Σ costo / Σ medida y Σ costo / cantidad), no de un campo guardado, para que no haya un
+número que se pueda desincronizar. El detalle de producto expone sus lotes (los últimos 50) con proveedor y
+$/medida: eso es la comparación "a quién le compro". El listado de proveedores expone el último lote como
+resumen. El histórico por cliente **no lleva endpoint nuevo**: es `GET /movements?customerId=` —que ya
+existía— ahora con `unitPrice`, unidades y margen por venta.
+
 L9 (regla de T4, compatibilidad hacia atrás): una salida exige `unitPrice` y `unitIds` **sólo si el producto
 tiene unidades disponibles**; un producto sin lotes sigue vendiéndose como hoy (cantidad suelta, sin precio ni
 unidades). Razón: el front actual no envía ninguno de los dos campos y no puede romperse mientras el front de

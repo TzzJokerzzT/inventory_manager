@@ -44,6 +44,7 @@ const navLinks = [
 	{ href: "/dashboard/products", label: "Productos" },
 	{ href: "/dashboard/movements", label: "Movimientos" },
 	{ href: "/dashboard/clients", label: "Clientes" },
+	{ href: "/dashboard/providers", label: "Proveedores" },
 ] as const;
 
 describe("AppShell", () => {

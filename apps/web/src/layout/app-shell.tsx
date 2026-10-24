@@ -7,6 +7,7 @@ import {
 	LayoutDashboard,
 	type LucideIcon,
 	Package,
+	Truck,
 	Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +32,7 @@ const navigation: NavEntry[] = [
 	{ href: "/dashboard/products", label: "Productos", icon: Package },
 	{ href: "/dashboard/movements", label: "Movimientos", icon: ArrowRightLeft },
 	{ href: "/dashboard/clients", label: "Clientes", icon: Users },
+	{ href: "/dashboard/providers", label: "Proveedores", icon: Truck },
 	{ href: "/dashboard/user", label: "Usuario", icon: Users },
 ];
 

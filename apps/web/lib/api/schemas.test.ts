@@ -16,6 +16,8 @@ import {
 	parseProduct,
 	parseProducts,
 	parseRegisterMovementResponse,
+	parseSupplier,
+	parseSuppliers,
 } from "./schemas";
 
 describe("parseLoginResponse", () => {
@@ -814,6 +816,90 @@ describe("parseCustomer", () => {
 
 	it("rejects a customer whose shape changed", () => {
 		expect(() => parseCustomer({ id: "cu1" })).toThrow(ApiError);
+	});
+});
+
+function lastLot(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "lot1",
+		productId: "p1",
+		productName: "Rollo de polietileno",
+		costPerMeasure: "5900.00",
+		measureUnit: "KILOGRAM",
+		receivedAt: "2026-10-22T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+function supplier(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "su1",
+		companyId: "c1",
+		name: "Plásticos del Sur",
+		contact: "Ana Gómez · +54 11 4321-9876",
+		createdAt: "2026-10-22T12:00:00.000Z",
+		updatedAt: "2026-10-22T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+describe("parseSuppliers", () => {
+	it("returns the roster exactly as the API serializes it, last lot included", () => {
+		const list = [
+			supplier({ lastLot: lastLot() }),
+			supplier({ id: "su2", name: "Almacén Sur", lastLot: null }),
+		];
+
+		expect(parseSuppliers(list)).toEqual(list);
+	});
+
+	it("accepts an empty roster, the normal case for a company that never bought", () => {
+		expect(parseSuppliers([])).toEqual([]);
+	});
+
+	it("accepts a null contact and a supplier with no lots", () => {
+		const parsed = parseSuppliers([supplier({ contact: null, lastLot: null })]);
+
+		expect(parsed[0].contact).toBeNull();
+		expect(parsed[0].lastLot).toBeNull();
+	});
+
+	it("rejects a list item without its last lot key", () => {
+		// `lastLot` is required and nullable on purpose: an absent key means the
+		// backend changed shape, while `null` is the honest "never bought".
+		expect(() => parseSuppliers([supplier()])).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a last lot with a mistyped cost or an unknown measure unit", () => {
+		expect(() =>
+			parseSuppliers([
+				supplier({ lastLot: lastLot({ costPerMeasure: 5900 }) }),
+			]),
+		).toThrow(/respuesta inesperada/);
+
+		expect(() =>
+			parseSuppliers([
+				supplier({ lastLot: lastLot({ measureUnit: "POUND" }) }),
+			]),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseSuppliers({ suppliers: [] })).toThrow(ApiError);
+	});
+});
+
+describe("parseSupplier", () => {
+	it("returns the supplier of a creation or an update", () => {
+		const parsed = parseSupplier(supplier({ contact: null }));
+
+		expect(parsed.id).toBe("su1");
+		expect(parsed.name).toBe("Plásticos del Sur");
+		expect(parsed.contact).toBeNull();
+	});
+
+	it("rejects a supplier whose shape changed", () => {
+		expect(() => parseSupplier({ id: "su1" })).toThrow(ApiError);
 	});
 });
 

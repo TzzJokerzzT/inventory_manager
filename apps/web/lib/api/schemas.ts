@@ -470,6 +470,122 @@ export function parseCustomer(data: unknown): Customer {
 }
 
 /**
+ * The latest purchase lot of a supplier, as the roster summarizes it (L12):
+ * which product it was, what one measure of it cost, the unit that measure is
+ * expressed in, and when it arrived.
+ *
+ * `costPerMeasure` is a **decimal string** for the same reason as `price`:
+ * money never travels as a float. `measureUnit` is a closed list, so an unknown
+ * unit fails at the boundary instead of reaching the label that names it.
+ */
+export const supplierLastLotSchema = object({
+	id: string(),
+	productId: string(),
+	// Resolved by the API, so a product soft-deleted afterwards still answers
+	// what was bought instead of leaving a hole.
+	productName: string(),
+	costPerMeasure: string(),
+	measureUnit: picklist(["KILOGRAM", "LITRE", "METRE"]),
+	receivedAt: string(),
+});
+
+/** The last lot of a supplier, derived from the OpenAPI contract. */
+export type SupplierLastLot = components["schemas"]["SupplierLastLot"];
+
+/**
+ * The fields a supplier carries in every response, shared by the write answers
+ * and the roster list.
+ *
+ * `contact` is nullable because it is free text (a person, a phone, an email or
+ * all three) that the API stores as `null` when the box was left empty.
+ */
+const supplierFields = {
+	id: string(),
+	companyId: string(),
+	name: string(),
+	contact: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+} as const;
+
+/** One supplier exactly as the write endpoints serialize it. */
+export const supplierSchema = object(supplierFields);
+
+/** One supplier, derived from the OpenAPI contract. */
+export type Supplier = components["schemas"]["Supplier"];
+
+/**
+ * One roster row: the stored supplier plus its latest lot.
+ *
+ * `lastLot` is **required and nullable**, never optional: `null` is the honest
+ * "the company never bought from this supplier", while a missing key means the
+ * backend changed shape and has to fail here instead of rendering a supplier
+ * whose history silently disappeared.
+ */
+export const supplierListItemSchema = object({
+	...supplierFields,
+	lastLot: nullable(supplierLastLotSchema),
+});
+
+/** One roster row, derived from the OpenAPI contract. */
+export type SupplierListItem = components["schemas"]["SupplierListItem"];
+
+/** Body of `POST /companies/{companyId}/suppliers`, derived from the contract. */
+export type CreateSupplierRequest =
+	components["schemas"]["CreateSupplierRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/suppliers/{supplierId}`, derived from
+ * the contract. Every field is optional on purpose: an absent field keeps its
+ * value, while an explicit `null` clears `contact`.
+ */
+export type UpdateSupplierRequest =
+	components["schemas"]["UpdateSupplierRequest"];
+
+/**
+ * Shape of `GET /companies/{companyId}/suppliers`: the company's roster, already
+ * ordered by `name` and then `id` by the API, which is why it is shown in the
+ * order it arrives.
+ */
+export const supplierListSchema = array(supplierListItemSchema);
+
+/** `GET /companies/{companyId}/suppliers` response, derived from the contract. */
+export type SuppliersResponse = components["schemas"]["SupplierListItem"][];
+
+/**
+ * Validates the roster at the boundary.
+ *
+ * Same contract as {@link parseCustomers}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * table, and a `costPerMeasure` that is not a decimal string never reaches the
+ * price formatter.
+ */
+export function parseSuppliers(data: unknown): SuppliersResponse {
+	const result = safeParse(supplierListSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single supplier: the creation and the update answers.
+ *
+ * It exists so the supplier the form receives back goes through the same
+ * boundary as the listed ones: a cast here would let a shape change reach a
+ * view unnoticed.
+ */
+export function parseSupplier(data: unknown): Supplier {
+	const result = safeParse(supplierSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
  * The upload contract `POST /companies/{companyId}/media/signature` returns:
  * the Cloudinary coordinates plus the limits the server already signed into
  * the signature. The browser validates the file against **these** values, not

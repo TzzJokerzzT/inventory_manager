@@ -5,8 +5,10 @@ import { ChangeMemberRoleUseCase } from "./application/use-cases/change-member-r
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { CreateCustomerUseCase } from "./application/use-cases/create-customer.js";
 import { CreateProductUseCase } from "./application/use-cases/create-product.js";
+import { CreateSupplierUseCase } from "./application/use-cases/create-supplier.js";
 import { DeleteCustomerUseCase } from "./application/use-cases/delete-customer.js";
 import { DeleteProductUseCase } from "./application/use-cases/delete-product.js";
+import { DeleteSupplierUseCase } from "./application/use-cases/delete-supplier.js";
 import { EndSessionUseCase } from "./application/use-cases/end-session.js";
 import { GetCurrentUserUseCase } from "./application/use-cases/get-current-user.js";
 import { GetCustomerUseCase } from "./application/use-cases/get-customer.js";
@@ -21,6 +23,7 @@ import { ListNotificationsUseCase } from "./application/use-cases/list-notificat
 import { ListPendingInvitationsUseCase } from "./application/use-cases/list-pending-invitations.js";
 import { ListProductsUseCase } from "./application/use-cases/list-products.js";
 import { ListStockMovementsUseCase } from "./application/use-cases/list-stock-movements.js";
+import { ListSuppliersUseCase } from "./application/use-cases/list-suppliers.js";
 import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-credentials.js";
 import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notifications-read.js";
 import { PurgeProductUseCase } from "./application/use-cases/purge-product.js";
@@ -33,6 +36,7 @@ import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membersh
 import { StartSessionUseCase } from "./application/use-cases/start-session.js";
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
+import { UpdateSupplierUseCase } from "./application/use-cases/update-supplier.js";
 import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
@@ -44,6 +48,7 @@ import { PrismaNotificationRepository } from "./infrastructure/database/prisma-n
 import { PrismaProductRepository } from "./infrastructure/database/prisma-product-repository.js";
 import { PrismaSessionRepository } from "./infrastructure/database/prisma-session-repository.js";
 import { PrismaStockMovementRepository } from "./infrastructure/database/prisma-stock-movement-repository.js";
+import { PrismaSupplierRepository } from "./infrastructure/database/prisma-supplier-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
 import { CloudinaryUploadSigner } from "./infrastructure/storage/cloudinary-upload-signer.js";
 import { buildApp } from "./interfaces/http/app.js";
@@ -66,6 +71,7 @@ const notificationRepository = new PrismaNotificationRepository({ prisma });
 const productRepository = new PrismaProductRepository({ prisma });
 const customerRepository = new PrismaCustomerRepository({ prisma });
 const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
+const supplierRepository = new PrismaSupplierRepository({ prisma });
 const sessionRepository = new PrismaSessionRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
@@ -211,6 +217,12 @@ const app = buildApp({
 		}),
 		// No clock is injected in production: the trend ends on today's UTC day.
 		trend: new GetMovementTrendUseCase({ stockMovementRepository }),
+	},
+	suppliers: {
+		list: new ListSuppliersUseCase({ supplierRepository }),
+		create: new CreateSupplierUseCase({ supplierRepository }),
+		update: new UpdateSupplierUseCase({ supplierRepository }),
+		remove: new DeleteSupplierUseCase({ supplierRepository }),
 	},
 	mediaUploadSigner,
 	authCookieOptions,

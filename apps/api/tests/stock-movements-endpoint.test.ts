@@ -161,6 +161,9 @@ describe("stock movement endpoints", () => {
 					now: () => TREND_NOW,
 				}),
 			},
+			// Not exercised by this suite: the supplier slice keeps the app
+			// buildable, and its own suite wires it for real.
+			suppliers: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,

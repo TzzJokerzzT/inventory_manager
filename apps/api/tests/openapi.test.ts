@@ -205,6 +205,12 @@ function buildRoutesForEnumeration(): Router {
 			create: noop,
 			trend: noop,
 		},
+		suppliers: {
+			list: noop,
+			create: noop,
+			update: noop,
+			remove: noop,
+		},
 		me: {
 			get: noop,
 			update: noop,
@@ -266,6 +272,7 @@ function createTestApp() {
 		customers: {} as never,
 		products: {} as never,
 		movements: {} as never,
+		suppliers: {} as never,
 		authCookieOptions: {
 			httpOnly: true,
 			secure: false,

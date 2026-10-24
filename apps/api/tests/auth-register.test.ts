@@ -108,6 +108,7 @@ function createTestApp(provider: IdentityProvider) {
 		customers: {} as never,
 		products: {} as never,
 		movements: {} as never,
+		suppliers: {} as never,
 		authCookieOptions: defaultCookieOptions,
 		corsOrigin: "http://localhost:3000",
 	});

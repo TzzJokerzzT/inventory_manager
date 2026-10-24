@@ -49,6 +49,14 @@ import {
 	SKU_ALREADY_EXISTS_CODE,
 	SkuAlreadyExistsError,
 } from "../../../domain/errors/sku-already-exists-error.js";
+import {
+	SUPPLIER_NAME_ALREADY_EXISTS_CODE,
+	SupplierNameAlreadyExistsError,
+} from "../../../domain/errors/supplier-name-already-exists-error.js";
+import {
+	SUPPLIER_NOT_FOUND_CODE,
+	SupplierNotFoundError,
+} from "../../../domain/errors/supplier-not-found-error.js";
 import { UserNotProvisionedError } from "../../../domain/errors/user-not-provisioned-error.js";
 
 function getHttpStatus(error: unknown): number | undefined {
@@ -226,6 +234,29 @@ export const errorHandler: ErrorRequestHandler = (
 		// that SKU -- deleted rows included, because they keep it reserved (S2).
 		response.status(StatusCodes.CONFLICT).json({
 			error: { message: error.message, code: SKU_ALREADY_EXISTS_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof SupplierNotFoundError) {
+		// The same 404 a foreign id, a soft-deleted supplier and an absent one
+		// get: the supplier is not in this company's roster, and which of the
+		// three it was is not something the caller needs to know (EMP-03).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: SUPPLIER_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof SupplierNameAlreadyExistsError) {
+		// 409, not 400: the body is well formed, the company just already has a
+		// supplier with that name -- deleted rows included, because they keep the
+		// name reserved (the `@@unique([companyId, name])` index covers them).
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: SUPPLIER_NAME_ALREADY_EXISTS_CODE,
+			},
 		});
 		return;
 	}

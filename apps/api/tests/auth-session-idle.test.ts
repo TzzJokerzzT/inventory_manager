@@ -169,6 +169,7 @@ function createTestApp(
 		customers: {} as never,
 		products: {} as never,
 		movements: {} as never,
+		suppliers: {} as never,
 		authCookieOptions: { ...defaultCookieOptions, ...options.cookieOptions },
 		corsOrigin: "http://localhost:3000",
 	});

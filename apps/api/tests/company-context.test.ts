@@ -101,6 +101,7 @@ describe("GET /companies/:companyId/context", () => {
 			customers: {} as never,
 			products: {} as never,
 			movements: {} as never,
+			suppliers: {} as never,
 			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});

@@ -21,6 +21,7 @@ tags:
   - name: products
   - name: movements
   - name: customers
+  - name: suppliers
   - name: reports
   - name: me
 
@@ -1485,6 +1486,251 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/suppliers:
+    get:
+      tags: [suppliers]
+      summary: List the company's suppliers
+      description: |
+        Lists the active suppliers of the company the caller has context for,
+        ordered by name and then id. Soft-deleted suppliers are never returned.
+
+        Any ACTIVE member reads: the roster is context for registering a
+        purchase, not a management screen.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The company's active suppliers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Supplier"
+        "400":
+          description: The company id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            Either the token resolves to no user (`user_not_provisioned`) or
+            the caller has no ACTIVE membership in the company
+            (`company_access_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: [suppliers]
+      summary: Create a supplier
+      description: |
+        Writing the supplier roster is `manage_products`: an OWNER or an ADMIN
+        may create, edit and delete suppliers; a MEMBER reads them.
+
+        The name is unique inside the company, case-sensitively, and the
+        uniqueness includes soft-deleted rows: deleting a supplier reserves its
+        name, exactly like a product SKU. A collision answers
+        `409 supplier_name_already_exists`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierRequest"
+      responses:
+        "201":
+          description: Supplier created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "400":
+          description: |
+            The body is invalid: a missing or empty `name`, a value over 120
+            characters, or an unknown shape.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), or the role
+            is a MEMBER (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            The company already has a supplier with that name. The `code` is
+            `supplier_name_already_exists`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /companies/{companyId}/suppliers/{supplierId}:
+    patch:
+      tags: [suppliers]
+      summary: Update a supplier
+      description: |
+        Partial update: an absent field is unchanged, and an explicit `null`
+        clears `contact`. Sending no field is accepted and changes nothing.
+
+        Same authorization as creating: OWNER or ADMIN.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: supplierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSupplierRequest"
+      responses:
+        "200":
+          description: The supplier after the update.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "400":
+          description: The supplier id is not a UUID, or a field is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            `user_not_provisioned`, `company_access_forbidden` or
+            `insufficient_role`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The supplier does not exist in this company. The `code` is
+            `supplier_not_found`; a supplier of another company answers the
+            same, so the endpoint never reveals it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "409":
+          description: |
+            Renaming onto a name the company already uses. The `code` is
+            `supplier_name_already_exists`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: [suppliers]
+      summary: Soft-delete a supplier
+      description: |
+        Stamps `deletedAt`: the row survives because purchase lots reference it,
+        and the roster stops returning it. The name stays reserved by the
+        uniqueness index. Idempotent from the caller's point of view: a second
+        delete of an already deleted supplier answers `404`, because it is no
+        longer part of the roster.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: supplierId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Supplier deleted; no body.
+        "400":
+          description: The supplier id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            `user_not_provisioned`, `company_access_forbidden` or
+            `insufficient_role`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The supplier does not exist in this company (`supplier_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /companies/{companyId}/reports/movements:
     get:
       tags: [reports]
@@ -2356,6 +2602,65 @@ components:
             stockQuantity:
               type: integer
               minimum: 0
+
+    Supplier:
+      type: object
+      required:
+        [id, companyId, name, contact, createdAt, updatedAt]
+      description: |
+        A supplier of bulk goods. `contact` is free text (a person, a phone, an
+        email or all three) and nullable: an empty value is stored as null. The
+        name is unique inside the company, case-sensitively, and soft-deleted
+        rows keep their name reserved. A deleted supplier is never returned and
+        has no `deletedAt` field in the contract.
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        contact:
+          type: string
+          maxLength: 120
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSupplierRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        contact:
+          type: string
+          maxLength: 120
+          nullable: true
+
+    UpdateSupplierRequest:
+      type: object
+      description: |
+        Every field is optional and its absence means "unchanged", while an
+        explicit `null` clears `contact`.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        contact:
+          type: string
+          maxLength: 120
+          nullable: true
 
     Customer:
       type: object

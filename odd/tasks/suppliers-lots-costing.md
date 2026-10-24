@@ -78,6 +78,17 @@ L4 (decisión de alcance): las propuestas de precio por cliente en tabla y por d
 descartadas por el humano: el precio se escribe en cada venta y el histórico por cliente sale de los
 movimientos, que ya filtran por `customerId`.
 
+L6 (decisión de T3, evita una invariante imposible): el `measureTotal` del lote **se deriva de la suma de los
+pesos de las unidades**, no se carga aparte. Si el usuario pega 10 pesos, el lote mide eso; el total de la
+factura del proveedor se muestra como control ("cargaste 84,5 kg, la factura dice 85,1") y la diferencia es
+justamente la pérdida que se quiere ver. Así la invariante "la suma de costos de las unidades es el costo del
+lote" es cierta **por construcción** y no hay que validarla contra un número tecleado.
+
+L7 (decisión de atomicidad de T3): lote + unidades + movimiento `IN` + incremento de `products.stock_quantity`
+son **una sola operación** del adaptador (`$transaction`), no tres llamadas encadenadas: si la última falla, no
+puede quedar un lote huérfano ni stock descuadrado. Las reglas (cantidad de unidades, costos, suma) viven en
+la entidad, para que ni el adaptador ni el controlador las reimplementen.
+
 L5 (riesgo asumido): `StockMovement.unitPrice` es nullable para no inventar precios del pasado; el margen de
 las filas viejas se informa como "sin costo". La alternativa (backfill con el precio de lista actual) habría
 fabricado datos.

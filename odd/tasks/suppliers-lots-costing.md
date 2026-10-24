@@ -109,6 +109,22 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L27 (F5, métricas del dashboard): el "valor del inventario" pasa a ser **a costo** y se agrega **margen
+potencial** (decisión del humano). Reglas:
+
+- `valor = Σ (unitCost × stockQuantity)` sobre los productos con `unitCost` conocido. `unitCost` es el costo
+  promedio de las unidades **disponibles** (L12), así que multiplicarlo por el stock cuenta lo que hay, no lo
+  que hubo.
+- `margen potencial = Σ (marginPerUnit × stockQuantity)` sobre el mismo conjunto, y **puede ser negativo**:
+  vender por debajo del costo es una situación real y el número tiene que poder decirlo.
+- Un producto **con stock pero sin costo conocido** (sin lotes) no aporta a ninguna de las dos cifras y se
+  informa aparte: "N productos sin costo conocido". Nunca se asume el precio de lista como costo, ni se
+  muestra 0 como si el costo fuera cero (L11).
+- El gráfico "valor por producto" usa la misma base (costo) y **excluye** los productos sin costo, para que la
+  suma de las barras coincida con la tarjeta.
+- Los montos viajan como enteros en centavos con el parser existente; el margen necesita además conservar el
+  **signo**.
+
 L26 (F4, columnas de costo y margen): el catálogo muestra **costo por unidad** (`unitCost`) y **margen por
 unidad** (`marginPerUnit`), que son comparables con el precio de venta; el **costo por medida** no entra en la
 tabla del catálogo porque se compara contra el de otros proveedores, no contra el precio de una unidad (L20). Los

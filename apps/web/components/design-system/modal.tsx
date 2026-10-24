@@ -65,7 +65,9 @@ export function Modal({
 							{description}
 						</DialogPrimitive.Description>
 					) : null}
-					{children ? <div className="mt-4">{children}</div> : null}
+					{children ? (
+						<div className="mt-4 overflow-auto scrollbar-none">{children}</div>
+					) : null}
 					{footer ? (
 						<div className="mt-6 flex justify-end gap-2">{footer}</div>
 					) : null}

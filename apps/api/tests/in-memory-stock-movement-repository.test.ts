@@ -1,3 +1,4 @@
+import { LotUnit } from "../src/domain/entities/lot-unit.js";
 import { Product } from "../src/domain/entities/product.js";
 import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
@@ -63,6 +64,7 @@ describe("InMemoryStockMovementRepository.register", () => {
 			kind: "registered",
 			movement: expect.any(StockMovement),
 			stockQuantity: 15,
+			units: [],
 		});
 		// The shared store is what the product repository reads, so the change
 		// has to be visible there and not only in the ledger's answer.
@@ -80,6 +82,7 @@ describe("InMemoryStockMovementRepository.register", () => {
 			kind: "registered",
 			movement: expect.any(StockMovement),
 			stockQuantity: 6,
+			units: [],
 		});
 		expect(store.get(PRODUCT)?.stockQuantity).toBe(6);
 	});
@@ -95,6 +98,7 @@ describe("InMemoryStockMovementRepository.register", () => {
 			kind: "registered",
 			movement: expect.any(StockMovement),
 			stockQuantity: 0,
+			units: [],
 		});
 	});
 
@@ -432,5 +436,240 @@ describe("InMemoryStockMovementRepository.countByProduct", () => {
 		const { repository } = build();
 
 		await expect(repository.countByProduct(COMPANY, PRODUCT)).resolves.toBe(0);
+	});
+});
+
+describe("InMemoryStockMovementRepository units", () => {
+	const SECOND_PRODUCT = "product-2";
+
+	function lotUnit(
+		overrides: Partial<Parameters<typeof LotUnit.create>[0]> = {},
+	) {
+		return LotUnit.create({
+			lotId: `lot-${Math.random().toString(36).slice(2)}`,
+			code: "R-01",
+			measure: "5",
+			cost: "100",
+			...overrides,
+		});
+	}
+
+	function buildWithUnits(
+		units: Array<{ unit: LotUnit; companyId?: string; productId?: string }>,
+	) {
+		const built = build([
+			product({ stockQuantity: units.length }),
+			product({
+				id: SECOND_PRODUCT,
+				name: "Azucar",
+				sku: "SUGAR-1",
+				stockQuantity: units.length,
+			}),
+		]);
+
+		// Adapter-specific: the units a purchase lot brought in live in the same
+		// store as the ledger, which is what the lot repository does in memory.
+		built.repository.saveUnits(
+			units.map((entry) => ({
+				unit: entry.unit,
+				companyId: entry.companyId ?? COMPANY,
+				productId: entry.productId ?? PRODUCT,
+			})),
+		);
+
+		return built;
+	}
+
+	it("answers units_required when the product has available units and the sale names none", async () => {
+		const first = lotUnit({ id: "unit-1", code: "R-01" });
+		const second = lotUnit({ id: "unit-2", code: "R-02" });
+		const { repository, store } = buildWithUnits([
+			{ unit: first },
+			{ unit: second },
+		]);
+
+		// L9: a product with rolls cannot be sold without a price and without
+		// saying which rolls left.
+		await expect(
+			repository.register(movement({ type: "OUT", quantity: 2 })),
+		).resolves.toEqual({ kind: "units_required" });
+		expect(store.get(PRODUCT)?.stockQuantity).toBe(2);
+		await expect(
+			repository.findByCompany(COMPANY, { limit: 50 }),
+		).resolves.toEqual([]);
+		expect(
+			repository.listUnits().every((unit) => unit.status === "AVAILABLE"),
+		).toBe(true);
+	});
+
+	it("still applies an IN to a product with units and takes none of them", async () => {
+		const first = lotUnit({ id: "unit-1", code: "R-01" });
+		const second = lotUnit({ id: "unit-2", code: "R-02" });
+		const { repository, store } = buildWithUnits([
+			{ unit: first },
+			{ unit: second },
+		]);
+
+		// L9 is a rule about sales: an entry keeps adding stock the old way, so
+		// no price is required and the rolls stay available.
+		await expect(
+			repository.register(movement({ type: "IN", quantity: 2 })),
+		).resolves.toEqual({
+			kind: "registered",
+			movement: expect.any(StockMovement),
+			stockQuantity: 4,
+			units: [],
+		});
+		expect(store.get(PRODUCT)?.stockQuantity).toBe(4);
+		expect(
+			repository.listUnits().every((unit) => unit.status === "AVAILABLE"),
+		).toBe(true);
+	});
+
+	it("answers units_required when the quantity does not match the units", async () => {
+		const first = lotUnit({ id: "unit-1", code: "R-01" });
+		const second = lotUnit({ id: "unit-2", code: "R-02" });
+		const { repository, store } = buildWithUnits([
+			{ unit: first },
+			{ unit: second },
+		]);
+
+		await expect(
+			repository.register(
+				movement({
+					type: "OUT",
+					quantity: 2,
+					unitPrice: "250",
+					unitIds: [first.id],
+				}),
+			),
+		).resolves.toEqual({ kind: "units_required" });
+		expect(store.get(PRODUCT)?.stockQuantity).toBe(2);
+	});
+
+	it("marks the chosen units SOLD, links them and returns their cost", async () => {
+		const first = lotUnit({
+			id: "unit-1",
+			code: "R-01",
+			measure: "5",
+			cost: "100",
+		});
+		const second = lotUnit({
+			id: "unit-2",
+			code: "R-02",
+			measure: "3",
+			cost: "60",
+		});
+		const { repository, store } = buildWithUnits([
+			{ unit: first },
+			{ unit: second },
+		]);
+
+		const result = await repository.register(
+			movement({
+				id: "sale-1",
+				type: "OUT",
+				quantity: 1,
+				unitPrice: "250",
+				unitIds: [first.id],
+			}),
+		);
+
+		expect(result).toEqual({
+			kind: "registered",
+			movement: expect.any(StockMovement),
+			stockQuantity: 1,
+			units: [{ id: "unit-1", code: "R-01", measure: "5.000", cost: "100.00" }],
+		});
+		expect(store.get(PRODUCT)?.stockQuantity).toBe(1);
+		expect(repository.listUnits().map((unit) => unit.status)).toEqual([
+			"SOLD",
+			"AVAILABLE",
+		]);
+		// The link rows are what makes the margin readable later.
+		const unitsByMovement = await repository.findUnitsByMovementIds(COMPANY, [
+			"sale-1",
+		]);
+		expect(unitsByMovement.get("sale-1")).toEqual([
+			{ id: "unit-1", code: "R-01", measure: "5.000", cost: "100.00" },
+		]);
+	});
+
+	it("answers unit_not_available for a unit of another product and writes nothing", async () => {
+		const first = lotUnit({ id: "unit-1", code: "R-01" });
+		const foreign = lotUnit({ id: "unit-2", code: "R-01" });
+		const { repository, store } = buildWithUnits([
+			{ unit: first },
+			{ unit: foreign, productId: SECOND_PRODUCT },
+		]);
+
+		await expect(
+			repository.register(
+				movement({
+					type: "OUT",
+					quantity: 1,
+					unitPrice: "250",
+					unitIds: [foreign.id],
+				}),
+			),
+		).resolves.toEqual({ kind: "unit_not_available" });
+		expect(store.get(PRODUCT)?.stockQuantity).toBe(2);
+		expect(
+			repository.listUnits().every((unit) => unit.status === "AVAILABLE"),
+		).toBe(true);
+	});
+
+	it("answers unit_not_available for another company's unit", async () => {
+		const ours = lotUnit({ id: "unit-1", code: "R-01" });
+		const theirs = lotUnit({ id: "unit-2", code: "R-01" });
+		const { repository } = buildWithUnits([
+			{ unit: ours },
+			{ unit: theirs, companyId: OTHER_COMPANY },
+		]);
+
+		await expect(
+			repository.register(
+				movement({
+					type: "OUT",
+					quantity: 1,
+					unitPrice: "250",
+					unitIds: [theirs.id],
+				}),
+			),
+		).resolves.toEqual({ kind: "unit_not_available" });
+	});
+
+	it("answers unit_not_available for an already sold unit, leaving the stock untouched", async () => {
+		const first = lotUnit({ id: "unit-1", code: "R-01" });
+		const second = lotUnit({ id: "unit-2", code: "R-02" });
+		const { repository, store } = buildWithUnits([
+			{ unit: first },
+			{ unit: second },
+		]);
+
+		await repository.register(
+			movement({
+				id: "sale-1",
+				type: "OUT",
+				quantity: 1,
+				unitPrice: "250",
+				unitIds: [first.id],
+			}),
+		);
+		await expect(
+			repository.register(
+				movement({
+					id: "sale-2",
+					type: "OUT",
+					quantity: 1,
+					unitPrice: "250",
+					unitIds: [first.id],
+				}),
+			),
+		).resolves.toEqual({ kind: "unit_not_available" });
+		expect(store.get(PRODUCT)?.stockQuantity).toBe(1);
+		await expect(
+			repository.findByCompany(COMPANY, { limit: 50 }),
+		).resolves.toHaveLength(1);
 	});
 });

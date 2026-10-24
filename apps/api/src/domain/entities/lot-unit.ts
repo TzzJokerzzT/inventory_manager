@@ -239,6 +239,16 @@ export class LotUnit {
 	}
 
 	/**
+	 * The same unit with a new status, as a **new instance**.
+	 *
+	 * A unit is immutable, so the sale does not edit the row it read: it builds
+	 * the next state, the same way `Product.withStock` does for the stock.
+	 */
+	withStatus(status: LotUnitStatus): LotUnit {
+		return new LotUnit({ ...this.props, status: assertStatus(status) });
+	}
+
+	/**
 	 * The unit as the contract exposes it. `lotId` and `createdAt` stay out: the
 	 * unit is always answered inside its lot, which already carries both.
 	 */

@@ -3,14 +3,15 @@ import type { PrismaClient } from "../src/infrastructure/database/generated/pris
 import { PrismaStockMovementRepository } from "../src/infrastructure/database/prisma-stock-movement-repository.js";
 
 /**
- * The adapter depends on the `product` and `stockMovement` delegates plus
- * `$transaction`. The double is hand-written: no database and no generated
- * client is loaded here. `$transaction` is an *interactive* transaction, so the
- * fake runs the callback with a transaction client carrying the same mocks.
+ * The adapter depends on the product, the stock movement, the lot-unit and the
+ * movement-unit delegates plus `$transaction`. The double is hand-written: no
+ * database and no generated client is loaded here. `$transaction` is an
+ * *interactive* transaction, so the fake runs the callback with a transaction
+ * client carrying the same mocks.
  */
 type StockMovementDelegate = Pick<
 	PrismaClient,
-	"product" | "stockMovement" | "$transaction"
+	"product" | "stockMovement" | "lotUnit" | "movementUnit" | "$transaction"
 >;
 
 function buildFakeDelegate() {
@@ -19,10 +20,21 @@ function buildFakeDelegate() {
 	const stockMovementCreate = jest.fn();
 	const stockMovementFindMany = jest.fn();
 	const stockMovementCount = jest.fn();
+	const lotUnitCount = jest.fn().mockResolvedValue(0);
+	const lotUnitUpdateMany = jest.fn();
+	const lotUnitFindMany = jest.fn();
+	const movementUnitCreateMany = jest.fn();
+	const movementUnitFindMany = jest.fn();
 
 	const transactionClient = {
 		product: { findFirst: productFindFirst, updateMany: productUpdateMany },
 		stockMovement: { create: stockMovementCreate },
+		lotUnit: {
+			count: lotUnitCount,
+			updateMany: lotUnitUpdateMany,
+			findMany: lotUnitFindMany,
+		},
+		movementUnit: { createMany: movementUnitCreateMany },
 	};
 
 	const transaction = jest.fn(
@@ -37,6 +49,15 @@ function buildFakeDelegate() {
 			findMany: stockMovementFindMany,
 			count: stockMovementCount,
 		},
+		lotUnit: {
+			count: lotUnitCount,
+			updateMany: lotUnitUpdateMany,
+			findMany: lotUnitFindMany,
+		},
+		movementUnit: {
+			createMany: movementUnitCreateMany,
+			findMany: movementUnitFindMany,
+		},
 		$transaction: transaction,
 	} as unknown as StockMovementDelegate;
 
@@ -48,6 +69,11 @@ function buildFakeDelegate() {
 		stockMovementCreate,
 		stockMovementFindMany,
 		stockMovementCount,
+		lotUnitCount,
+		lotUnitUpdateMany,
+		lotUnitFindMany,
+		movementUnitCreateMany,
+		movementUnitFindMany,
 	};
 }
 
@@ -73,6 +99,7 @@ function movementRow(overrides: Record<string, unknown> = {}) {
 		reason: null,
 		userId: "user-1",
 		customerId: null,
+		unitPrice: null,
 		lotId: null,
 		createdAt: CREATED_AT,
 		...overrides,
@@ -128,6 +155,7 @@ describe("PrismaStockMovementRepository.register", () => {
 				reason: null,
 				userId: "user-1",
 				customerId: null,
+				unitPrice: null,
 				lotId: null,
 				createdAt: CREATED_AT,
 			},
@@ -136,6 +164,7 @@ describe("PrismaStockMovementRepository.register", () => {
 			kind: "registered",
 			movement: expect.any(StockMovement),
 			stockQuantity: 25,
+			units: [],
 		});
 	});
 
@@ -200,6 +229,7 @@ describe("PrismaStockMovementRepository.register", () => {
 			kind: "registered",
 			movement: expect.any(StockMovement),
 			stockQuantity: 6,
+			units: [],
 		});
 	});
 
@@ -237,6 +267,221 @@ describe("PrismaStockMovementRepository.register", () => {
 			kind: "product_not_found",
 		});
 		expect(stockMovementCreate).not.toHaveBeenCalled();
+	});
+
+	it("does not require units for an entry, even when the product has them", async () => {
+		const {
+			delegate,
+			lotUnitCount,
+			productUpdateMany,
+			productFindFirst,
+			stockMovementCreate,
+		} = buildFakeDelegate();
+		productUpdateMany.mockResolvedValue({ count: 1 });
+		productFindFirst.mockResolvedValue(productRow({ stockQuantity: 11 }));
+		stockMovementCreate.mockResolvedValue(movementRow());
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const result = await repository.register(
+			movement({ type: "IN", quantity: 10 }),
+		);
+
+		// L9 is a rule about sales: an entry never reads the units at all.
+		expect(result).toEqual({
+			kind: "registered",
+			movement: expect.any(StockMovement),
+			stockQuantity: 11,
+			units: [],
+		});
+		expect(lotUnitCount).not.toHaveBeenCalled();
+	});
+
+	it("answers units_required when the product has available units and the sale names none", async () => {
+		const { delegate, lotUnitCount, productUpdateMany, stockMovementCreate } =
+			buildFakeDelegate();
+		lotUnitCount.mockResolvedValue(2);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const result = await repository.register(
+			movement({ type: "OUT", quantity: 2 }),
+		);
+
+		// L9/L10: the requirement is decided inside the same transaction that
+		// writes the sale, and nothing was written before it failed.
+		expect(lotUnitCount).toHaveBeenCalledWith({
+			where: {
+				status: "AVAILABLE",
+				lot: { companyId: "company-1", productId: "product-1" },
+			},
+		});
+		expect(result).toEqual({ kind: "units_required" });
+		expect(productUpdateMany).not.toHaveBeenCalled();
+		expect(stockMovementCreate).not.toHaveBeenCalled();
+	});
+
+	it("answers units_required when the quantity does not match the units", async () => {
+		const { delegate, lotUnitCount, productUpdateMany } = buildFakeDelegate();
+		lotUnitCount.mockResolvedValue(2);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+
+		await expect(
+			repository.register(
+				movement({
+					type: "OUT",
+					quantity: 2,
+					unitPrice: "250",
+					unitIds: ["unit-1"],
+				}),
+			),
+		).resolves.toEqual({ kind: "units_required" });
+		expect(productUpdateMany).not.toHaveBeenCalled();
+	});
+
+	it("marks the units SOLD, links them and stores the written price", async () => {
+		const {
+			delegate,
+			lotUnitCount,
+			productUpdateMany,
+			productFindFirst,
+			stockMovementCreate,
+			lotUnitUpdateMany,
+			lotUnitFindMany,
+			movementUnitCreateMany,
+		} = buildFakeDelegate();
+		lotUnitCount.mockResolvedValue(2);
+		productUpdateMany.mockResolvedValue({ count: 1 });
+		productFindFirst.mockResolvedValue(productRow({ stockQuantity: 1 }));
+		lotUnitUpdateMany.mockResolvedValue({ count: 1 });
+		lotUnitFindMany.mockResolvedValue([
+			{ id: "unit-1", code: "R-01", measure: "5.000", cost: "100.00" },
+		]);
+		stockMovementCreate.mockResolvedValue(
+			movementRow({ type: "OUT", quantity: 1, unitPrice: "250.00" }),
+		);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const result = await repository.register(
+			movement({
+				type: "OUT",
+				quantity: 1,
+				unitPrice: "250",
+				unitIds: ["unit-1"],
+			}),
+		);
+
+		// The unit write is guarded by `status: AVAILABLE` and scoped to the
+		// product's own lots, so a unit of another product or company can never
+		// be taken.
+		expect(lotUnitUpdateMany).toHaveBeenCalledWith({
+			where: {
+				id: { in: ["unit-1"] },
+				status: "AVAILABLE",
+				lot: { companyId: "company-1", productId: "product-1" },
+			},
+			data: { status: "SOLD" },
+		});
+		expect(stockMovementCreate.mock.calls[0][0].data.unitPrice).toBe("250.00");
+		expect(movementUnitCreateMany).toHaveBeenCalledWith({
+			data: [{ movementId: "movement-1", lotUnitId: "unit-1" }],
+		});
+		expect(result).toEqual({
+			kind: "registered",
+			movement: expect.any(StockMovement),
+			stockQuantity: 1,
+			units: [{ id: "unit-1", code: "R-01", measure: "5.000", cost: "100.00" }],
+		});
+	});
+
+	it("answers unit_not_available and writes nothing when a unit was already taken", async () => {
+		const {
+			delegate,
+			lotUnitCount,
+			productUpdateMany,
+			lotUnitUpdateMany,
+			stockMovementCreate,
+			movementUnitCreateMany,
+		} = buildFakeDelegate();
+		lotUnitCount.mockResolvedValue(2);
+		productUpdateMany.mockResolvedValue({ count: 1 });
+		// The guard matched no row: the unit was sold between the count and the
+		// write, or never belonged to this product.
+		lotUnitUpdateMany.mockResolvedValue({ count: 0 });
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+
+		await expect(
+			repository.register(
+				movement({
+					type: "OUT",
+					quantity: 1,
+					unitPrice: "250",
+					unitIds: ["unit-1"],
+				}),
+			),
+		).resolves.toEqual({ kind: "unit_not_available" });
+		// The callback threw, so the transaction is rolled back: no movement and
+		// no link row survive the failed unit write.
+		expect(stockMovementCreate).not.toHaveBeenCalled();
+		expect(movementUnitCreateMany).not.toHaveBeenCalled();
+	});
+});
+
+describe("PrismaStockMovementRepository.findUnitsByMovementIds", () => {
+	it("reads the units of the given movements, scoped by company, ordered by code", async () => {
+		const { delegate, movementUnitFindMany } = buildFakeDelegate();
+		movementUnitFindMany.mockResolvedValue([
+			{
+				movementId: "movement-1",
+				lotUnit: {
+					id: "unit-2",
+					code: "R-02",
+					measure: "3.000",
+					cost: "60.00",
+				},
+			},
+			{
+				movementId: "movement-1",
+				lotUnit: {
+					id: "unit-1",
+					code: "R-01",
+					measure: "5.000",
+					cost: "100.00",
+				},
+			},
+		]);
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const found = await repository.findUnitsByMovementIds("company-1", [
+			"movement-1",
+		]);
+
+		expect(movementUnitFindMany).toHaveBeenCalledWith({
+			where: {
+				movementId: { in: ["movement-1"] },
+				movement: { companyId: "company-1" },
+			},
+			select: {
+				movementId: true,
+				lotUnit: {
+					select: { id: true, code: true, measure: true, cost: true },
+				},
+			},
+		});
+		expect(found.get("movement-1")).toEqual([
+			{ id: "unit-1", code: "R-01", measure: "5.000", cost: "100.00" },
+			{ id: "unit-2", code: "R-02", measure: "3.000", cost: "60.00" },
+		]);
+	});
+
+	it("answers an empty map without querying when there are no movements", async () => {
+		const { delegate, movementUnitFindMany } = buildFakeDelegate();
+
+		const repository = new PrismaStockMovementRepository({ prisma: delegate });
+		const found = await repository.findUnitsByMovementIds("company-1", []);
+
+		expect(found.size).toBe(0);
+		expect(movementUnitFindMany).not.toHaveBeenCalled();
 	});
 });
 
@@ -340,6 +585,7 @@ describe("PrismaStockMovementRepository.findByCompany", () => {
 			userId: "user-1",
 			customerId: null,
 			lotId: null,
+			unitPrice: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
 	});
@@ -396,6 +642,7 @@ describe("PrismaStockMovementRepository.findSince", () => {
 			userId: "user-1",
 			customerId: null,
 			lotId: null,
+			unitPrice: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
 	});

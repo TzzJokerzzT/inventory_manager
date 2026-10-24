@@ -537,6 +537,20 @@ export type MovementCustomer = components["schemas"]["MovementCustomer"];
  * movement has no association — an entry, or a sale without an identified
  * customer — and the table never reads `customerId` to decide what to show.
  */
+/**
+ * One physical unit a sale took, as `GET /movements` serializes it.
+ *
+ * `measure` and `cost` are **decimal strings**, not numbers: they are money and
+ * weight, and the API sends them as strings so no cent is lost in a float.
+ */
+export const movementUnitSchema = object({
+	id: string(),
+	code: string(),
+	// Validated as strings, never numbers, for the same reason as `price`.
+	measure: string(),
+	cost: string(),
+});
+
 const movementFields = {
 	id: string(),
 	companyId: string(),
@@ -549,6 +563,13 @@ const movementFields = {
 	actor: nullable(userSummarySchema),
 	customerId: nullable(string()),
 	customer: nullable(movementCustomerSchema),
+	// Added with the purchase-lot feature. They are validated here like every
+	// other contract field even though the UI does not render them yet: the
+	// boundary either understands the response or fails loudly, and a movement
+	// parsed without its price would silently lose the sale's money.
+	lotId: nullable(string()),
+	unitPrice: nullable(string()),
+	units: array(movementUnitSchema),
 } as const;
 
 /** One stock movement exactly as the movements endpoints serialize it. */

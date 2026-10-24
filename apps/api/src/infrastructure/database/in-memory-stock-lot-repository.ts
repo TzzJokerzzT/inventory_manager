@@ -3,7 +3,7 @@ import { StockMovement } from "../../domain/entities/stock-movement.js";
 import { DomainError } from "../../domain/errors/domain-error.js";
 import { ProductNotFoundError } from "../../domain/errors/product-not-found-error.js";
 import type { StockLotRepository } from "../../domain/repositories/stock-lot-repository.js";
-import type { StockMovementRepository } from "../../domain/repositories/stock-movement-repository.js";
+import type { InMemoryStockMovementRepository } from "./in-memory-stock-movement-repository.js";
 
 /**
  * In-memory adapter for the {@link StockLotRepository} port.
@@ -18,12 +18,21 @@ import type { StockMovementRepository } from "../../domain/repositories/stock-mo
  * its write, and a failure removes the lot again before the error is rethrown.
  * Nothing is written after that call returns, so the state left behind is
  * exactly the one the movement repository produced.
+ *
+ * The units are handed to the **movement** repository once the entry landed:
+ * they live in the one store the ledger reads, which is what lets a later sale
+ * mark them `SOLD` and what the database shares through the `lot_units` table.
+ * That is why this adapter is typed against the in-memory ledger and not only
+ * against the port.
  */
 export class InMemoryStockLotRepository implements StockLotRepository {
 	private readonly lots: Map<string, StockLot>;
-	private readonly stockMovements: StockMovementRepository;
+	private readonly stockMovements: InMemoryStockMovementRepository;
 
-	constructor(stockMovements: StockMovementRepository, lots: StockLot[] = []) {
+	constructor(
+		stockMovements: InMemoryStockMovementRepository,
+		lots: StockLot[] = [],
+	) {
 		this.stockMovements = stockMovements;
 		this.lots = new Map<string, StockLot>();
 
@@ -61,7 +70,26 @@ export class InMemoryStockLotRepository implements StockLotRepository {
 				throw new DomainError(
 					"An entry movement can never exceed the available stock",
 				);
+			case "units_required":
+			case "unit_not_available":
+				// Unreachable: the entry a lot registers takes no units and writes no
+				// price, so the sale rules can never fire for it. Reported instead of
+				// silently keeping the lot.
+				this.lots.delete(lot.id);
+				throw new DomainError(
+					"An entry movement can never be rejected by the sale unit rules",
+				);
 			case "registered":
+				// The units join the store only once the entry landed, so a failed write
+				// leaves no roll the ledger does not know about.
+				this.stockMovements.saveUnits(
+					lot.units.map((unit) => ({
+						unit,
+						companyId: lot.companyId,
+						productId: lot.productId,
+					})),
+				);
+
 				return lot;
 		}
 	}

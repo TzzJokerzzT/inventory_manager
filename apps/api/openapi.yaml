@@ -1133,6 +1133,21 @@ paths:
         `stockQuantity >= quantity`, so two concurrent exits cannot both win;
         the loser answers `409 insufficient_stock` with the stock available.
 
+        A **sale of a product that has units available** -- a product bought in
+        purchase lots -- must also carry `unitPrice` (the price actually charged,
+        which is the same for every roll and varies only by customer) and
+        `unitIds` (the whole rolls it takes, one id per unit of `quantity`).
+        Missing either, or a length that does not match `quantity`, answers
+        `400 units_required`; a unit that is already sold, or that belongs to
+        another product or another company, answers `409 unit_not_available`.
+        A product that never came in a lot keeps the quantity-only sale: no
+        price and no units are required for it.
+
+        The units are marked `SOLD`, linked to the movement and the stock is
+        decremented in that same transaction, so a rejected sale leaves no unit
+        marked and no stock moved. The rules are decided against the state being
+        written, never against a previous read.
+
         Any ACTIVE membership of the company may register movements. The
         product must be active (not soft-deleted) and belong to the company.
         `userId` and `createdAt` are server-side: the caller cannot name the
@@ -1155,15 +1170,20 @@ paths:
       responses:
         "201":
           description: |
-            The recorded movement plus the product's stock after it.
+            The recorded movement, the units it took (with their own cost) and
+            the product's stock after it.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RegisterMovementResponse"
         "400":
           description: |
-            The body is invalid, or a `customerId` was sent with `type: IN`;
-            in that case the `code` is `customer_requires_exit`.
+            The body is invalid; or a sale-only field (`customerId`,
+            `unitPrice`, `unitIds`) was sent with `type: IN`, and then the
+            `code` is `customer_requires_exit`, `unit_price_requires_exit` or
+            `units_require_exit`; or the product has units available and the
+            sale does not name them and their price, and then the `code` is
+            `units_required`.
           content:
             application/json:
               schema:
@@ -1193,9 +1213,13 @@ paths:
                 $ref: "#/components/schemas/CodedError"
         "409":
           description: |
-            An exit larger than the available stock; the `code` is
-            `insufficient_stock` and the message states the stock available.
-            Nothing was recorded and the stock did not change.
+            An exit larger than the available stock (`insufficient_stock`, and
+            the message states the stock available); or a sale naming a unit
+            that cannot be handed over (`unit_not_available`): already sold, or
+            belonging to another product or another company -- the three answer
+            the same code on purpose, so a foreign unit is never confirmed.
+            Nothing was recorded, no unit was marked and the stock did not
+            change.
           content:
             application/json:
               schema:
@@ -2556,13 +2580,20 @@ components:
     StockMovement:
       type: object
       required:
-        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer]
+        [id, companyId, productId, type, quantity, reason, createdAt, product, actor, customerId, customer, lotId, unitPrice, units]
       description: |
         One immutable stock movement -- the audit trail of the inventory
         (MOV-05). `type` is `IN` for an entry and `OUT` for an exit, and
         `quantity` is always positive: the direction lives in `type`, never in
         the sign of the number. `product` and `actor` are resolved by the API;
         `actor` is null when the user row cannot be resolved.
+
+        `unitPrice` is the price written on the sale (S1) and `units` are the
+        whole rolls it took (S2), each with its own measure and cost (S3):
+        together they are what the real margin is computed from. Both are empty
+        for an entry and for any movement recorded before the field existed
+        (S9), which is reported as "no cost" instead of assuming a value. An
+        entry also carries the `lotId` it brought in, and never carries units.
       properties:
         id:
           type: string
@@ -2611,6 +2642,55 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/UserSummary"
+        lotId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            The purchase lot this entry brought in (S6), or null. Only the lot
+            registration sets it, so an exit never carries one.
+        unitPrice:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          nullable: true
+          description: |
+            The price actually charged in this sale (S1). It is the same for
+            every roll of the sale and varies only by customer; the catalogue
+            price is the list price, not this one. Null means the price was not
+            written: an entry, or a movement recorded before the field existed
+            (S9).
+        units:
+          type: array
+          maxItems: 500
+          description: |
+            The physical units this sale took, in code order. Empty for an
+            entry, and for a sale of a product that never came in a lot. The
+            cost of each one is what the margin is computed from (S3).
+          items:
+            $ref: "#/components/schemas/MovementUnit"
+
+    MovementUnit:
+      type: object
+      required: [id, code, measure, cost]
+      description: |
+        One physical unit a sale took out -- a roll, for example (S2, S3). The
+        measure is a `Decimal(12,3)` string and the cost is this unit's own
+        share of the lot's cost, a `Decimal(12,2)` string; the sale's margin is
+        the written price minus the sum of these costs, never an average.
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 32
+          description: The code of the unit inside its lot (`R-01`, `R-02`...).
+        measure:
+          type: string
+          pattern: "^\\d{1,9}(\\.\\d{1,3})?$"
+        cost:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
 
     MovementProduct:
       type: object
@@ -2668,6 +2748,31 @@ components:
             Associates the sale with a customer. Only valid when `type` is
             `OUT`; an entry with a customer answers 400 `customer_requires_exit`.
             The customer must be active and belong to the company.
+        unitPrice:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          nullable: true
+          description: |
+            The price actually charged for each unit of this sale (S1), with the
+            same rule as the product price: a positive decimal string with up to
+            ten integer digits and up to two decimals. Required when the product
+            has units available, together with `unitIds`; an entry carrying it
+            answers 400 `unit_price_requires_exit`.
+        unitIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          nullable: true
+          description: |
+            The whole units this sale takes (S2), one id per unit of
+            `quantity`. Required when the product has units available: a missing
+            or mismatched list answers 400 `units_required`, and a unit that is
+            sold or belongs to another product or company answers 409
+            `unit_not_available`. An entry carrying a non-empty list answers 400
+            `units_require_exit`.
+          items:
+            type: string
+            format: uuid
 
     RegisterMovementResponse:
       allOf:
@@ -2675,8 +2780,8 @@ components:
         - type: object
           required: [stockQuantity]
           description: |
-            The movement plus the product's stock **after** it. The stock is a
-            consequence of the movement, never an input.
+            The movement, the units it took, and the product's stock **after**
+            it. The stock is a consequence of the movement, never an input.
           properties:
             stockQuantity:
               type: integer

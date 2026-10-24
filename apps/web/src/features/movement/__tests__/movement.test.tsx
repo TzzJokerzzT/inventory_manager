@@ -55,6 +55,11 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
 		actor: { id: "user-1", fullName: "Ana Pérez", email: "ana@empresa.com" },
 		customerId: null,
 		customer: null,
+		// Fields the purchase-lot feature added to the contract: a legacy sale
+		// carries no lot, no written price and no units.
+		lotId: null,
+		unitPrice: null,
+		units: [],
 		...overrides,
 	};
 }

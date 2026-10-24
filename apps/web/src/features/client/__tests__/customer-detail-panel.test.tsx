@@ -41,6 +41,11 @@ function sale(overrides: Partial<StockMovement> = {}): StockMovement {
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
 		customerId: "cu1",
 		customer: { id: "cu1", name: "Distribuidora Pérez" },
+		// Fields the purchase-lot feature added to the contract: a legacy sale
+		// carries no lot, no written price and no units.
+		lotId: null,
+		unitPrice: null,
+		units: [],
 		...overrides,
 	};
 }

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
 import type { Customer, StockMovement } from "@/lib/api/schemas";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
@@ -9,6 +10,10 @@ import { useCustomers } from "../api/use-customers";
 import { useDeleteCustomer } from "../api/use-delete-customer";
 import { useUpdateCustomer } from "../api/use-update-customer";
 import { Client } from "../client";
+
+jest.mock("next/navigation", () => ({
+	useRouter: jest.fn(),
+}));
 
 jest.mock("@/src/features/company/store/company-selectors", () => ({
 	useActiveCompany: jest.fn(),
@@ -37,6 +42,9 @@ jest.mock("../api/use-delete-customer", () => ({
 jest.mock("@/src/features/movement/api/use-movements", () => ({
 	useMovements: jest.fn(),
 }));
+
+const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
+const push = jest.fn();
 
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
@@ -119,6 +127,14 @@ function setup({
 	detail?: Customer;
 	detailState?: Record<string, unknown>;
 } = {}) {
+	useRouterMock.mockReturnValue({
+		push,
+		replace: jest.fn(),
+		refresh: jest.fn(),
+		back: jest.fn(),
+		forward: jest.fn(),
+		prefetch: jest.fn(),
+	} as unknown as ReturnType<typeof useRouter>);
 	useActiveCompanyMock.mockReturnValue({
 		id: "c1",
 		name: "Empresa Uno",
@@ -244,118 +260,54 @@ describe("Client", () => {
 		expect(screen.getByText("No tenés acceso a esta empresa.")).toBeTruthy();
 	});
 
-	it("opens the creation form inline on the same page", () => {
+	it("sends the person to the creation route instead of opening a form inline", () => {
 		setup();
 
 		render(<Client />);
-
-		expect(screen.queryByLabelText("Nombre del cliente")).toBeNull();
 
 		fireEvent.click(screen.getByRole("button", { name: /Nuevo Cliente/ }));
 
-		expect(screen.getByLabelText("Nombre del cliente")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "Crear cliente" })).toBeTruthy();
-		// No route change: the mock used to link to /dashboard/products/create.
-		expect(screen.queryByRole("link", { name: /Nuevo Cliente/ })).toBeNull();
-	});
-
-	it("closes the creation form when cancelled", () => {
-		setup();
-
-		render(<Client />);
-		fireEvent.click(screen.getByRole("button", { name: /Nuevo Cliente/ }));
-		fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-
+		expect(push).toHaveBeenCalledWith("/dashboard/clients/create");
+		// Writing lives on its own page now: no form is rendered over the roster.
 		expect(screen.queryByLabelText("Nombre del cliente")).toBeNull();
-		expect(createMutate).not.toHaveBeenCalled();
 	});
 
-	it("opens the edit form prefilled from the stored customer", () => {
-		setup();
-
-		render(<Client />);
-		fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-
-		expect(useCustomerMock).toHaveBeenCalledWith("c1", "cu1");
-		expect(
-			(screen.getByLabelText("Nombre del cliente") as HTMLInputElement).value,
-		).toBe("Distribuidora Pérez");
-		expect(
-			screen.getByRole("button", { name: "Guardar cambios" }),
-		).toBeTruthy();
-	});
-
-	it("explains that the customer to edit no longer exists", () => {
-		setup({
-			detail: undefined as unknown as Customer,
-			detailState: {
-				data: undefined,
-				isError: true,
-				error: new ApiError(
-					"Ese cliente ya no existe en esta empresa.",
-					404,
-					"customer_not_found",
-				),
-			},
-		});
-
-		render(<Client />);
-		fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-
-		expect(
-			screen.getByText("Ese cliente ya no existe en esta empresa."),
-		).toBeTruthy();
-	});
-
-	it("opens the detail of the selected customer on the same page", () => {
+	it("sends the person to the edit route of the chosen customer", () => {
 		setup();
 
 		render(<Client />);
 
-		expect(screen.queryByText("Detalle del cliente")).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+
+		expect(push).toHaveBeenCalledWith("/dashboard/clients/cu1/edit");
+		// The row already carries what the edit page needs, so the list does not
+		// read the customer just to open a form.
+		expect(screen.queryByLabelText("Nombre del cliente")).toBeNull();
+	});
+
+	it("sends the person to the customer's detail route", () => {
+		setup();
+
+		render(<Client />);
 
 		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
 
-		expect(useMovementsMock).toHaveBeenCalledWith("c1", {
-			customerId: "cu1",
-			type: "OUT",
-		});
-		expect(
-			screen.getByRole("heading", { name: "Detalle del cliente" }),
-		).toBeTruthy();
-		expect(screen.getByText("Café molido 500g")).toBeTruthy();
+		expect(push).toHaveBeenCalledWith("/dashboard/clients/cu1/details");
+		// The detail has its own page now: nothing opens over the roster.
+		expect(screen.queryByText("Detalle del cliente")).toBeNull();
 	});
 
-	it("closes the detail and returns to the list", () => {
+	it("opens no panel at all: every view has its own route", () => {
 		setup();
 
 		render(<Client />);
-		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
-		fireEvent.click(screen.getByRole("button", { name: "Volver al listado" }));
 
-		expect(screen.queryByText("Detalle del cliente")).toBeNull();
 		expect(screen.getByText("Distribuidora Pérez")).toBeTruthy();
-		// El listado conserva sus acciones después de cerrar el detalle.
-		expect(screen.getByRole("button", { name: "Editar" })).toBeTruthy();
-	});
-
-	it("keeps only one panel open at a time", () => {
-		setup();
-
-		render(<Client />);
-
-		fireEvent.click(screen.getByRole("button", { name: /Nuevo Cliente/ }));
-		expect(screen.getByLabelText("Nombre del cliente")).toBeTruthy();
-
-		fireEvent.click(screen.getByRole("button", { name: "Detalle" }));
 		expect(screen.queryByLabelText("Nombre del cliente")).toBeNull();
-		expect(
-			screen.getByRole("heading", { name: "Detalle del cliente" }),
-		).toBeTruthy();
-
-		fireEvent.click(screen.getByRole("button", { name: "Editar" }));
 		expect(screen.queryByText("Detalle del cliente")).toBeNull();
-		expect(screen.getByLabelText("Nombre del cliente")).toBeTruthy();
+		// The actions stay on the row: they navigate now.
+		expect(screen.getByRole("button", { name: "Detalle" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Editar" })).toBeTruthy();
 	});
 
 	it("deletes a customer only after the two-step confirmation", () => {

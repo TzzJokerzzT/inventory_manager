@@ -53,6 +53,12 @@ function product(overrides: Record<string, unknown> = {}) {
 		price: "1500.00",
 		measureUnit: "KILOGRAM" as const,
 		availableUnits: 0,
+		// The catalogue row carries the derived cost figures the contract requires;
+		// this fixture has no lots, so they are the honest nulls.
+		availableMeasure: "0.000",
+		costPerMeasure: null,
+		unitCost: null,
+		marginPerUnit: null,
 		photoUrl: null,
 		stockQuantity: 2,
 		lowStockThreshold: 0,

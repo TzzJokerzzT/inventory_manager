@@ -8,13 +8,16 @@ import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
-import type { Product as ProductModel } from "@/lib/api/schemas";
+// The catalogue row, not the bare product: the list carries the costs and the
+// margin derived from the available units (L12), and this view renders them.
+import type { ProductListItem as ProductModel } from "@/lib/api/schemas";
 import { LazyMotionTag } from "@/src/shared/components/Animation";
 import { SectionTitle } from "@/src/shared/components/SectionTitle";
 import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { useActiveCompany } from "../company/store/company-selectors";
 import { useMe } from "../user/api/use-me";
 import { useProducts } from "./api/use-products";
+import { MoneyValue } from "./components/money-value";
 import { ProductRowActions } from "./components/product-row-actions";
 import { formatPrice } from "./lib/format-price";
 import {
@@ -26,6 +29,13 @@ import { useDebouncedValue } from "./lib/use-debounced-value";
 import { ProductSearch } from "./product-search";
 
 const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
+
+/**
+ * Lo que se anuncia en lugar del guión cuando el producto no tiene unidades
+ * disponibles: sin unidades no hay costo pagado ni margen (L11).
+ */
+const NO_UNIT_COST = "Sin costo";
+const NO_UNIT_MARGIN = "Sin margen";
 
 /**
  * The products list (MI-21).
@@ -48,6 +58,13 @@ const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
  * The search box is debounced so each keystroke does not fire a request; the
  * query key includes the term and the mode, so a filtered read never overwrites
  * the unfiltered one and the trash never overwrites the catalogue.
+ *
+ * The money columns are the **sale price of one unit**, its **cost** and its
+ * **margin**, which are comparable with each other (L26); the `$/medida` of the
+ * last purchase is deliberately absent, because it is compared against other
+ * suppliers and not against the price of a unit (L20). A cost the API could not
+ * derive — a product with no available units — is an em dash with a spoken
+ * reason, never a `0` (L11).
  */
 export function Product() {
 	const company = useActiveCompany();
@@ -71,6 +88,10 @@ export function Product() {
 		{
 			key: "name",
 			header: "Producto",
+			// The name is the only free-text column: bounding it keeps the new money
+			// columns readable and lets the table scroll horizontally on a phone
+			// (`data-table`) instead of stretching the page.
+			className: "max-w-[18rem]",
 			render: (row) => (
 				<span className="flex items-center gap-3">
 					{row.photoUrl ? (
@@ -82,7 +103,7 @@ export function Product() {
 							className="size-8 shrink-0 rounded object-cover"
 						/>
 					) : null}
-					<span className="truncate">{row.name}</span>
+					<span className="min-w-0 truncate">{row.name}</span>
 				</span>
 			),
 		},
@@ -99,6 +120,26 @@ export function Product() {
 			// exists to remove; the purchase form is where the measure belongs.
 			render: (row) => (
 				<span className="whitespace-nowrap">{formatPrice(row.price)}</span>
+			),
+		},
+		// L26: el costo y el margen de **una unidad**, que es contra lo que se
+		// compara el precio de venta de arriba. El $/medida no entra acá: se
+		// compara contra el de otros proveedores, no contra el precio de una
+		// unidad (L20), y ese número vive en la compra y en el padrón.
+		{
+			key: "unitCost",
+			header: "Costo por unidad",
+			align: "right",
+			render: (row) => (
+				<MoneyValue value={row.unitCost} unknownLabel={NO_UNIT_COST} />
+			),
+		},
+		{
+			key: "marginPerUnit",
+			header: "Margen por unidad",
+			align: "right",
+			render: (row) => (
+				<MoneyValue value={row.marginPerUnit} unknownLabel={NO_UNIT_MARGIN} />
 			),
 		},
 		{ key: "stockQuantity", header: "Unidades", align: "right" },

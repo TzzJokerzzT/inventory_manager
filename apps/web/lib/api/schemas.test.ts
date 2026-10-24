@@ -478,6 +478,13 @@ function product(overrides: Record<string, unknown> = {}) {
 		// lo que le dice a la pantalla de salida si el producto se vende por
 		// unidad elegida o con una cantidad suelta.
 		availableUnits: 0,
+		// Los costos derivados de esas unidades (L12/L26). Con unidades
+		// disponibles los tres son strings decimales; sin unidades son `null`,
+		// nunca "0".
+		availableMeasure: "0.000",
+		costPerMeasure: null,
+		unitCost: null,
+		marginPerUnit: null,
 		...overrides,
 	};
 }
@@ -603,6 +610,73 @@ describe("parseProducts", () => {
 		const { availableUnits: _availableUnits, ...withoutAvailable } = product();
 
 		expect(() => parseProducts([withoutAvailable])).toThrow(ApiError);
+	});
+
+	it("keeps the unit cost and the margin per unit of the row", () => {
+		// L26: son las dos cifras que el catálogo muestra al lado del precio.
+		const parsed = parseProducts([
+			product({
+				availableUnits: 3,
+				availableMeasure: "10.500",
+				costPerMeasure: "5900.00",
+				unitCost: "29500.00",
+				marginPerUnit: "500.00",
+			}),
+			product({
+				id: "p2",
+				sku: "CAF-1",
+				availableUnits: 0,
+				unitCost: null,
+				marginPerUnit: null,
+			}),
+		]);
+
+		expect(parsed[0].unitCost).toBe("29500.00");
+		expect(parsed[0].marginPerUnit).toBe("500.00");
+		expect(parsed[0].costPerMeasure).toBe("5900.00");
+		expect(parsed[0].availableMeasure).toBe("10.500");
+		// Sin unidades el contrato manda `null`, no un cero: la pantalla lo
+		// muestra como desconocido.
+		expect(parsed[1].unitCost).toBeNull();
+		expect(parsed[1].marginPerUnit).toBeNull();
+		expect(parsed[1].costPerMeasure).toBeNull();
+	});
+
+	it("keeps a negative margin as the decimal string the contract allows", () => {
+		// El precio de lista por debajo del costo es un caso real, no un dato
+		// inválido: el signo tiene que llegar a la tabla.
+		const parsed = parseProducts([
+			product({ unitCost: "29500.00", marginPerUnit: "-20500.00" }),
+		]);
+
+		expect(parsed[0].marginPerUnit).toBe("-20500.00");
+	});
+
+	it("rejects costs sent as JSON numbers", () => {
+		// Los cuatro son montos o medidas: viajan como string decimal y un número
+		// perdería centésimas, así que el límite lo rechaza.
+		expect(() => parseProducts([product({ unitCost: 29500 })])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProducts([product({ marginPerUnit: -20500 })])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProducts([product({ costPerMeasure: 5900 })])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProducts([product({ availableMeasure: 10.5 })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a row without the derived costs", () => {
+		// El contrato los exige: una fila sin costo dejaría la tabla mostrando
+		// ceros o vacíos en lugar de decir que el dato no existe.
+		const { unitCost: _unitCost, ...withoutUnitCost } = product();
+		const { marginPerUnit: _margin, ...withoutMargin } = product();
+
+		expect(() => parseProducts([withoutUnitCost])).toThrow(ApiError);
+		expect(() => parseProducts([withoutMargin])).toThrow(ApiError);
 	});
 });
 

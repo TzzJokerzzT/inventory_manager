@@ -368,26 +368,30 @@ export const productSchema = object(productFields);
 export type Product = components["schemas"]["Product"];
 
 /**
- * One catalogue row: the product plus how many of its units are still
- * `AVAILABLE` (L25).
+ * One catalogue row: the product plus the costs the API derives from its
+ * available units (L12) and how many of those units are still `AVAILABLE`
+ * (L25).
  *
- * It is the figure the sale screen reads to decide how a product is sold. It is
- * **optional** at the boundary because it arrived with the units read: a row
- * without it is read as "no units to offer", which is exactly what the sale did
- * before this field existed. It is not a silent loosening — the server still
- * refuses a loose sale of a unit-managed product with `400 units_required`, and
- * the form maps that code to Spanish — but it keeps a catalogue without the
- * counter usable instead of failing the whole list.
+ * `availableUnits` is the figure the sale screen reads to decide how a product
+ * is sold. It is **required**: an absent counter is a shape change, not "zero
+ * units", because reading it as zero would offer a loose sale that the server
+ * then refuses with `units_required`.
  *
- * Only this counter is validated of the derived `ProductCosts`: the costs and
- * the margin belong to the detail read, which asks for them when it needs them.
+ * The three costs travel as **decimal strings**, like every amount in the
+ * contract, and they are **nullable**: a product with no available units has no
+ * cost and therefore no margin, and `null` is the honest answer (L11).
+ * `costPerMeasure` is `$/medida` and only the purchase screen and the suppliers
+ * roster compare it (L20); the catalogue shows `unitCost` and `marginPerUnit`,
+ * which are comparable with the sale price of one unit (L26). `marginPerUnit` is
+ * signed: the list price can sit below the cost.
  */
-export type ProductListItem = Product & { availableUnits: number };
+export type ProductListItem = components["schemas"]["ProductListItem"];
 
 /**
  * One catalogue row as the boundary validates it, derived from the contract's
- * `ProductListItem`. A counter of the wrong type is still a shape change and
- * fails here; only its absence is tolerated.
+ * `ProductListItem`: the stored fields, the derived costs and the availability
+ * counter. Every one of them is validated, because the catalogue renders all of
+ * them and a missing cost would otherwise reach the table as an empty cell.
  */
 export const productListItemSchema = object({
 	...productFields,
@@ -395,6 +399,12 @@ export const productListItemSchema = object({
 	// not "zero units". Reading it as zero would offer a loose sale that the
 	// server then refuses with `units_required`.
 	availableUnits: number(),
+	// Σ `measure` of those units, in the product's measure unit: a decimal
+	// string with three decimals, never a float.
+	availableMeasure: string(),
+	costPerMeasure: nullable(string()),
+	unitCost: nullable(string()),
+	marginPerUnit: nullable(string()),
 });
 
 /** Body of `POST /companies/{companyId}/products`, derived from the contract. */
@@ -851,10 +861,11 @@ const movementFields = {
 	actor: nullable(userSummarySchema),
 	customerId: nullable(string()),
 	customer: nullable(movementCustomerSchema),
-	// Added with the purchase-lot feature. They are validated here like every
-	// other contract field even though the UI does not render them yet: the
-	// boundary either understands the response or fails loudly, and a movement
-	// parsed without its price would silently lose the sale's money.
+	// Added with the purchase-lot feature. The price and the margin are what the
+	// history renders from the lot feature on (L26), and they are validated here
+	// like every other contract field: the boundary either understands the
+	// response or fails loudly, and a movement parsed without its price would
+	// silently lose the sale's money.
 	lotId: nullable(string()),
 	unitPrice: nullable(string()),
 	units: array(movementUnitSchema),

@@ -109,6 +109,15 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L21 (diseño de F2b): la compra vive en el formulario de movimientos con tipo `IN`, como un **bloque opcional**
+"Registrar compra por medida", cerrado por defecto. Con el bloque cerrado nada cambia: el formulario sigue
+llamando a `POST /movements` como hoy (entrada suelta). Con el bloque abierto pide **proveedor**, **$ por
+medida** (con la unidad del producto: kg/L/m) y **la medida de cada unidad** (un campo por línea, para pegar la
+lista), muestra en vivo `Σ medidas`, la cantidad de unidades y el total `Σ medidas × $/medida`, y el submit va a
+`POST /lots`; el campo de cantidad del formulario se deshabilita porque la cantidad **son** las medidas.
+La aritmética de la pantalla es informativa: la autoridad es el servidor, que deriva la medida total y reparte
+el costo. Nada de "rollo" en el copy (L18).
+
 L20 (corrección por revisión, hallazgo R3-001): `measureUnit` dice **cómo se compra** el producto (sus lotes
 se pesan o se miden), **no** en qué unidad se vende. `Product.price` es el precio de venta de **una unidad**.
 Etiquetar el precio del catálogo como "$ 5.900,00 / kg" fue un error mío en la instrucción de F2a: mezcla las dos

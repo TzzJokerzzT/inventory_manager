@@ -16,6 +16,19 @@ jest.mock("@/src/features/company/components/company-switcher", () => ({
 	CompanySwitcher: () => <div>switcher-stub</div>,
 }));
 
+/*
+ * The account menu renders the create-company modal, which owns a mutation.
+ * Mocking the mutation keeps this suite about the shell: no QueryClient and no
+ * request are needed to prove where the account actions live.
+ */
+jest.mock("@/src/features/company/api/use-create-company", () => ({
+	useCreateCompany: () => ({
+		mutate: jest.fn(),
+		isPending: false,
+		error: undefined,
+	}),
+}));
+
 const useLogoutMock = useLogout as jest.MockedFunction<typeof useLogout>;
 const usePathnameMock = usePathname as jest.MockedFunction<typeof usePathname>;
 const logout = jest.fn();
@@ -57,17 +70,18 @@ describe("AppShell", () => {
 		expect(container.querySelector("[aria-disabled]")).toBeNull();
 	});
 
-	it("shows the company switcher and the logout control", () => {
+	it("shows the company switcher and the account menu", () => {
 		render(<AppShell>contenido</AppShell>);
 
 		expect(screen.getByText("switcher-stub")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "Salir" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Cuenta" })).toBeTruthy();
 	});
 
-	it("logs out from the user area", () => {
+	it("logs out from the account menu", () => {
 		render(<AppShell>contenido</AppShell>);
 
-		fireEvent.click(screen.getByRole("button", { name: "Salir" }));
+		fireEvent.click(screen.getByRole("button", { name: "Cuenta" }));
+		fireEvent.click(screen.getByRole("menuitem", { name: /cerrar sesión/i }));
 
 		expect(logout).toHaveBeenCalled();
 	});

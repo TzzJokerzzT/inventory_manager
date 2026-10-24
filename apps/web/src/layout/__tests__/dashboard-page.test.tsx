@@ -30,6 +30,17 @@ jest.mock("@/src/features/auth/logout/use-logout", () => ({
 	useLogout: jest.fn(() => () => {}),
 }));
 
+// The shell's account menu mounts the create-company modal, which owns a
+// mutation. Stubbing the mutation keeps this a route/shell test: no QueryClient
+// and no request are needed to prove the dashboard renders.
+jest.mock("@/src/features/company/api/use-create-company", () => ({
+	useCreateCompany: () => ({
+		mutate: jest.fn(),
+		isPending: false,
+		error: undefined,
+	}),
+}));
+
 // The dashboard now renders real-data charts, so these two reads are stubbed to
 // keep this a route/shell integration test: it must not depend on the API nor
 // on a QueryClient the route does not own.

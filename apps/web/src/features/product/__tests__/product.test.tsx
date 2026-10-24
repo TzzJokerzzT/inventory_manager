@@ -67,6 +67,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		photoUrl: null,
 		stockQuantity: 4,
 		lowStockThreshold: 0,
+		measureUnit: "KILOGRAM",
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
@@ -157,6 +158,28 @@ describe("Product", () => {
 		// Deterministic es-AR rendering of the decimal string.
 		expect(screen.getByText("$ 1.500,00")).toBeTruthy();
 		expect(screen.getByText("4")).toBeTruthy();
+	});
+
+	it("shows the unit next to the price, so a price is never shown alone", () => {
+		setup({
+			rows: [
+				product({ price: "5900.00", measureUnit: "KILOGRAM" }),
+				product({
+					id: "p2",
+					sku: "PIN-1",
+					price: "350.00",
+					measureUnit: "LITRE",
+				}),
+			],
+		});
+
+		render(<Product />);
+
+		// L19: "$ 5.900,00" of what? The unit the product is bought in travels
+		// with the row and is rendered with it.
+		expect(screen.getByText("$ 5.900,00")).toBeTruthy();
+		expect(screen.getByText("/ kg")).toBeTruthy();
+		expect(screen.getByText("/ L")).toBeTruthy();
 	});
 
 	it("shows a thumbnail only when the product has a photo", () => {

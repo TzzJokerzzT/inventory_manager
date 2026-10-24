@@ -39,6 +39,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		measureUnit: "KILOGRAM",
 		photoUrl: null,
 		stockQuantity: 8,
 		lowStockThreshold: 0,

@@ -3,6 +3,7 @@ import type {
 	ProductCosts,
 } from "../../domain/costing/derived-costs.js";
 import { deriveProductCosts } from "../../domain/costing/derived-costs.js";
+import type { MeasureUnit } from "../../domain/entities/measure-unit.js";
 import type { Product } from "../../domain/entities/product.js";
 import type { ProductLotSummary } from "../../domain/repositories/stock-lot-repository.js";
 
@@ -22,6 +23,12 @@ export interface ProductFields {
 	photoUrl: string | null;
 	stockQuantity: number;
 	lowStockThreshold: number;
+	/**
+	 * The unit `costPerMeasure` is expressed in (L19). Part of every product
+	 * response, writes included, so a client can render "$ per kg" without
+	 * asking a second endpoint.
+	 */
+	measureUnit: MeasureUnit;
 	categoryId: string | null;
 	createdAt: string;
 	updatedAt: string;

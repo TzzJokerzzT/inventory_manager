@@ -28,6 +28,7 @@ function product() {
 		photoUrl: null,
 		stockQuantity: 4,
 		lowStockThreshold: 0,
+		measureUnit: "KILOGRAM",
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",

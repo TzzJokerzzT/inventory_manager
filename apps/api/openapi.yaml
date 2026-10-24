@@ -2471,10 +2471,24 @@ components:
           allOf:
             - $ref: "#/components/schemas/UserSummary"
 
+    MeasureUnit:
+      type: string
+      enum: [KILOGRAM, LITRE, METRE]
+      description: |
+        The unit a purchase lot of a product is measured in (L19): kilograms,
+        litres or metres. It describes the **measure of a lot**, never the
+        stock, which keeps counting whole units (S7). A closed list on purpose:
+        an unknown value is a client mistake and answers 400, not a stored
+        string no view can name.
+
+        On a product write it is optional: absent on create means `KILOGRAM`
+        (the column's default, which is what a product created before the
+        purchase lots carries) and absent on update means "unchanged".
+
     Product:
       type: object
       required:
-        [id, companyId, name, description, sku, price, photoUrl, stockQuantity, lowStockThreshold, categoryId, createdAt, updatedAt]
+        [id, companyId, name, description, sku, price, photoUrl, stockQuantity, lowStockThreshold, measureUnit, categoryId, createdAt, updatedAt]
       description: |
         A product as the API exposes it. `price` is a decimal string with two
         decimals, not a JSON number: the column is `Decimal(12,2)` and a float
@@ -2484,6 +2498,10 @@ components:
         a product write. `lowStockThreshold` keeps the database default until
         the low-stock feature exposes it. `categoryId` is currently always
         `null`: categories have no feature of their own yet.
+
+        `measureUnit` is how the lots of this product are measured; it is what
+        gives `costPerMeasure` its unit, so a client can render `$ per kg`
+        without a second read (L19).
 
         A soft-deleted product is never returned by any operation, so it has no
         `deletedAt` field in the contract.
@@ -2520,6 +2538,8 @@ components:
         lowStockThreshold:
           type: integer
           minimum: 0
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
         categoryId:
           type: string
           format: uuid
@@ -2682,6 +2702,8 @@ components:
           type: string
           maxLength: 2048
           nullable: true
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
 
     UpdateProductRequest:
       type: object
@@ -2708,6 +2730,8 @@ components:
           type: string
           maxLength: 2048
           nullable: true
+        measureUnit:
+          $ref: "#/components/schemas/MeasureUnit"
 
     StockMovement:
       type: object
@@ -2993,11 +3017,7 @@ components:
           example: "5900.00"
           description: The price of one measure of that lot, with two decimals.
         measureUnit:
-          type: string
-          enum: [KILOGRAM, LITRE, METRE]
-          description: |
-            The measure unit the product is bought in, which is what gives
-            `costPerMeasure` its unit.
+          $ref: "#/components/schemas/MeasureUnit"
         receivedAt:
           type: string
           format: date-time

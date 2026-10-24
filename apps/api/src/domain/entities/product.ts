@@ -30,8 +30,10 @@ export interface ProductProps {
 	lowStockThreshold: number;
 	/**
 	 * How a purchase lot of this product is measured (S6). It travels with the
-	 * catalogue row because the lot needs it to name its `$/measure`, but it is
-	 * not part of the product's JSON: the stock answers in whole units (S7).
+	 * catalogue row because the lot needs it to name its `$/measure`, and it is
+	 * part of the product's JSON (L19): the purchase form shows "$ per kg" or
+	 * "$ per litre" with the real value instead of assuming one. The stock keeps
+	 * answering in whole units (S7).
 	 */
 	measureUnit: MeasureUnit;
 	categoryId: string | null;
@@ -77,6 +79,7 @@ export interface ProductChanges {
 	sku?: string;
 	price?: string;
 	photoUrl?: string | null;
+	measureUnit?: MeasureUnit;
 }
 
 /**
@@ -288,9 +291,9 @@ export class Product {
 	}
 
 	/**
-	 * How the lots of this product are measured. Deliberately absent from
-	 * {@link toJSON}: the product contract answers in units (S7) and only the
-	 * lot readings name the measure, which is where `$/measure` needs a unit.
+	 * How the lots of this product are measured. Part of {@link toJSON} since
+	 * L19: the purchase form has to show `$ per measure` with the unit the
+	 * product is really bought in.
 	 */
 	get measureUnit(): MeasureUnit {
 		return this.props.measureUnit;
@@ -363,7 +366,9 @@ export class Product {
 				changes.photoUrl === undefined ? this.photoUrl : changes.photoUrl,
 			stockQuantity: this.stockQuantity,
 			lowStockThreshold: this.lowStockThreshold,
-			measureUnit: this.measureUnit,
+			// An absent change keeps the stored unit; the entity re-validates a
+			// given one against the closed enum.
+			measureUnit: changes.measureUnit ?? this.measureUnit,
 			categoryId: this.categoryId,
 			deletedAt: this.deletedAt,
 			createdAt: this.createdAt,
@@ -381,6 +386,7 @@ export class Product {
 		photoUrl: string | null;
 		stockQuantity: number;
 		lowStockThreshold: number;
+		measureUnit: MeasureUnit;
 		categoryId: string | null;
 		createdAt: string;
 		updatedAt: string;
@@ -395,6 +401,7 @@ export class Product {
 			photoUrl: this.photoUrl,
 			stockQuantity: this.stockQuantity,
 			lowStockThreshold: this.lowStockThreshold,
+			measureUnit: this.measureUnit,
 			categoryId: this.categoryId,
 			createdAt: this.createdAt.toISOString(),
 			updatedAt: this.updatedAt.toISOString(),

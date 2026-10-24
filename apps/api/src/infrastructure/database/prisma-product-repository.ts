@@ -215,6 +215,9 @@ export class PrismaProductRepository implements ProductRepository {
 					sku: product.sku,
 					price: product.price,
 					photoUrl: product.photoUrl,
+					// Written on every update: the entity carries the stored unit when
+					// the change did not name one, so the column cannot drift from it.
+					measureUnit: product.measureUnit,
 					updatedAt: product.updatedAt,
 				},
 			}));

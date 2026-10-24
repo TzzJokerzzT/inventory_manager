@@ -51,6 +51,7 @@ function product(overrides: Record<string, unknown> = {}) {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		measureUnit: "KILOGRAM" as const,
 		photoUrl: null,
 		stockQuantity: 2,
 		lowStockThreshold: 0,

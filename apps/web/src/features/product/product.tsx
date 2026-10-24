@@ -17,6 +17,7 @@ import { useMe } from "../user/api/use-me";
 import { useProducts } from "./api/use-products";
 import { ProductRowActions } from "./components/product-row-actions";
 import { formatPrice } from "./lib/format-price";
+import { measureUnitLabel } from "./lib/measure-unit";
 import {
 	canManageProducts,
 	canPurgeProducts,
@@ -92,7 +93,17 @@ export function Product() {
 			header: "Precio",
 			align: "right",
 			// The price is a decimal string in the contract; it is formatted, never parsed as a float.
-			render: (row) => formatPrice(row.price),
+			// It never shows alone: L19 asks for the unit it is expressed in, because
+			// "$ 5.900,00" of kilograms is not the same price as of litres.
+			render: (row) => (
+				<span className="whitespace-nowrap">
+					{formatPrice(row.price)}
+					<span className="text-text-muted">
+						{" / "}
+						{measureUnitLabel(row.measureUnit)}
+					</span>
+				</span>
+			),
 		},
 		{ key: "stockQuantity", header: "Unidades", align: "right" },
 	];

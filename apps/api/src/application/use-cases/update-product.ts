@@ -1,3 +1,4 @@
+import type { MeasureUnit } from "../../domain/entities/measure-unit.js";
 import type { MembershipRole } from "../../domain/entities/membership.js";
 import type { Product } from "../../domain/entities/product.js";
 import { InsufficientRoleError } from "../../domain/errors/insufficient-role-error.js";
@@ -14,6 +15,8 @@ export interface UpdateProductInput {
 	sku?: string;
 	price?: string;
 	photoUrl?: string | null;
+	/** Absent means "unchanged": the product keeps the unit it stores. */
+	measureUnit?: MeasureUnit;
 }
 
 export interface UpdateProductContext {
@@ -72,6 +75,7 @@ export class UpdateProductUseCase {
 			sku: input.sku,
 			price: input.price,
 			photoUrl: input.photoUrl,
+			measureUnit: input.measureUnit,
 		});
 
 		const skuOwner = await this.productRepository.findBySku(

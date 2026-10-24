@@ -9,6 +9,7 @@ function product(overrides: Partial<Product> = {}): Product {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		measureUnit: "KILOGRAM",
 		photoUrl: null,
 		stockQuantity: 1,
 		lowStockThreshold: 0,

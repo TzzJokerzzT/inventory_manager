@@ -468,6 +468,7 @@ function product(overrides: Record<string, unknown> = {}) {
 		photoUrl: null,
 		stockQuantity: 0,
 		lowStockThreshold: 0,
+		measureUnit: "KILOGRAM",
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
@@ -490,6 +491,27 @@ describe("parseProducts", () => {
 		const parsed = parseProducts([product({ price: "1500.00" })]);
 
 		expect(parsed[0].price).toBe("1500.00");
+	});
+
+	it("keeps the measure unit the product is bought in", () => {
+		// L19: a price per measure means nothing without its unit, so the
+		// catalogue row carries the one the API answered.
+		const parsed = parseProducts([
+			product({ measureUnit: "LITRE" }),
+			product({ id: "p2", sku: "CAF-1", measureUnit: "METRE" }),
+		]);
+
+		expect(parsed[0].measureUnit).toBe("LITRE");
+		expect(parsed[1].measureUnit).toBe("METRE");
+	});
+
+	it("rejects a measure unit outside the closed list", () => {
+		expect(() => parseProducts([product({ measureUnit: "POUND" })])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProducts([product({ measureUnit: null })])).toThrow(
+			/respuesta inesperada/,
+		);
 	});
 
 	it("rejects a price sent as a JSON number", () => {
@@ -558,6 +580,7 @@ describe("parseProduct", () => {
 		expect(parsed.id).toBe("p1");
 		expect(parsed.sku).toBe("CAF-500");
 		expect(parsed.stockQuantity).toBe(0);
+		expect(parsed.measureUnit).toBe("KILOGRAM");
 	});
 
 	it("rejects a product whose shape changed", () => {

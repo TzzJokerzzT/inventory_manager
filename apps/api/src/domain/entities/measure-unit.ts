@@ -5,8 +5,9 @@
  * It describes the **measure of a lot**, never the stock: the stock keeps
  * counting whole units (S7), and the weight lives in the lot and in its units.
  * That is why the measure unit is carried by the product row (the catalogue
- * decides how its lots are expressed) but is not part of the product's JSON:
- * the product contract still answers in units.
+ * decides how its lots are expressed) and, since L19, also travels in the
+ * product's JSON: the purchase form names the unit of a `$/measure` instead of
+ * assuming kilograms.
  */
 export type MeasureUnit = "KILOGRAM" | "LITRE" | "METRE";
 

@@ -316,6 +316,19 @@ export function parseNotifications(data: unknown): NotificationsResponse {
 }
 
 /**
+ * The measure units the contract allows, spelled out at the boundary (L19).
+ *
+ * A closed picklist, not a free string: the interface names the unit of every
+ * `$ per measure` it shows, so an unknown value has to fail here instead of
+ * reaching a label map that would have no name for it. It is the one place both
+ * the catalogue and the supplier's last lot get it from.
+ */
+export const measureUnitSchema = picklist(["KILOGRAM", "LITRE", "METRE"]);
+
+/** How a product's lots are measured, derived from the OpenAPI contract. */
+export type MeasureUnit = components["schemas"]["MeasureUnit"];
+
+/**
  * One product exactly as the products endpoints serialize it.
  *
  * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
@@ -324,6 +337,10 @@ export function parseNotifications(data: unknown): NotificationsResponse {
  * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
  * counts; `description`, `photoUrl` and `categoryId` are nullable because a
  * product can live without them.
+ *
+ * `measureUnit` is how the lots of the product are measured, and it travels
+ * with every read and write (L19): the list renders `$ 5.900,00 / kg` from this
+ * value, never from an assumption about what the product is bought in.
  */
 export const productSchema = object({
 	id: string(),
@@ -335,6 +352,7 @@ export const productSchema = object({
 	photoUrl: nullable(string()),
 	stockQuantity: number(),
 	lowStockThreshold: number(),
+	measureUnit: measureUnitSchema,
 	categoryId: nullable(string()),
 	createdAt: string(),
 	updatedAt: string(),
@@ -485,7 +503,7 @@ export const supplierLastLotSchema = object({
 	// what was bought instead of leaving a hole.
 	productName: string(),
 	costPerMeasure: string(),
-	measureUnit: picklist(["KILOGRAM", "LITRE", "METRE"]),
+	measureUnit: measureUnitSchema,
 	receivedAt: string(),
 });
 

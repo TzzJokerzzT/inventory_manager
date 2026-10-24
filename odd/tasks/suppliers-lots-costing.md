@@ -89,6 +89,20 @@ son **una sola operación** del adaptador (`$transaction`), no tres llamadas enc
 puede quedar un lote huérfano ni stock descuadrado. Las reglas (cantidad de unidades, costos, suma) viven en
 la entidad, para que ni el adaptador ni el controlador las reimplementen.
 
+L16 (decisión del front, verbatim): "Se puede realizar en el movimiento donde entra que puede ser comprar
+ejemplo o entrada que puede compra del producto". La compra **no** tiene pantalla propia: vive en el formulario
+de movimientos existente. Consecuencia concreta: con `type = IN` el formulario ofrece el bloque "compra por
+peso" (proveedor, $/medida y los pesos) y con esos datos llama a `POST /lots`; si el bloque queda vacío, sigue
+llamando a `POST /movements` como hoy (entrada suelta). Con `type = OUT` y un producto con rollos disponibles
+(`availableUnits > 0` en `GET /products`), el formulario pide el precio escrito y los rollos, y llama a
+`POST /movements` con `unitIds` + `unitPrice`. No hay cambio de API por esto: los dos endpoints ya existen y el
+de lotes crea el movimiento `IN` en la misma transacción.
+
+L17 (orden del front, T7): cuatro rebanadas, en este orden porque cada una habilita a la siguiente:
+F1 proveedores (ABM + navegación, lo necesita el selector de la compra), F2 entrada con compra por peso en el
+formulario de movimientos, F3 salida con selección de rollos y precio escrito, F4 columnas de costo y margen
+(producto y movimientos) más `lastLot` del proveedor.
+
 L13 (cierre del backend): las cinco rebanadas de datos y API están commiteadas (`f9bb1b3` esquema, `c5dd5d4`
 proveedores, `b59ad34` lotes, `a07c705` venta, `7b23f0d` lecturas). Superficie resultante:
 

@@ -109,6 +109,17 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L23 (F3 se parte en dos, y por qué): el formulario de salida tiene que dejar **elegir qué unidades salen**, pero
+la API sólo expone cuántas unidades disponibles tiene un lote (`ProductLotSummary.availableUnits`), no **cuáles**.
+Por eso F3 empieza con una lectura nueva —`GET /companies/{companyId}/products/{productId}/units?status=`, por
+defecto `AVAILABLE`— y después viene la pantalla. La alternativa (vender por cantidad y que el servidor elija las
+unidades) habría escondido justamente lo que el humano pidió ver: qué unidad concreta salió y con qué costo.
+
+L24 (regla de la pantalla de salida, F3b): con un producto que tiene unidades disponibles, el formulario pide
+**qué unidades** (la cantidad de elegidas tiene que ser igual a la cantidad vendida) y **el precio escrito**, y
+manda `unitIds` + `unitPrice`. Con un producto sin lotes no cambia nada: cantidad suelta, sin precio ni unidades.
+Es la misma regla que L9/L10 hacen cumplir en el servidor; la pantalla la refleja, no la reemplaza.
+
 L22 (F2b implementado + corrección de la coma): el bloque "Registrar compra por medida" quedó cerrado por
 defecto en el formulario de entrada; abierto llama a `POST /lots`, deshabilita la cantidad y muestra el resumen
 en vivo. El lote creado **no** lleva `measureUnit`: la unidad de "$ por medida" sale del producto, así que no se

@@ -109,6 +109,16 @@ para los textos de la API: **nada de "rollo" en la interfaz**. Se habla de **uni
 unidad: kg, litro, metro), **lote** y **compra**. El ejemplo de los rollos queda sólo en este documento y en
 las pruebas. El modelo ya es genérico: `Product.measureUnit` y `LotUnit.measure` no saben qué se está midiendo.
 
+L28 (pedido del humano, verbatim): "Que se pierdda la migración no hay problema / 1. Unificalos. / 3.
+Traducelo en el front / Y arregla las metricas del dashboard". La unificación del mapa de unidades y la
+traducción del mensaje de duplicado son **pedidos explícitos**, no cambios colaterales de L27.
+
+Disposición del hallazgo `R3-001` (crítico, lente reliability) del lineage `review-d15dd2065ead4470`: marca la
+traducción como "unrequested change to an existing user-facing message" porque juzga el rango contra L27, que
+habla sólo de las métricas. Es un **falso positivo de alcance**, no un defecto: el cambio está pedido en L28 y
+tiene su prueba. No se revierte. El lineage quedó abierto en `correction_required` porque el único hallazgo es
+esa observación de alcance; el mismo defecto del slot de plan (cuatro rechazos previos) impide cerrarlo.
+
 L27 (F5, métricas del dashboard): el "valor del inventario" pasa a ser **a costo** y se agrega **margen
 potencial** (decisión del humano). Reglas:
 

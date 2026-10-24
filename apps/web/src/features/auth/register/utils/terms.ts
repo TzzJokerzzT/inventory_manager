@@ -9,7 +9,7 @@
  * accepted "version 2026-03" should be able to see which text they accepted,
  * and a later change has to look like a change.
  */
-export const TERMS_VERSION = "borrador-2026-03";
+export const TERMS_VERSION = "2026-10-24";
 
 export interface TermsSection {
 	heading: string;
@@ -17,11 +17,11 @@ export interface TermsSection {
 }
 
 /**
- * PENDING: this is a placeholder, not legal copy.
+ * The legal copy, published as it was written.
  *
- * It says so in the text instead of dressing up lorem ipsum as a contract: a
- * registration that silently accepts an invented agreement is worse than one
- * that admits it is waiting for the real one.
+ * The version below is the same date the text carries ("Última actualización"),
+ * so what the modal shows and what the person accepted cannot drift apart: a new
+ * revision of the text changes this string with it.
  */
 export const TERMS_SECTIONS: TermsSection[] = [
 	{

@@ -89,6 +89,17 @@ son **una sola operación** del adaptador (`$transaction`), no tres llamadas enc
 puede quedar un lote huérfano ni stock descuadrado. Las reglas (cantidad de unidades, costos, suma) viven en
 la entidad, para que ni el adaptador ni el controlador las reimplementen.
 
+L9 (regla de T4, compatibilidad hacia atrás): una salida exige `unitPrice` y `unitIds` **sólo si el producto
+tiene unidades disponibles**; un producto sin lotes sigue vendiéndose como hoy (cantidad suelta, sin precio ni
+unidades). Razón: el front actual no envía ninguno de los dos campos y no puede romperse mientras el front de
+la feature no exista; a la vez, un producto cargado por lotes no puede venderse sin precio ni sin decir qué
+rollos salieron, que es justo lo que sostiene el margen real.
+
+L10 (dónde se hace cumplir la regla de T9): en el adaptador del movimiento, dentro de la misma transacción que
+ya valida el stock, no en un `if` del caso de uso con una consulta previa. Así la regla no puede quedar
+desactualizada respecto de los datos (una unidad vendida entre la lectura y la escritura) y el resultado se
+comunica con los `kind` que el puerto ya usa: `units_required` y `unit_not_available`.
+
 L8 (corrección del plan): la tarea T6 original ("contrato al final") era inviable: `tests/openapi.test.ts` exige que
 el router y el documento cubran **exactamente** las mismas operaciones, en los dos sentidos, así que una rebanada
 no puede existir sin su contrato. Se decidió (y se aplicó en T2) que **el contrato viaja con cada rebanada**; la

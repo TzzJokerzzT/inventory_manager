@@ -576,7 +576,7 @@ export function MovementStockForm({
 				>
 					{isPending ? (
 						<>
-							<SpinnerMotion size={16} className="mr-2" />
+							<SpinnerMotion size={20} className="mr-2" />
 							{copy.pending}
 						</>
 					) : purchaseActive ? (

@@ -34,6 +34,18 @@ jest.mock("@/src/features/lot/api/use-register-lot", () => ({
 	useRegisterLot: jest.fn(() => ({ mutate: jest.fn(), isPending: false })),
 }));
 
+// La salida lee las unidades del producto elegido: sin producto no lee nada,
+// pero el hook se llama igual, así que también se mockea.
+jest.mock("@/src/features/lot/api/use-product-units", () => ({
+	useProductUnits: jest.fn(() => ({
+		data: [],
+		isPending: false,
+		isError: false,
+		error: undefined,
+		refetch: jest.fn(),
+	})),
+}));
+
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
 >;

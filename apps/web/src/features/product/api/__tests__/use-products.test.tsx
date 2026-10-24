@@ -25,6 +25,7 @@ function product(overrides: Record<string, unknown> = {}) {
 		description: null,
 		sku: "CAF-500",
 		price: "1500.00",
+		availableUnits: 0,
 		photoUrl: null,
 		stockQuantity: 0,
 		lowStockThreshold: 0,

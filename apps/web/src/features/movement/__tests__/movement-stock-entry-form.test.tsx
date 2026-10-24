@@ -25,6 +25,19 @@ jest.mock("@/src/features/lot/api/use-register-lot", () => ({
 	useRegisterLot: jest.fn(),
 }));
 
+// La salida lee las unidades del producto elegido. Una entrada nunca las pide,
+// pero el hook se llama igual desde el formulario compartido: se mockea para no
+// necesitar un QueryClient en esta suite.
+jest.mock("@/src/features/lot/api/use-product-units", () => ({
+	useProductUnits: jest.fn(() => ({
+		data: [],
+		isPending: false,
+		isError: false,
+		error: undefined,
+		refetch: jest.fn(),
+	})),
+}));
+
 jest.mock("../api/use-register-movement", () => ({
 	useRegisterMovement: jest.fn(),
 }));

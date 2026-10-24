@@ -7,6 +7,7 @@ import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { RegisterMovementRequest } from "@/lib/api/schemas";
 import { useCustomers } from "@/src/features/client/api/use-customers";
+import { useProductUnits } from "@/src/features/lot/api/use-product-units";
 import { useRegisterLot } from "@/src/features/lot/api/use-register-lot";
 import { parseMeasures } from "@/src/features/lot/lib/parse-measures";
 import { formatMeasure } from "@/src/features/lot/lib/purchase-summary";
@@ -22,7 +23,9 @@ import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useRegisterMovement } from "./api/use-register-movement";
 import type { MovementType } from "./components/movement-type-badge";
 import { normalizeReason, validateMovement } from "./lib/validate-movement";
+import { normalizeUnitPrice, validateSale } from "./lib/validate-sale";
 import { MovementPurchaseBlock } from "./movement-purchase-block";
+import { MovementSaleUnits } from "./movement-sale-units";
 
 const FALLBACK_ERROR = "No pudimos registrar el movimiento. Probá de nuevo.";
 const PURCHASE_FALLBACK_ERROR =
@@ -80,6 +83,12 @@ function registrationErrorMessage(error: unknown): string | undefined {
 		}
 		if (error.code === "customer_requires_exit") {
 			return "Una entrada no puede llevar cliente: es una compra a proveedor, no una venta.";
+		}
+		if (error.code === "units_required") {
+			return "Elegí las unidades de la venta y escribí el precio.";
+		}
+		if (error.code === "unit_not_available") {
+			return "Alguna de las unidades elegidas ya se vendió. Actualizá la lista y volvé a elegir.";
 		}
 		return error.message;
 	}
@@ -186,6 +195,15 @@ function MovementCustomerField({
  * (supplier, `$ por medida` and the measure of each unit) instead of a movement:
  * the server writes the lot, its units, the `IN` movement and the stock increment
  * in one transaction, which is why the client must not send both.
+ *
+ * An exit of a product **with available units** asks which units leave and the
+ * price written on the sale (L24/L25). The signal is `availableUnits` on the
+ * catalogue row the selector already reads. In that case the quantity field is
+ * disabled and the quantity **is** the selection: one id per unit sold travels as
+ * `unitIds`, together with `unitPrice`, and the server marks them `SOLD` and
+ * computes the margin. A product without units keeps the loose sale it always
+ * was — quantity typed by hand, no price, no units — which is the regression this
+ * form must not break.
  */
 export function MovementStockForm({
 	companyId,
@@ -204,6 +222,8 @@ export function MovementStockForm({
 	const [customerId, setCustomerId] = useState(NO_CUSTOMER_VALUE);
 	const [purchaseOpen, setPurchaseOpen] = useState(false);
 	const [purchase, setPurchase] = useState<PurchaseFormValues>(EMPTY_PURCHASE);
+	const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
+	const [unitPrice, setUnitPrice] = useState("");
 	const [attempted, setAttempted] = useState(false);
 	const quantityRef = useRef<HTMLInputElement>(null);
 
@@ -223,17 +243,50 @@ export function MovementStockForm({
 	const selectedProduct = (catalogue.data ?? []).find(
 		(product) => product.id === productId,
 	);
+	/**
+	 * Whether this sale offers units instead of a typed quantity (L25).
+	 *
+	 * `availableUnits > 0` is the signal the catalogue row already carries: it is
+	 * the server's count of units a sale can still take, so a product that was
+	 * never bought in a lot keeps the loose sale without asking anything extra.
+	 */
+	const saleWithUnits =
+		type === "OUT" && (selectedProduct?.availableUnits ?? 0) > 0;
+	// The read is always mounted and disabled without a product, so the hook is
+	// not conditional: it only runs when this sale actually offers units.
+	const productUnits = useProductUnits(
+		companyId,
+		saleWithUnits ? selectedProduct?.id : undefined,
+	);
+	/**
+	 * The quantity of a sale with units, derived from the selection: it is the one
+	 * number both the disabled field and the body show, so there is no second
+	 * source of truth (L25).
+	 */
+	const quantityFromUnits = selectedUnitIds.length;
 	const isPending = register.isPending || registerLot.isPending;
 
-	const movementErrors = validateMovement({ productId, quantity, reason });
+	const movementErrors = validateMovement({
+		productId,
+		quantity: saleWithUnits ? String(quantityFromUnits) : quantity,
+		reason,
+	});
 	if (purchaseActive) {
 		// La cantidad SON las medidas: el campo está deshabilitado y su regla no
 		// aplica a una compra.
 		delete movementErrors.quantity;
 	}
+	if (saleWithUnits) {
+		// La cantidad SON las unidades elegidas: su regla la reemplaza la venta.
+		delete movementErrors.quantity;
+	}
 	const errors = attempted ? movementErrors : {};
 	const purchaseErrors: PurchaseFormErrors =
 		attempted && purchaseActive ? validatePurchase(purchase) : {};
+	const saleErrors =
+		attempted && saleWithUnits
+			? validateSale({ unitIds: selectedUnitIds, unitPrice })
+			: {};
 
 	function reset() {
 		setProductId("");
@@ -242,7 +295,37 @@ export function MovementStockForm({
 		setCustomerId(NO_CUSTOMER_VALUE);
 		setPurchaseOpen(false);
 		setPurchase(EMPTY_PURCHASE);
+		setSelectedUnitIds([]);
+		setUnitPrice("");
 		setAttempted(false);
+	}
+
+	/**
+	 * Changing the product resets what the sale had chosen for the previous one and
+	 * pre-fills the price with the product's list price (L25).
+	 *
+	 * The list price is only a **reference**: the real price is the one written
+	 * here, so the field stays editable and nothing re-writes it after.
+	 */
+	function handleProductChange(nextProductId: string) {
+		setProductId(nextProductId);
+
+		const nextProduct = (catalogue.data ?? []).find(
+			(product) => product.id === nextProductId,
+		);
+		const nextHasUnits =
+			type === "OUT" && (nextProduct?.availableUnits ?? 0) > 0;
+
+		setSelectedUnitIds([]);
+		setUnitPrice(nextHasUnits && nextProduct ? nextProduct.price : "");
+	}
+
+	function toggleUnit(unitId: string) {
+		setSelectedUnitIds((previous) =>
+			previous.includes(unitId)
+				? previous.filter((id) => id !== unitId)
+				: [...previous, unitId],
+		);
 	}
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -251,17 +334,21 @@ export function MovementStockForm({
 
 		const nextMovementErrors = validateMovement({
 			productId,
-			quantity,
+			quantity: saleWithUnits ? String(quantityFromUnits) : quantity,
 			reason,
 		});
-		if (purchaseActive) {
+		if (purchaseActive || saleWithUnits) {
 			delete nextMovementErrors.quantity;
 		}
 		const nextPurchaseErrors = purchaseActive ? validatePurchase(purchase) : {};
+		const nextSaleErrors = saleWithUnits
+			? validateSale({ unitIds: selectedUnitIds, unitPrice })
+			: {};
 
 		if (
 			Object.keys(nextMovementErrors).length > 0 ||
-			Object.keys(nextPurchaseErrors).length > 0
+			Object.keys(nextPurchaseErrors).length > 0 ||
+			Object.keys(nextSaleErrors).length > 0
 		) {
 			if (nextMovementErrors.quantity) {
 				quantityRef.current?.focus();
@@ -319,13 +406,19 @@ export function MovementStockForm({
 		const body: RegisterMovementRequest = {
 			productId,
 			type,
-			quantity: Number(quantity),
+			quantity: saleWithUnits ? quantityFromUnits : Number(quantity),
 			reason: normalizeReason(reason),
 		};
 		if (type === "OUT") {
 			// "Sin cliente" viaja como `null` explícito: la venta es anónima, no una
 			// asociación pendiente. Una entrada no lleva la clave.
 			body.customerId = customerId === NO_CUSTOMER_VALUE ? null : customerId;
+		}
+		if (saleWithUnits) {
+			// La cantidad son las unidades elegidas (L25) y el precio es el escrito:
+			// el de lista es sólo la referencia con la que se precargó el campo.
+			body.unitIds = selectedUnitIds;
+			body.unitPrice = normalizeUnitPrice(unitPrice);
 		}
 
 		register.mutate(body, {
@@ -371,7 +464,7 @@ export function MovementStockForm({
 					placeholder="Buscá el producto por nombre o SKU"
 					emptyMessage="No hay productos que coincidan."
 					value={productId}
-					onValueChange={setProductId}
+					onValueChange={handleProductChange}
 					disabled={isPending}
 				/>
 				{errors.productId ? (
@@ -403,16 +496,47 @@ export function MovementStockForm({
 				inputMode="numeric"
 				placeholder="20"
 				autoComplete="off"
-				value={quantity}
+				value={saleWithUnits ? String(quantityFromUnits) : quantity}
 				onChange={(event) => setQuantity(event.target.value)}
 				error={purchaseActive ? undefined : errors.quantity}
 				hint={
 					purchaseActive
 						? "La cantidad son las medidas de la compra."
-						: "Unidades enteras, mayor que cero."
+						: saleWithUnits
+							? "La cantidad son las unidades que elegís abajo."
+							: "Unidades enteras, mayor que cero."
 				}
-				disabled={isPending || purchaseActive}
+				disabled={isPending || purchaseActive || saleWithUnits}
 			/>
+
+			{saleWithUnits ? (
+				<>
+					<MovementSaleUnits
+						product={selectedProduct}
+						units={productUnits.data}
+						isPending={productUnits.isPending}
+						isError={productUnits.isError}
+						selectedUnitIds={selectedUnitIds}
+						onToggleUnit={toggleUnit}
+						error={saleErrors.unitIds}
+						disabled={isPending}
+					/>
+					<TextField
+						label="Precio de venta"
+						name="unitPrice"
+						inputMode="decimal"
+						placeholder={selectedProduct?.price ?? "1500.00"}
+						autoComplete="off"
+						value={unitPrice}
+						onChange={(event) => setUnitPrice(event.target.value)}
+						error={saleErrors.unitPrice}
+						// El precio es de una unidad, no de una medida (L20): el rótulo no
+						// lleva kg/L/m, que pertenecen a la compra.
+						hint="Precio de una unidad. Se precarga con el de lista y podés cambiarlo."
+						disabled={isPending}
+					/>
+				</>
+			) : null}
 
 			<TextField
 				label="Motivo"

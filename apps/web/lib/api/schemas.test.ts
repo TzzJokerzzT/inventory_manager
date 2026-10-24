@@ -16,6 +16,7 @@ import {
 	parsePendingInvitations,
 	parseProduct,
 	parseProducts,
+	parseProductUnits,
 	parseRegisterMovementResponse,
 	parseSupplier,
 	parseSuppliers,
@@ -473,6 +474,10 @@ function product(overrides: Record<string, unknown> = {}) {
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
+		// La fila del listado lleva cuántas unidades siguen disponibles (L25): es
+		// lo que le dice a la pantalla de salida si el producto se vende por
+		// unidad elegida o con una cantidad suelta.
+		availableUnits: 0,
 		...overrides,
 	};
 }
@@ -571,6 +576,33 @@ describe("parseProducts", () => {
 		expect(() => parseProducts([{ id: "p1", name: "Café" }])).toThrow(
 			/respuesta inesperada/,
 		);
+	});
+
+	it("keeps how many units the row has available", () => {
+		// L25: la pantalla de salida decide con este número si pide unidades.
+		const parsed = parseProducts([
+			product({ availableUnits: 3 }),
+			product({ id: "p2", sku: "CAF-1", availableUnits: 0 }),
+		]);
+
+		expect(parsed[0].availableUnits).toBe(3);
+		expect(parsed[1].availableUnits).toBe(0);
+	});
+
+	it("rejects a counter that is not a number", () => {
+		// Un contador mal formado es un cambio de forma; sólo su ausencia se
+		// tolera como "no hay unidades para ofrecer".
+		expect(() => parseProducts([product({ availableUnits: "3" })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a row without the availability counter", () => {
+		// The contract requires it: reading an absent counter as "no units" would
+		// offer a loose sale that the server then refuses with `units_required`.
+		const { availableUnits: _availableUnits, ...withoutAvailable } = product();
+
+		expect(() => parseProducts([withoutAvailable])).toThrow(ApiError);
 	});
 });
 
@@ -1017,6 +1049,70 @@ describe("parseLot", () => {
 
 	it("rejects a non-object response", () => {
 		expect(() => parseLot([lot()])).toThrow(ApiError);
+	});
+});
+
+function productUnit(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "u1",
+		code: "R-01",
+		measure: "12.500",
+		cost: "73750.00",
+		status: "AVAILABLE",
+		lotId: "lo1",
+		receivedAt: "2026-10-23T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+describe("parseProductUnits", () => {
+	it("returns the units of a product exactly as the API serializes them", () => {
+		const units = [productUnit(), productUnit({ id: "u2", code: "R-02" })];
+
+		expect(parseProductUnits(units)).toEqual(units);
+	});
+
+	it("accepts an empty list, which is a product that never came in a lot", () => {
+		expect(parseProductUnits([])).toEqual([]);
+	});
+
+	it("keeps the measure and the cost as the decimal strings they are", () => {
+		const parsed = parseProductUnits([productUnit()]);
+
+		expect(typeof parsed[0].measure).toBe("string");
+		expect(typeof parsed[0].cost).toBe("string");
+	});
+
+	it("rejects a numeric measure or a numeric cost", () => {
+		// Medida y costo son decimales de la columna: un número los redondearía.
+		expect(() => parseProductUnits([productUnit({ measure: 12.5 })])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProductUnits([productUnit({ cost: 73750 })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a status outside the closed list", () => {
+		expect(() => parseProductUnits([productUnit({ status: "LOST" })])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a unit missing a field the sale needs", () => {
+		const { cost: _cost, ...withoutCost } = productUnit();
+		const { code: _code, ...withoutCode } = productUnit();
+
+		expect(() => parseProductUnits([withoutCost])).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(() => parseProductUnits([withoutCode])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseProductUnits({ units: [] })).toThrow(ApiError);
 	});
 });
 

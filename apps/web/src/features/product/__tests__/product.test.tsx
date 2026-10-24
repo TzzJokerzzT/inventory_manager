@@ -6,7 +6,7 @@ import {
 	within,
 } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
-import type { Product as ProductModel } from "@/lib/api/schemas";
+import type { ProductListItem as ProductModel } from "@/lib/api/schemas";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { useMe } from "@/src/features/user/api/use-me";
 import { useDeleteProduct } from "../api/use-delete-product";
@@ -68,6 +68,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		stockQuantity: 4,
 		lowStockThreshold: 0,
 		measureUnit: "KILOGRAM",
+		availableUnits: 0,
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",

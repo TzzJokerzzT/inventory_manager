@@ -329,20 +329,10 @@ export const measureUnitSchema = picklist(["KILOGRAM", "LITRE", "METRE"]);
 export type MeasureUnit = components["schemas"]["MeasureUnit"];
 
 /**
- * One product exactly as the products endpoints serialize it.
- *
- * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
- * `Decimal(12,2)` and a float in the contract would lose precision at the first
- * rounding, so the boundary fails a numeric price instead of silently rounding
- * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
- * counts; `description`, `photoUrl` and `categoryId` are nullable because a
- * product can live without them.
- *
- * `measureUnit` is how the lots of the product are measured, and it travels
- * with every read and write (L19): the list renders `$ 5.900,00 / kg` from this
- * value, never from an assumption about what the product is bought in.
+ * The fields every product response carries, shared by the catalogue row, the
+ * detail and the write answers.
  */
-export const productSchema = object({
+const productFields = {
 	id: string(),
 	companyId: string(),
 	name: string(),
@@ -356,10 +346,56 @@ export const productSchema = object({
 	categoryId: nullable(string()),
 	createdAt: string(),
 	updatedAt: string(),
-});
+} as const;
+
+/**
+ * One product exactly as the products endpoints serialize it.
+ *
+ * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
+ * `Decimal(12,2)` and a float in the contract would lose precision at the first
+ * rounding, so the boundary fails a numeric price instead of silently rounding
+ * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
+ * counts; `description`, `photoUrl` and `categoryId` are nullable because a
+ * product can live without them.
+ *
+ * `measureUnit` is how the lots of the product are measured, and it travels
+ * with every read and write (L19): the list renders `$ 5.900,00 / kg` from this
+ * value, never from an assumption about what the product is bought in.
+ */
+export const productSchema = object(productFields);
 
 /** One product, derived from the OpenAPI contract. */
 export type Product = components["schemas"]["Product"];
+
+/**
+ * One catalogue row: the product plus how many of its units are still
+ * `AVAILABLE` (L25).
+ *
+ * It is the figure the sale screen reads to decide how a product is sold. It is
+ * **optional** at the boundary because it arrived with the units read: a row
+ * without it is read as "no units to offer", which is exactly what the sale did
+ * before this field existed. It is not a silent loosening — the server still
+ * refuses a loose sale of a unit-managed product with `400 units_required`, and
+ * the form maps that code to Spanish — but it keeps a catalogue without the
+ * counter usable instead of failing the whole list.
+ *
+ * Only this counter is validated of the derived `ProductCosts`: the costs and
+ * the margin belong to the detail read, which asks for them when it needs them.
+ */
+export type ProductListItem = Product & { availableUnits: number };
+
+/**
+ * One catalogue row as the boundary validates it, derived from the contract's
+ * `ProductListItem`. A counter of the wrong type is still a shape change and
+ * fails here; only its absence is tolerated.
+ */
+export const productListItemSchema = object({
+	...productFields,
+	// Required, exactly like the contract: an absent counter is a shape change,
+	// not "zero units". Reading it as zero would offer a loose sale that the
+	// server then refuses with `units_required`.
+	availableUnits: number(),
+});
 
 /** Body of `POST /companies/{companyId}/products`, derived from the contract. */
 export type CreateProductRequest =
@@ -374,10 +410,10 @@ export type UpdateProductRequest =
 	components["schemas"]["UpdateProductRequest"];
 
 /** Shape of `GET /companies/{companyId}/products`: the company's catalogue. */
-export const productsResponseSchema = array(productSchema);
+export const productsResponseSchema = array(productListItemSchema);
 
 /** `GET /companies/{companyId}/products` response, derived from the contract. */
-export type ProductsResponse = components["schemas"]["Product"][];
+export type ProductsResponse = ProductListItem[];
 
 /**
  * Validates the catalogue at the boundary.
@@ -663,6 +699,57 @@ export type CreateLotRequest = components["schemas"]["CreateLotRequest"];
  */
 export function parseLot(data: unknown): StockLot {
 	const result = safeParse(lotSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One physical unit of a product as `GET /products/{id}/units` answers it
+ * (L23): which unit it is, how much it measures, what it cost and where it came
+ * from.
+ *
+ * `measure` and `cost` are **decimal strings**, never numbers, for the same
+ * reason as the lot's: they are weight and money. `status` is a closed list — a
+ * unit is available until a sale takes it (S2) — so an unknown value fails here
+ * instead of reaching a checkbox the person could tick for a unit that already
+ * left. `lotId` and `receivedAt` are kept because they are what orders the list
+ * (oldest stock first) and what a sale would refer back to.
+ */
+export const productUnitSchema = object({
+	id: string(),
+	code: string(),
+	measure: string(),
+	cost: string(),
+	status: picklist(["AVAILABLE", "SOLD"]),
+	lotId: string(),
+	receivedAt: string(),
+});
+
+/** One unit of a product, derived from the OpenAPI contract. */
+export type ProductUnit = components["schemas"]["ProductUnit"];
+
+/**
+ * Shape of `GET /companies/{companyId}/products/{productId}/units`: the units
+ * of one product, oldest lot first and then by code, as the API orders them.
+ */
+export const productUnitsResponseSchema = array(productUnitSchema);
+
+/** `GET .../products/{productId}/units` response, derived from the contract. */
+export type ProductUnitsResponse = ProductUnit[];
+
+/**
+ * Validates the units of a product at the boundary.
+ *
+ * Same contract as {@link parseLot}: a shape change fails as an {@link ApiError}
+ * with a readable message instead of reaching the sale list, and a numeric
+ * `measure` never gets formatted as a weight. An empty list is valid and means
+ * "this product has no units in the requested status".
+ */
+export function parseProductUnits(data: unknown): ProductUnitsResponse {
+	const result = safeParse(productUnitsResponseSchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

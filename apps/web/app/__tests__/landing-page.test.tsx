@@ -74,6 +74,21 @@ describe("landing page", () => {
 		).toBeGreaterThanOrEqual(3);
 	});
 
+	it("gives a visitor a way to write to the person behind the product", () => {
+		render(<Home />);
+
+		const write = screen.getByRole("link", { name: /escribime/i });
+
+		expect(write.getAttribute("href")).toBe(
+			"mailto:alexjesus-4856@hotmail.com?subject=Inventory%20Manager",
+		);
+		// The address is also plain text: a device without a mail client still
+		// has to be able to read or copy it.
+		expect(screen.getByText("alexjesus-4856@hotmail.com").textContent).toBe(
+			"alexjesus-4856@hotmail.com",
+		);
+	});
+
 	it("keeps the navigation links inside the page, never to a dead route", () => {
 		render(<Home />);
 

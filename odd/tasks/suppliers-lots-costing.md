@@ -48,7 +48,7 @@ S10. **Contrato al día.** `apps/api/openapi.yaml` documenta los endpoints nuevo
 | T3 | S3, S6, S8 | Lotes: entidad con sus unidades, puerto, adaptadores, `RegisterLotUseCase` (lote + unidades + movimiento `IN` en una sola operación), validador con la lista de pesos, tests de la invariante de la suma y del stock | C3 |
 | T4 | S1, S2 | Venta: `unitPrice` obligatorio en `OUT`, selección de unidades (`unitIds`), marcado `SOLD`, vínculo `movement_units`, y el margen derivado en las lecturas; tests | C4 |
 | T5 | S1, S9 | Lecturas: costo por medida y margen en el detalle de producto, `$/medida` del último lote por proveedor, histórico de ventas por cliente (reusa el filtro `customerId` existente); tests | C5 |
-| T6 | S10 | OpenAPI + regeneración del cliente tipado del front | C6 |
+| T6 | S10 | OpenAPI + regeneración del cliente tipado del front | con cada rebanada |
 | T7 | S5 | Front (fase siguiente, fuera de este documento por ahora) | — |
 
 ## Log
@@ -88,6 +88,11 @@ L7 (decisión de atomicidad de T3): lote + unidades + movimiento `IN` + incremen
 son **una sola operación** del adaptador (`$transaction`), no tres llamadas encadenadas: si la última falla, no
 puede quedar un lote huérfano ni stock descuadrado. Las reglas (cantidad de unidades, costos, suma) viven en
 la entidad, para que ni el adaptador ni el controlador las reimplementen.
+
+L8 (corrección del plan): la tarea T6 original ("contrato al final") era inviable: `tests/openapi.test.ts` exige que
+el router y el documento cubran **exactamente** las mismas operaciones, en los dos sentidos, así que una rebanada
+no puede existir sin su contrato. Se decidió (y se aplicó en T2) que **el contrato viaja con cada rebanada**; la
+regeneración de `apps/web/lib/api/openapi.d.ts` también.
 
 L5 (riesgo asumido): `StockMovement.unitPrice` es nullable para no inventar precios del pasado; el margen de
 las filas viejas se informa como "sin costo". La alternativa (backfill con el precio de lista actual) habría

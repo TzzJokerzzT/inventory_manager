@@ -49,7 +49,7 @@ S10. **Contrato al día.** `apps/api/openapi.yaml` documenta los endpoints nuevo
 | T4 | S1, S2 | Venta: `unitPrice` obligatorio en `OUT`, selección de unidades (`unitIds`), marcado `SOLD`, vínculo `movement_units`, y el margen derivado en las lecturas; tests | C4 |
 | T5 | S1, S9 | Lecturas: costo por medida y margen en el detalle de producto, `$/medida` del último lote por proveedor, histórico de ventas por cliente (reusa el filtro `customerId` existente); tests | C5 |
 | T6 | S10 | OpenAPI + regeneración del cliente tipado del front | con cada rebanada |
-| T7 | S5 | Front (fase siguiente, fuera de este documento por ahora) | — |
+| T7 | S5 | Front: proveedores, entrada de lote con pegado de pesos, venta con precio y reportes | pendiente |
 
 ## Log
 
@@ -88,6 +88,29 @@ L7 (decisión de atomicidad de T3): lote + unidades + movimiento `IN` + incremen
 son **una sola operación** del adaptador (`$transaction`), no tres llamadas encadenadas: si la última falla, no
 puede quedar un lote huérfano ni stock descuadrado. Las reglas (cantidad de unidades, costos, suma) viven en
 la entidad, para que ni el adaptador ni el controlador las reimplementen.
+
+L13 (cierre del backend): las cinco rebanadas de datos y API están commiteadas (`f9bb1b3` esquema, `c5dd5d4`
+proveedores, `b59ad34` lotes, `a07c705` venta, `7b23f0d` lecturas). Superficie resultante:
+
+- `POST|GET /companies/{id}/suppliers`, `PATCH|DELETE /companies/{id}/suppliers/{supplierId}`
+- `POST /companies/{id}/lots` (medida derivada de los pesos, una transacción)
+- `POST /companies/{id}/movements` con `unitPrice` + `unitIds` para productos con rollos
+- `GET /companies/{id}/movements` con `unitPrice`, `units` y `margin` por venta (histórico por cliente con
+  `?customerId=`)
+- `GET /companies/{id}/products` y `/{productId}` con `costPerMeasure`, `unitCost`, `marginPerUnit` y, en el
+  detalle, los últimos 50 lotes con proveedor
+- `GET /companies/{id}/suppliers` con `lastLot` por proveedor
+
+Verificación al cierre: API **74 suites / 1151 tests**, web **850**, typecheck del monorepo, `biome` limpio, y el
+cliente tipado del front regenerado en cada rebanada.
+
+L14 (riesgo declarado en T5): las lecturas Prisma (`lotUnit.groupBy`, `_count` filtrado, `distinct`) están
+verificadas por forma de query y tipos, **no** contra un Postgres real; el rollback de las transacciones
+tampoco se ejercitó con base. Es deuda de verificación a saldar con la primera migración aplicada.
+
+L15 (tamaño de revisión): la rebanada de lecturas pasó las 400 líneas (~1.3k). Si se abre PR, los cortes
+naturales son: (1) margen del movimiento, (2) costos y lotes del producto, (3) `lastLot` del proveedor y
+contrato.
 
 L11 (fórmula del margen, T5): `unitPrice` es el precio de **una** unidad, así que el ingreso de la venta es
 `unitPrice × quantity` y el costo es la suma de `cost` de las unidades que salieron. `margin = ingreso − costo`

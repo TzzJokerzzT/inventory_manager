@@ -37,6 +37,14 @@ describe("StockMovement.create", () => {
 		expect(movement({ type: "OUT" }).type).toBe("OUT");
 	});
 
+	it("normalizes the optional lot reference of an entry", () => {
+		// S6: the `IN` of a purchase names the lot it brought in. Absent and blank
+		// both mean "no lot", so an exit never invents one.
+		expect(movement().lotId).toBeNull();
+		expect(movement({ lotId: "   " }).lotId).toBeNull();
+		expect(movement({ lotId: " lot-1 " }).lotId).toBe("lot-1");
+	});
+
 	it("stamps createdAt server-side when the caller does not supply one", () => {
 		const before = Date.now();
 		const created = movement({ createdAt: undefined });
@@ -137,6 +145,7 @@ describe("StockMovement.toJSON", () => {
 			reason: "Compra",
 			userId: "user-1",
 			customerId: null,
+			lotId: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
 		// The product, the actor and the resolved customer are the view's

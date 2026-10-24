@@ -73,6 +73,7 @@ function movementRow(overrides: Record<string, unknown> = {}) {
 		reason: null,
 		userId: "user-1",
 		customerId: null,
+		lotId: null,
 		createdAt: CREATED_AT,
 		...overrides,
 	};
@@ -127,6 +128,7 @@ describe("PrismaStockMovementRepository.register", () => {
 				reason: null,
 				userId: "user-1",
 				customerId: null,
+				lotId: null,
 				createdAt: CREATED_AT,
 			},
 		});
@@ -337,6 +339,7 @@ describe("PrismaStockMovementRepository.findByCompany", () => {
 			reason: "Venta",
 			userId: "user-1",
 			customerId: null,
+			lotId: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
 	});
@@ -392,6 +395,7 @@ describe("PrismaStockMovementRepository.findSince", () => {
 			reason: null,
 			userId: "user-1",
 			customerId: null,
+			lotId: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
 	});

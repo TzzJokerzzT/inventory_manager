@@ -124,6 +124,7 @@ describe("POST /companies/:companyId/media/signature", () => {
 			products: {} as never,
 			movements: {} as never,
 			suppliers: {} as never,
+			lots: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,

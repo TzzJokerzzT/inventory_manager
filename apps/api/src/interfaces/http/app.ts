@@ -37,6 +37,7 @@ import type { LoginWithCredentialsUseCase } from "../../application/use-cases/lo
 import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
 import type { PurgeProductUseCase } from "../../application/use-cases/purge-product.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
+import type { RegisterLotUseCase } from "../../application/use-cases/register-lot.js";
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RestoreProductUseCase } from "../../application/use-cases/restore-product.js";
@@ -55,6 +56,7 @@ import { createCompanyController } from "./controllers/company-controller.js";
 import { createCustomerController } from "./controllers/customer-controller.js";
 import { createMeController } from "./controllers/me-controller.js";
 import { createProductController } from "./controllers/product-controller.js";
+import { createLotController } from "./controllers/stock-lot-controller.js";
 import { createStockMovementController } from "./controllers/stock-movement-controller.js";
 import { createSupplierController } from "./controllers/supplier-controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
@@ -165,6 +167,14 @@ export interface AppDependencies {
 		update: UpdateSupplierUseCase;
 		remove: DeleteSupplierUseCase;
 	};
+	/**
+	 * The purchase lot slice of S6. One field, because the slice has one write and
+	 * the routes that consume it are all mounted together on the company-scoped
+	 * router.
+	 */
+	lots: {
+		register: RegisterLotUseCase;
+	};
 	authCookieOptions: AuthCookieOptions;
 	/**
 	 * Browser origin allowed to call the API. It has to be an explicit origin
@@ -207,6 +217,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 			customers: createCustomerController(dependencies.customers),
 			movements: createStockMovementController(dependencies.movements),
 			suppliers: createSupplierController(dependencies.suppliers),
+			lots: createLotController(dependencies.lots),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,
 				updateUserFullName: dependencies.updateUserFullName,

@@ -28,6 +28,7 @@ import { LoginWithCredentialsUseCase } from "./application/use-cases/login-with-
 import { MarkNotificationsReadUseCase } from "./application/use-cases/mark-notifications-read.js";
 import { PurgeProductUseCase } from "./application/use-cases/purge-product.js";
 import { RefreshSessionUseCase } from "./application/use-cases/refresh-session.js";
+import { RegisterLotUseCase } from "./application/use-cases/register-lot.js";
 import { RegisterStockMovementUseCase } from "./application/use-cases/register-stock-movement.js";
 import { RegisterUserUseCase } from "./application/use-cases/register-user.js";
 import { RestoreProductUseCase } from "./application/use-cases/restore-product.js";
@@ -47,6 +48,7 @@ import { PrismaMembershipRepository } from "./infrastructure/database/prisma-mem
 import { PrismaNotificationRepository } from "./infrastructure/database/prisma-notification-repository.js";
 import { PrismaProductRepository } from "./infrastructure/database/prisma-product-repository.js";
 import { PrismaSessionRepository } from "./infrastructure/database/prisma-session-repository.js";
+import { PrismaStockLotRepository } from "./infrastructure/database/prisma-stock-lot-repository.js";
 import { PrismaStockMovementRepository } from "./infrastructure/database/prisma-stock-movement-repository.js";
 import { PrismaSupplierRepository } from "./infrastructure/database/prisma-supplier-repository.js";
 import { PrismaUserRepository } from "./infrastructure/database/prisma-user-repository.js";
@@ -72,6 +74,7 @@ const productRepository = new PrismaProductRepository({ prisma });
 const customerRepository = new PrismaCustomerRepository({ prisma });
 const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
 const supplierRepository = new PrismaSupplierRepository({ prisma });
+const stockLotRepository = new PrismaStockLotRepository({ prisma });
 const sessionRepository = new PrismaSessionRepository({ prisma });
 
 // `env.auth0` values are optional outside production (see `config/env.ts`),
@@ -223,6 +226,15 @@ const app = buildApp({
 		create: new CreateSupplierUseCase({ supplierRepository }),
 		update: new UpdateSupplierUseCase({ supplierRepository }),
 		remove: new DeleteSupplierUseCase({ supplierRepository }),
+	},
+	// A lot is written by the entity (derived total, per-unit costs) and the
+	// adapter owns the single transaction that also moves the stock (L7).
+	lots: {
+		register: new RegisterLotUseCase({
+			productRepository,
+			supplierRepository,
+			stockLotRepository,
+		}),
 	},
 	mediaUploadSigner,
 	authCookieOptions,

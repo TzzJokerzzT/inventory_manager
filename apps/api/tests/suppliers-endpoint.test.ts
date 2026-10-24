@@ -115,6 +115,7 @@ describe("supplier endpoints", () => {
 				update: new UpdateSupplierUseCase({ supplierRepository }),
 				remove: new DeleteSupplierUseCase({ supplierRepository }),
 			},
+			lots: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,
 				audience: TEST_AUDIENCE,

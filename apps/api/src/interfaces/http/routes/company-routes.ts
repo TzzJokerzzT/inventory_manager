@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { CompanyController } from "../controllers/company-controller.js";
 import type { CustomerController } from "../controllers/customer-controller.js";
 import type { ProductController } from "../controllers/product-controller.js";
+import type { LotController } from "../controllers/stock-lot-controller.js";
 import type { StockMovementController } from "../controllers/stock-movement-controller.js";
 import type { SupplierController } from "../controllers/supplier-controller.js";
 
@@ -20,6 +21,7 @@ export function companyRoutes(
 	customers: CustomerController,
 	movements: StockMovementController,
 	suppliers: SupplierController,
+	lots: LotController,
 ): Router {
 	const router = Router();
 	router.post("/companies", controller.create);
@@ -85,6 +87,13 @@ export function companyRoutes(
 	companyScoped.post("/suppliers", suppliers.create);
 	companyScoped.patch("/suppliers/:supplierId", suppliers.update);
 	companyScoped.delete("/suppliers/:supplierId", suppliers.remove);
+	// Purchase lot routes. Registering a lot is the way measured stock enters the
+	// company (S6): it is a catalogue write (`manage_products`, enforced by the
+	// use case) and it shares the protected sub-router, so the company comes from
+	// the path and the membership, never from the body. There is no edit nor
+	// delete route on purpose -- a lot is the trace of a purchase, and its stock
+	// only moves through the ledger.
+	companyScoped.post("/lots", lots.create);
 	// Stock movement routes. They share the protected sub-router, so they
 	// inherit `requireCompanyContext`: any ACTIVE membership registers and reads
 	// (S6), and the company comes from the path, never from the body. There is

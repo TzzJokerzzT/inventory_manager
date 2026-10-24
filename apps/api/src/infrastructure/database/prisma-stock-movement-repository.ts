@@ -96,6 +96,7 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
 						reason: movement.reason,
 						userId: movement.userId,
 						customerId: movement.customerId,
+						lotId: movement.lotId,
 						createdAt: movement.createdAt,
 					},
 				});
@@ -184,6 +185,7 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
 			reason: row.reason,
 			userId: row.userId,
 			customerId: row.customerId,
+			lotId: row.lotId,
 			createdAt: row.createdAt,
 		});
 	}

@@ -69,6 +69,7 @@ describe("requireAuth on the company routes", () => {
 			products: {} as never,
 			movements: {} as never,
 			suppliers: {} as never,
+			lots: {} as never,
 			authCookieOptions: {} as never,
 			corsOrigin: TEST_WEB_ORIGIN,
 		});

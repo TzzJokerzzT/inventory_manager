@@ -18,6 +18,8 @@ export interface StockMovementProps {
 	userId: string;
 	/** The customer of a sale, or `null` for an anonymous exit or any entry. */
 	customerId: string | null;
+	/** The lot an entry brought in, or `null` for an exit (S6). */
+	lotId: string | null;
 	createdAt: Date;
 }
 
@@ -36,6 +38,11 @@ export interface CreateStockMovementProps {
 	 * use case enforces that rule, the entity only normalizes the id.
 	 */
 	customerId?: string | null;
+	/**
+	 * The purchase lot this entry brought in (S6). Only an `IN` created by the lot
+	 * registration carries one; the entity only normalizes the id.
+	 */
+	lotId?: string | null;
 	id?: string;
 	/** Server-owned: movements are never backdated by a client. */
 	createdAt?: Date;
@@ -92,19 +99,17 @@ function normalizeReason(reason: string | null | undefined): string | null {
 }
 
 /**
- * Normalizes an optional customer reference: absent and whitespace-only values
- * are stored as `null`, so "no customer" has exactly one representation.
+ * Normalizes an optional reference to another row: absent and whitespace-only
+ * values are stored as `null`, so "no row" has exactly one representation.
  */
-function normalizeCustomerId(
-	customerId: string | null | undefined,
-): string | null {
-	if (customerId === null || customerId === undefined) {
+function normalizeOptionalId(value: string | null | undefined): string | null {
+	if (value === null || value === undefined) {
 		return null;
 	}
 
-	const value = customerId.trim();
+	const normalized = value.trim();
 
-	return value.length === 0 ? null : value;
+	return normalized.length === 0 ? null : normalized;
 }
 
 /**
@@ -116,7 +121,9 @@ function normalizeCustomerId(
  * quantity that is an integer in `1..1_000_000`, a trimmed reason of at most
  * 300 characters (empty means "no reason") and a server-owned `createdAt`.
  * The optional `customerId` is trimmed and an empty one becomes `null`; whether
- * a customer is allowed at all is the use case's rule (only exits).
+ * a customer is allowed at all is the use case's rule (only exits). The
+ * optional `lotId` is normalized the same way and only the lot registration
+ * sets it: an entry is the movement of a purchase lot (S6).
  *
  * There is no mutator on purpose: a movement is never edited nor deleted, it
  * is the trace of what happened to the stock. No Express, Prisma or HTTP
@@ -134,7 +141,8 @@ export class StockMovement {
 			quantity: assertQuantity(input.quantity),
 			reason: normalizeReason(input.reason),
 			userId: assertIdentifier(input.userId, "user id"),
-			customerId: normalizeCustomerId(input.customerId),
+			customerId: normalizeOptionalId(input.customerId),
+			lotId: normalizeOptionalId(input.lotId),
 			createdAt: input.createdAt ?? new Date(),
 		});
 	}
@@ -171,6 +179,10 @@ export class StockMovement {
 		return this.props.customerId;
 	}
 
+	get lotId(): string | null {
+		return this.props.lotId;
+	}
+
 	get createdAt(): Date {
 		return this.props.createdAt;
 	}
@@ -189,6 +201,7 @@ export class StockMovement {
 		reason: string | null;
 		userId: string;
 		customerId: string | null;
+		lotId: string | null;
 		createdAt: string;
 	} {
 		return {
@@ -200,6 +213,7 @@ export class StockMovement {
 			reason: this.reason,
 			userId: this.userId,
 			customerId: this.customerId,
+			lotId: this.lotId,
 			createdAt: this.createdAt.toISOString(),
 		};
 	}

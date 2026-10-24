@@ -22,6 +22,7 @@ tags:
   - name: movements
   - name: customers
   - name: suppliers
+  - name: lots
   - name: reports
   - name: me
 
@@ -1731,6 +1732,84 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /companies/{companyId}/lots:
+    post:
+      tags: [lots]
+      summary: Register a purchase lot
+      description: |
+        Records one purchase: the lot, its physical units, the `IN` movement
+        that brings them in and the increment of the product's stock, all in one
+        operation. Any of the four failing leaves nothing behind.
+
+        The `measureTotal` is **derived** from the units' `measures` and is not
+        part of the body; sending it answers `400 measure_total_derived`. Each
+        unit's `cost` is its `measure` times `costPerMeasure` rounded to two
+        decimals, and the last unit absorbs the rounding difference so the unit
+        costs add up exactly to `measureTotal × costPerMeasure`.
+
+        The stock still counts whole units: the movement's `quantity` is the
+        number of units, never the weight.
+
+        Registering a lot is `manage_products`: an OWNER or an ADMIN writes, a
+        MEMBER reads. The product and the supplier must both be active in the
+        company the caller has context for.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLotRequest"
+      responses:
+        "201":
+          description: The lot, its derived total and its units.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockLot"
+        "400":
+          description: |
+            A `measureTotal` was sent (`measure_total_derived`), or the body is
+            invalid: no measures, a non-positive measure, a measure with more
+            than three decimals, a `costPerMeasure` that is not a decimal
+            string, or a malformed id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The token resolves to no user (`user_not_provisioned`), the caller
+            has no ACTIVE membership (`company_access_forbidden`), or the role
+            is a MEMBER (`insufficient_role`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "404":
+          description: |
+            The product (`product_not_found`) or the supplier
+            (`supplier_not_found`) is not active in this company. Nothing was
+            written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodedError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /companies/{companyId}/reports/movements:
     get:
       tags: [reports]
@@ -2660,6 +2739,141 @@ components:
         contact:
           type: string
           maxLength: 120
+          nullable: true
+
+    StockLot:
+      type: object
+      required:
+        [id, companyId, productId, supplierId, receivedAt, measureTotal, costPerMeasure, unitCount, note, createdAt, units]
+      description: |
+        A purchase lot: one delivery of a measured product from one supplier
+        (S6). `measureTotal` is the sum of its units' `measure` and is never
+        sent by the client; `costPerMeasure` is the price of one measure;
+        `unitCount` is the number of physical units and is what the `IN`
+        movement adds to the stock.
+
+        Each unit's `cost` is its own `measure × costPerMeasure` rounded to two
+        decimals, and the last unit absorbs the rounding difference, so the unit
+        costs add up exactly to `measureTotal × costPerMeasure` (S3).
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        receivedAt:
+          type: string
+          format: date-time
+        measureTotal:
+          type: string
+          pattern: "^\\d{1,9}\\.\\d{3}$"
+          example: "84.500"
+          description: Decimal string with exactly three decimals, derived from the units.
+        costPerMeasure:
+          type: string
+          pattern: "^\\d{1,10}\\.\\d{2}$"
+          example: "5900.00"
+          description: Decimal string with exactly two decimals.
+        unitCount:
+          type: integer
+          minimum: 1
+          maximum: 500
+          description: The number of physical units, i.e. what the stock counts.
+        note:
+          type: string
+          maxLength: 300
+          nullable: true
+          description: |
+            Free annotation of the purchase. It also travels to the ledger as
+            the reason of the `IN` movement.
+        createdAt:
+          type: string
+          format: date-time
+        units:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockLotUnit"
+
+    StockLotUnit:
+      type: object
+      required: [id, code, measure, cost, status]
+      description: |
+        One physical unit of a lot -- a roll, for example. It carries its own
+        measure, so its cost is its own instead of an average of the lot. The
+        code is generated from the position (`R-01`, `R-02`, ...), and `status`
+        is `AVAILABLE` until a sale takes the unit (S2: whole units only).
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          maxLength: 32
+          example: R-01
+        measure:
+          type: string
+          pattern: "^\\d{1,9}\\.\\d{3}$"
+          example: "12.500"
+          description: Decimal string with exactly three decimals, always positive.
+        cost:
+          type: string
+          pattern: "^\\d{1,10}\\.\\d{2}$"
+          example: "73750.00"
+          description: Decimal string with exactly two decimals.
+        status:
+          type: string
+          enum: [AVAILABLE, SOLD]
+
+    CreateLotRequest:
+      type: object
+      required: [productId, supplierId, costPerMeasure, measures]
+      description: |
+        `measureTotal` is **derived** from `measures` and is not part of the
+        body: a typed total could disagree with the units it summarizes, so
+        sending one answers `400 measure_total_derived` instead of being
+        ignored.
+
+        Unit codes are generated by the API from the position, so the client
+        sends one measure per unit and nothing else.
+      properties:
+        productId:
+          type: string
+          format: uuid
+        supplierId:
+          type: string
+          format: uuid
+        costPerMeasure:
+          type: string
+          pattern: "^\\d{1,10}(\\.\\d{1,2})?$"
+          example: "5900.00"
+          description: Price of one measure, greater than 0.
+        measures:
+          type: array
+          minItems: 1
+          maxItems: 500
+          description: |
+            One measure per physical unit, in the product's unit. Every value
+            must be greater than 0, with at most three decimals.
+          items:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+            maximum: 999999999.999
+            example: 12.5
+        receivedAt:
+          type: string
+          format: date-time
+          description: Defaults to the moment the lot is registered.
+        note:
+          type: string
+          maxLength: 300
           nullable: true
 
     Customer:

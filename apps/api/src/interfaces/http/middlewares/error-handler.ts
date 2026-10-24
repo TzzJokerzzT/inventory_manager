@@ -26,6 +26,10 @@ import {
 	LastActiveOwnerError,
 } from "../../../domain/errors/last-active-owner-error.js";
 import {
+	MEASURE_TOTAL_DERIVED_CODE,
+	MeasureTotalDerivedError,
+} from "../../../domain/errors/measure-total-derived-error.js";
+import {
 	MEMBERSHIP_ALREADY_EXISTS_CODE,
 	MembershipAlreadyExistsError,
 } from "../../../domain/errors/membership-already-exists-error.js";
@@ -122,6 +126,19 @@ export const errorHandler: ErrorRequestHandler = (
 			error: {
 				message: "Invalid request body",
 				issues: error.issues.map((issue) => issue.message),
+			},
+		});
+		return;
+	}
+
+	if (error instanceof MeasureTotalDerivedError) {
+		// 400, not 422: the value could be well formed, it simply does not belong
+		// to the request. The total of a lot is derived from its units (L6), and
+		// ignoring the field silently would let the caller believe it was stored.
+		response.status(StatusCodes.BAD_REQUEST).json({
+			error: {
+				message: error.message,
+				code: MEASURE_TOTAL_DERIVED_CODE,
 			},
 		});
 		return;

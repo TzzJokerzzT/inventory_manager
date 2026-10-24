@@ -4,6 +4,7 @@ import type { CompanyController } from "../controllers/company-controller.js";
 import type { CustomerController } from "../controllers/customer-controller.js";
 import type { MeController } from "../controllers/me-controller.js";
 import type { ProductController } from "../controllers/product-controller.js";
+import type { LotController } from "../controllers/stock-lot-controller.js";
 import type { StockMovementController } from "../controllers/stock-movement-controller.js";
 import type { SupplierController } from "../controllers/supplier-controller.js";
 import { authRoutes } from "./auth-routes.js";
@@ -17,6 +18,7 @@ export interface HttpRoutesDependencies {
 	customers: CustomerController;
 	movements: StockMovementController;
 	suppliers: SupplierController;
+	lots: LotController;
 	me: MeController;
 	auth: AuthController;
 	requireAuth: RequestHandler;
@@ -46,6 +48,7 @@ export function buildRoutes(dependencies: HttpRoutesDependencies): Router {
 			dependencies.customers,
 			dependencies.movements,
 			dependencies.suppliers,
+			dependencies.lots,
 		),
 	);
 	return router;

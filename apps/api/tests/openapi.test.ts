@@ -211,6 +211,9 @@ function buildRoutesForEnumeration(): Router {
 			update: noop,
 			remove: noop,
 		},
+		lots: {
+			create: noop,
+		},
 		me: {
 			get: noop,
 			update: noop,
@@ -273,6 +276,7 @@ function createTestApp() {
 		products: {} as never,
 		movements: {} as never,
 		suppliers: {} as never,
+		lots: {} as never,
 		authCookieOptions: {
 			httpOnly: true,
 			secure: false,

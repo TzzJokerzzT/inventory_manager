@@ -54,6 +54,7 @@ function createTestApp() {
 		products: {} as never,
 		movements: {} as never,
 		suppliers: {} as never,
+		lots: {} as never,
 		authCookieOptions: cookieOptions,
 		corsOrigin: ALLOWED_ORIGIN,
 	});

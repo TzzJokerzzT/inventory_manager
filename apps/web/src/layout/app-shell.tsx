@@ -5,18 +5,18 @@ import {
 	ArrowRightLeft,
 	ChevronsLeft,
 	LayoutDashboard,
-	LogOut,
 	type LucideIcon,
 	Package,
+	Truck,
 	Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
-import { useLogout } from "@/src/features/auth/logout/use-logout";
 import { CompanySwitcher } from "@/src/features/company/components/company-switcher";
+import { UserMenu } from "./user-menu";
 
 type NavLinkEntry = { href: string; label: string; icon: LucideIcon };
 
@@ -33,6 +33,7 @@ const navigation: NavEntry[] = [
 	{ href: "/dashboard/products", label: "Productos", icon: Package },
 	{ href: "/dashboard/movements", label: "Movimientos", icon: ArrowRightLeft },
 	{ href: "/dashboard/clients", label: "Clientes", icon: Users },
+	{ href: "/dashboard/providers", label: "Proveedores", icon: Truck },
 	{ href: "/dashboard/user", label: "Usuario", icon: Users },
 ];
 
@@ -42,7 +43,7 @@ function isLink(entry: NavEntry): entry is NavLinkEntry {
 
 /**
  * The application shell: dark sidebar with the navigation, a topbar carrying
- * the company switcher, the user area (logout) and the theme toggle, plus the
+ * the company switcher, the user menu (account actions and logout) and the theme toggle, plus the
  * content area.
  *
  * The shell is pinned to the viewport (`fixed inset-0`) instead of merely being
@@ -61,7 +62,6 @@ function isLink(entry: NavEntry): entry is NavLinkEntry {
  * its own.
  */
 export function AppShell({ children }: { children: ReactNode }) {
-	const logout = useLogout();
 	const pathname = usePathname();
 	const [expanded, setExpanded] = useState(false);
 	const asideId = useId();
@@ -104,8 +104,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 					}`}
 				>
 					<div className="flex items-center gap-3 px-4 py-5 lg:px-6">
-						<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary">
-							<div className="size-3 rounded-[3px] bg-white" />
+						{/*
+						 * The mark is the same file the tab icon and the share card
+						 * use. `size-full` + `object-contain` keep it inside the 32px
+						 * box: next/image renders the intrinsic 300px otherwise.
+						 */}
+						<div className="flex size-8 shrink-0 items-center justify-center">
+							<Image
+								src="/logo.png"
+								alt="Inventory Manager"
+								width={64}
+								height={64}
+								className="size-full object-contain"
+							/>
 						</div>
 						<span
 							className={`truncate text-base font-bold text-sidebar-foreground ${collapsibleText}`}
@@ -193,16 +204,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 						<CompanySwitcher />
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
-						<Button
-							type="button"
-							onClick={() => logout()}
-							variant="outline"
-							aria-label="Salir"
-							className="rounded-md"
-						>
-							<LogOut aria-hidden="true" className="size-4" />
-							<span className="hidden sm:inline">Salir</span>
-						</Button>
+						<UserMenu />
 						<ThemeToggle />
 					</div>
 				</header>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Alert, type Column, DataTable } from "@/components/design-system";
 import { Button } from "@/components/ui/button";
@@ -13,8 +14,6 @@ import { LazyMotionTag } from "@/src/shared/components/Animation";
 import { SectionTitle } from "@/src/shared/components/SectionTitle";
 import { ViewHeader } from "@/src/shared/components/ViewHeader";
 import { useCustomers } from "./api/use-customers";
-import { CustomerDetailPanel } from "./components/customer-detail-panel";
-import { CustomerFormPanel } from "./components/customer-form-panel";
 import { CustomerRowActions } from "./components/customer-row-actions";
 import { CustomerSearch } from "./components/customer-search";
 
@@ -48,12 +47,8 @@ const EMPTY_VALUE = "—";
  */
 export function Client() {
 	const company = useActiveCompany();
+	const router = useRouter();
 	const [search, setSearch] = useState("");
-	const [isFormOpen, setIsFormOpen] = useState(false);
-	const [editingId, setEditingId] = useState<string | undefined>(undefined);
-	const [detailCustomer, setDetailCustomer] = useState<
-		CustomerModel | undefined
-	>(undefined);
 	const debouncedSearch = useDebouncedValue(search, 300);
 
 	const companyId = company?.id;
@@ -61,30 +56,27 @@ export function Client() {
 	const customers = useCustomers(companyId, debouncedSearch);
 	const rows = customers.data ?? [];
 
-	function openCreateForm() {
-		setDetailCustomer(undefined);
-		setEditingId(undefined);
-		setIsFormOpen(true);
+	/**
+	 * Writing navigates: the form has its own address now
+	 * (`/dashboard/clients/create` and `/dashboard/clients/[id]/edit`), so a
+	 * reload keeps it and the browser's back button returns to the list. The
+	 * detail panel stays inline because it is a read of the row already on
+	 * screen.
+	 */
+	function goToCreate() {
+		router.push("/dashboard/clients/create");
 	}
 
-	function openEditForm(customer: CustomerModel) {
-		setDetailCustomer(undefined);
-		setEditingId(customer.id);
-		setIsFormOpen(true);
+	function goToEdit(customer: CustomerModel) {
+		router.push(`/dashboard/clients/${customer.id}/edit`);
 	}
 
-	function closeForm() {
-		setIsFormOpen(false);
-		setEditingId(undefined);
-	}
-
-	function openDetail(customer: CustomerModel) {
-		closeForm();
-		setDetailCustomer(customer);
-	}
-
-	function closeDetail() {
-		setDetailCustomer(undefined);
+	/**
+	 * The detail is a page too: the row already carries the id, and the page
+	 * reads the customer itself, so a reload or a shared link works.
+	 */
+	function goToDetails(customer: CustomerModel) {
+		router.push(`/dashboard/clients/${customer.id}/details`);
 	}
 
 	const columns: Column<CustomerModel>[] = [
@@ -119,8 +111,8 @@ export function Client() {
 				<CustomerRowActions
 					companyId={companyId}
 					customer={row}
-					onEdit={openEditForm}
-					onDetail={openDetail}
+					onEdit={goToEdit}
+					onDetail={goToDetails}
 				/>
 			),
 		});
@@ -148,31 +140,12 @@ export function Client() {
 					type="button"
 					className="h-12 w-full sm:w-auto"
 					disabled={companyId === undefined}
-					aria-expanded={isFormOpen && editingId === undefined}
-					onClick={
-						isFormOpen && editingId === undefined ? closeForm : openCreateForm
-					}
+					onClick={goToCreate}
 				>
 					<Plus className="mr-2 size-5" />
 					Nuevo Cliente
 				</Button>
 			</ViewHeader>
-
-			{isFormOpen && companyId ? (
-				<CustomerFormPanel
-					companyId={companyId}
-					customerId={editingId}
-					onDone={closeForm}
-				/>
-			) : null}
-
-			{detailCustomer && companyId ? (
-				<CustomerDetailPanel
-					companyId={companyId}
-					customer={detailCustomer}
-					onClose={closeDetail}
-				/>
-			) : null}
 
 			<CustomerSearch
 				value={search}

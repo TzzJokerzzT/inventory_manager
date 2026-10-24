@@ -16,6 +16,7 @@ import {
 import { AlertMessage } from "@/src/shared/components/AlertMessage";
 import { useRegister } from "../hooks/use-register";
 import { FALLBACK_ERROR } from "../utils/constants";
+import { TermsModal } from "./terms-modal";
 
 export function RegisterForm() {
 	const [values, setValues] = useState<RegisterValues>({
@@ -29,7 +30,13 @@ export function RegisterForm() {
 	// Errors only show after a submit attempt, so nothing appears while the
 	// person is still filling the form for the first time.
 	const [attempted, setAttempted] = useState(false);
+	const [showTerms, setTerms] = useState(false);
+	// The form is `noValidate`, so a native `required` on the checkbox does
+	// nothing: acceptance is a state this component owns and checks on submit.
+	const [acceptedTerms, setAcceptedTerms] = useState(false);
+	const [termsError, setTermsError] = useState<string | undefined>(undefined);
 	const emailRef = useRef<HTMLInputElement>(null);
+	const termsRef = useRef<HTMLInputElement>(null);
 	const passwordRef = useRef<HTMLInputElement>(null);
 	const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
@@ -60,6 +67,10 @@ export function RegisterForm() {
 		return () => clearTimeout(id);
 	}, [isSuccess, reset]);
 
+	function handleShowTerms() {
+		setTerms(() => !showTerms);
+	}
+
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setAttempted(true);
@@ -70,6 +81,16 @@ export function RegisterForm() {
 			focusFirstError(allErrors);
 			return;
 		}
+
+		if (!acceptedTerms) {
+			setTermsError(
+				"Debe que aceptar los términos y condiciones para crear tu cuenta.",
+			);
+			termsRef.current?.focus();
+			return;
+		}
+
+		setTermsError(undefined);
 
 		mutate(
 			{ email: values.email.trim(), password: values.password },
@@ -175,12 +196,38 @@ export function RegisterForm() {
 					/>
 				</div>
 
-				<div className="flex items-center justify-between gap-4">
-					<Checkbox
-						label="Acepto los términos y politicas de privacidad"
-						name="terms"
-					/>
+				<div className="flex flex-col gap-2">
+					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+						<Checkbox
+							ref={termsRef}
+							name="terms"
+							checked={acceptedTerms}
+							onChange={(event) => {
+								setAcceptedTerms(event.target.checked);
+								setTermsError(undefined);
+							}}
+							disabled={isPending}
+							label="Acepto los términos y condiciones"
+							required
+						/>
+						<Button
+							type="button"
+							variant="link"
+							size="sm"
+							onClick={handleShowTerms}
+						>
+							Leer los términos
+						</Button>
+					</div>
+
+					{termsError ? (
+						<p role="alert" className="text-sm text-danger-text">
+							{termsError}
+						</p>
+					) : null}
 				</div>
+
+				<TermsModal open={showTerms} onOpenChange={setTerms} />
 
 				<Button
 					size="ds"

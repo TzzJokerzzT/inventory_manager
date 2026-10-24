@@ -18,6 +18,15 @@ describe("formatPrice", () => {
 		expect(formatPrice("0.00")).toBe("$ 0,00");
 	});
 
+	it("keeps the sign of a negative amount", () => {
+		// El margen por unidad y el de una venta pueden ser negativos (L26): el
+		// signo es información que el usuario tiene que ver, no un error de
+		// formato que se descarte.
+		expect(formatPrice("-20500.00")).toBe("-$ 20.500,00");
+		expect(formatPrice("-1500")).toBe("-$ 1.500,00");
+		expect(formatPrice("-0.50")).toBe("-$ 0,50");
+	});
+
 	it("shows a value the contract does not allow without crashing", () => {
 		expect(formatPrice("—")).toBe("$ —");
 	});

@@ -6,7 +6,7 @@ import {
 	within,
 } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
-import type { Product as ProductModel } from "@/lib/api/schemas";
+import type { ProductListItem as ProductModel } from "@/lib/api/schemas";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { useMe } from "@/src/features/user/api/use-me";
 import { useDeleteProduct } from "../api/use-delete-product";
@@ -67,6 +67,12 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		photoUrl: null,
 		stockQuantity: 4,
 		lowStockThreshold: 0,
+		measureUnit: "KILOGRAM",
+		availableUnits: 0,
+		availableMeasure: "0.000",
+		costPerMeasure: null,
+		unitCost: null,
+		marginPerUnit: null,
 		categoryId: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
@@ -157,6 +163,94 @@ describe("Product", () => {
 		// Deterministic es-AR rendering of the decimal string.
 		expect(screen.getByText("$ 1.500,00")).toBeTruthy();
 		expect(screen.getByText("4")).toBeTruthy();
+	});
+
+	it("does not append the purchase measure to the sale price", () => {
+		// `measureUnit` is how the product is BOUGHT (its lots are weighed); the
+		// price is what one UNIT sells for. Mixing them would price a unit as a
+		// kilogram, so the cell stays plain and the unit lives in the purchase form.
+		setup({
+			rows: [product({ price: "5900.00", measureUnit: "KILOGRAM" })],
+		});
+
+		render(<Product />);
+
+		expect(screen.getByText("$ 5.900,00")).toBeTruthy();
+		expect(screen.queryByText("/ kg")).toBeNull();
+		expect(screen.queryByText("$ 5.900,00 / kg")).toBeNull();
+	});
+
+	it("shows the cost and the margin of one unit next to the sale price", () => {
+		// L26: las dos cifras se comparan contra el precio de venta de una
+		// unidad, que es justo lo que la tabla ya muestra.
+		setup({
+			rows: [product({ unitCost: "29500.00", marginPerUnit: "500.00" })],
+		});
+
+		render(<Product />);
+
+		expect(
+			screen.getByRole("columnheader", { name: "Costo por unidad" }),
+		).toBeTruthy();
+		expect(
+			screen.getByRole("columnheader", { name: "Margen por unidad" }),
+		).toBeTruthy();
+		expect(screen.getByText("$ 29.500,00")).toBeTruthy();
+		expect(screen.getByText("$ 500,00")).toBeTruthy();
+	});
+
+	it("shows an em dash, never a zero, for a product without units", () => {
+		// Sin unidades disponibles el costo y el margen son desconocidos (L11):
+		// un cero inventaría un costo que nadie pagó.
+		setup({
+			rows: [
+				product({ availableUnits: 0, unitCost: null, marginPerUnit: null }),
+			],
+		});
+
+		render(<Product />);
+
+		// El guión se ve y el lector de pantalla escucha el motivo.
+		expect(screen.getAllByText("—")).toHaveLength(2);
+		expect(screen.getByText("Sin costo")).toBeTruthy();
+		expect(screen.getByText("Sin margen")).toBeTruthy();
+		expect(screen.queryByText("$ 0,00")).toBeNull();
+		expect(screen.queryByText("0")).toBeNull();
+	});
+
+	it("keeps the sign of a negative margin", () => {
+		// Vender por debajo del costo es un dato válido y tiene que doler a la
+		// vista: se muestra con su signo, no como un valor absoluto.
+		setup({
+			rows: [product({ unitCost: "29500.00", marginPerUnit: "-20500.00" })],
+		});
+
+		render(<Product />);
+
+		expect(screen.getByText("-$ 20.500,00")).toBeTruthy();
+	});
+
+	it("does not add the cost per measure to the catalogue", () => {
+		// L20/L26: el $/medida se compara contra el de otros proveedores, no
+		// contra el precio de una unidad; esa comparación vive en la compra y en
+		// el padrón.
+		setup({
+			rows: [
+				product({
+					measureUnit: "KILOGRAM",
+					availableMeasure: "10.500",
+					costPerMeasure: "5900.00",
+					unitCost: "29500.00",
+					marginPerUnit: "0.00",
+				}),
+			],
+		});
+
+		render(<Product />);
+
+		expect(screen.queryByRole("columnheader", { name: /medida/ })).toBeNull();
+		expect(screen.queryByText("$ 5.900,00")).toBeNull();
+		expect(screen.queryByText("/ kg")).toBeNull();
 	});
 
 	it("shows a thumbnail only when the product has a photo", () => {

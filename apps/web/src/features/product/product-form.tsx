@@ -4,11 +4,21 @@ import { cn } from "cn";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
-import { Alert, TextareaField, TextField } from "@/components/design-system";
+import {
+	Alert,
+	SelectField,
+	TextareaField,
+	TextField,
+} from "@/components/design-system";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Product } from "@/lib/api/schemas";
+import {
+	DEFAULT_MEASURE_UNIT,
+	isMeasureUnit,
+	MEASURE_UNIT_OPTIONS,
+} from "@/lib/measure-unit";
 import { AlertToast } from "@/src/shared/components/AlertToast";
 import { useCreateProduct } from "./api/use-create-product";
 import { useUpdateProduct } from "./api/use-update-product";
@@ -58,6 +68,10 @@ function saveErrorMessage(error: unknown): string | undefined {
  * so an invalid body never reaches the server. The values are normalized before
  * sending — trimmed name, uppercased SKU, two decimals, `null` for an empty
  * description — because that is the shape the contract stores.
+ *
+ * "Unidad de medida" is how the lots of this product are measured (L19): the
+ * purchase form shows `$ per kg` or `$ per litre` from this value, so it is
+ * always sent, defaulting to kilograms — the API's own default.
  */
 export function ProductForm({
 	companyId,
@@ -72,6 +86,9 @@ export function ProductForm({
 	const [name, setName] = useState(product?.name ?? "");
 	const [sku, setSku] = useState(product?.sku ?? "");
 	const [price, setPrice] = useState(product?.price ?? "");
+	const [measureUnit, setMeasureUnit] = useState(
+		product?.measureUnit ?? DEFAULT_MEASURE_UNIT,
+	);
 	const [description, setDescription] = useState(product?.description ?? "");
 	const [photoUrl, setPhotoUrl] = useState<string | null>(
 		product?.photoUrl ?? null,
@@ -129,6 +146,7 @@ export function ProductForm({
 			price: normalizePrice(price),
 			description: toNullableDescription(description),
 			photoUrl,
+			measureUnit,
 		};
 
 		if (product) {
@@ -204,6 +222,19 @@ export function ProductForm({
 				error={errors.price}
 				hint="Hasta dos decimales, por ejemplo 1500.00."
 				disabled={isPending}
+			/>
+
+			<SelectField
+				label="Unidad de medida"
+				name="measureUnit"
+				options={MEASURE_UNIT_OPTIONS}
+				value={measureUnit}
+				onValueChange={(next) => {
+					if (isMeasureUnit(next)) {
+						setMeasureUnit(next);
+					}
+				}}
+				className="sm:col-span-2"
 			/>
 
 			<TextareaField

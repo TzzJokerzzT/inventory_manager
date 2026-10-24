@@ -86,6 +86,7 @@ describe("PrismaProductRepository.create", () => {
 				photoUrl: null,
 				stockQuantity: 0,
 				lowStockThreshold: 0,
+				measureUnit: "KILOGRAM",
 				categoryId: null,
 				createdAt: input.createdAt,
 				updatedAt: input.updatedAt,
@@ -273,6 +274,7 @@ describe("PrismaProductRepository.update", () => {
 				sku: "CAF-500",
 				price: "1500.00",
 				photoUrl: null,
+				measureUnit: "KILOGRAM",
 				updatedAt: updated.updatedAt,
 			},
 		});
@@ -280,6 +282,21 @@ describe("PrismaProductRepository.update", () => {
 			where: { id: "product-1", companyId: "company-1", deletedAt: null },
 		});
 		expect(result?.name).toBe("Cafe en grano");
+	});
+
+	it("writes the measure unit the entity carries, so a change is persisted", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(row({ measureUnit: "LITRE" }));
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		await repository.update(product().withChanges({ measureUnit: "LITRE" }));
+
+		expect(updateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ measureUnit: "LITRE" }),
+			}),
+		);
 	});
 
 	it("returns null when the guarded write matches no active row", async () => {

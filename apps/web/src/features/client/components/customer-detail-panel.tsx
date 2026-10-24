@@ -1,7 +1,6 @@
 "use client";
 
 import { Alert, type Column, DataTable } from "@/components/design-system";
-import { Button } from "@/components/ui/button";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Customer, StockMovement } from "@/lib/api/schemas";
@@ -86,11 +85,10 @@ function ContactField({
 }
 
 /**
- * The read-only detail of one customer, opened from the customers list.
- *
- * It lives **on the same page** as the list — like the create/edit form — so no
- * route or router state is involved and `onClose` is the whole way back. The
- * sales are the company's history narrowed with `customerId` and `type: "OUT"`:
+ * The read-only detail of one customer, rendered by its own page
+ * (`/dashboard/clients/[id]/details`); the page owns the way back and the read,
+ * so this panel only paints what it is given. The sales are the company's
+ * history narrowed with `customerId` and `type: "OUT"`:
  * there is no per-customer endpoint, and this view never touches the movements
  * page. It shows no money totals because a movement does not store a price; the
  * count of sales and the sum of units are the honest aggregate of what the
@@ -99,11 +97,9 @@ function ContactField({
 export function CustomerDetailPanel({
 	companyId,
 	customer,
-	onClose,
 }: {
 	companyId: string;
 	customer: Customer;
-	onClose: () => void;
 }) {
 	const sales = useMovements(companyId, {
 		customerId: customer.id,
@@ -130,14 +126,6 @@ export function CustomerDetailPanel({
 						{customer.name}
 					</p>
 				</div>
-				<Button
-					type="button"
-					variant="outline"
-					className="h-10 w-full sm:w-auto"
-					onClick={onClose}
-				>
-					Volver al listado
-				</Button>
 			</div>
 
 			<dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">

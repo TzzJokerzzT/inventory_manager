@@ -4,6 +4,7 @@ import * as v from "valibot";
 import type { CreateProductUseCase } from "../../../application/use-cases/create-product.js";
 import type { DeleteProductUseCase } from "../../../application/use-cases/delete-product.js";
 import type { GetProductUseCase } from "../../../application/use-cases/get-product.js";
+import type { ListProductUnitsUseCase } from "../../../application/use-cases/list-product-units.js";
 import type { ListProductsUseCase } from "../../../application/use-cases/list-products.js";
 import type { PurgeProductUseCase } from "../../../application/use-cases/purge-product.js";
 import type { RestoreProductUseCase } from "../../../application/use-cases/restore-product.js";
@@ -11,6 +12,7 @@ import type { UpdateProductUseCase } from "../../../application/use-cases/update
 import {
 	createProductSchema,
 	listProductsQuerySchema,
+	listProductUnitsQuerySchema,
 	updateProductSchema,
 } from "../validators/product-validator.js";
 import { resolvedCompanyContext } from "./company-controller.js";
@@ -27,6 +29,8 @@ export interface ProductControllerDependencies {
 	list: ListProductsUseCase;
 	create: CreateProductUseCase;
 	get: GetProductUseCase;
+	/** The concrete units of a product, which the sale screen lists (L23). */
+	units: ListProductUnitsUseCase;
 	update: UpdateProductUseCase;
 	remove: DeleteProductUseCase;
 	restore: RestoreProductUseCase;
@@ -37,6 +41,7 @@ export interface ProductController {
 	list: RequestHandler;
 	create: RequestHandler;
 	get: RequestHandler;
+	units: RequestHandler;
 	update: RequestHandler;
 	remove: RequestHandler;
 	restore: RequestHandler;
@@ -117,6 +122,30 @@ export function createProductController(
 				);
 
 				response.status(StatusCodes.OK).json(product);
+			} catch (error) {
+				next(error);
+			}
+		},
+		units: async (request, response, next) => {
+			try {
+				const context = resolvedCompanyContext(request);
+				const productId = productIdOrUndefined(request);
+
+				if (productId === undefined) {
+					response.status(StatusCodes.BAD_REQUEST).json({
+						error: { message: "Invalid product id" },
+					});
+					return;
+				}
+
+				const query = v.parse(listProductUnitsQuerySchema, request.query);
+
+				const units = await dependencies.units.execute(
+					{ productId, status: query.status },
+					{ companyId: context.companyId },
+				);
+
+				response.status(StatusCodes.OK).json(units);
 			} catch (error) {
 				next(error);
 			}

@@ -81,6 +81,7 @@ function setup(productState: Record<string, unknown> = {}) {
 			photoUrl: null,
 			stockQuantity: 0,
 			lowStockThreshold: 0,
+			measureUnit: "KILOGRAM",
 			categoryId: null,
 			createdAt: "2026-10-20T12:00:00.000Z",
 			updatedAt: "2026-10-20T12:00:00.000Z",

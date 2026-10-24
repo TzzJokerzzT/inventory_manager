@@ -106,6 +106,7 @@ export class PrismaProductRepository implements ProductRepository {
 					photoUrl: product.photoUrl,
 					stockQuantity: product.stockQuantity,
 					lowStockThreshold: product.lowStockThreshold,
+					measureUnit: product.measureUnit,
 					categoryId: product.categoryId,
 					createdAt: product.createdAt,
 					updatedAt: product.updatedAt,
@@ -214,6 +215,9 @@ export class PrismaProductRepository implements ProductRepository {
 					sku: product.sku,
 					price: product.price,
 					photoUrl: product.photoUrl,
+					// Written on every update: the entity carries the stored unit when
+					// the change did not name one, so the column cannot drift from it.
+					measureUnit: product.measureUnit,
 					updatedAt: product.updatedAt,
 				},
 			}));
@@ -337,6 +341,9 @@ export class PrismaProductRepository implements ProductRepository {
 			photoUrl: row.photoUrl,
 			stockQuantity: row.stockQuantity,
 			lowStockThreshold: row.lowStockThreshold,
+			// Read back so the lot readings can name the measure of a `$/measure`
+			// with the unit the product is bought in.
+			measureUnit: row.measureUnit,
 			categoryId: row.categoryId,
 			deletedAt: row.deletedAt,
 			createdAt: row.createdAt,

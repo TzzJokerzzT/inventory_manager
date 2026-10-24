@@ -17,7 +17,9 @@ import { User } from "../src/domain/entities/user.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
+import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
+import { InMemorySupplierRepository } from "../src/infrastructure/database/in-memory-supplier-repository.js";
 import { buildApp } from "../src/interfaces/http/app.js";
 import { apiRateLimiter } from "../src/interfaces/http/middlewares/rate-limit.js";
 import { createRequireAuth } from "../src/interfaces/http/middlewares/require-auth.js";
@@ -71,6 +73,10 @@ describe("product endpoints", () => {
 		const store = new Map<string, Product>();
 		const productRepository = new InMemoryProductRepository([], store);
 		const stockMovementRepository = new InMemoryStockMovementRepository(store);
+		const stockLotRepository = new InMemoryStockLotRepository(
+			stockMovementRepository,
+		);
+		const supplierRepository = new InMemorySupplierRepository();
 
 		const owner = User.create({ auth0Sub: OWNER_SUB, email: "owner@x.com" });
 		const admin = User.create({ auth0Sub: ADMIN_SUB, email: "admin@x.com" });
@@ -133,9 +139,17 @@ describe("product endpoints", () => {
 			endSession: {} as never,
 			updateUserFullName: {} as never,
 			products: {
-				list: new ListProductsUseCase({ productRepository }),
+				list: new ListProductsUseCase({
+					productRepository,
+					stockLotRepository,
+				}),
 				create: new CreateProductUseCase({ productRepository }),
-				get: new GetProductUseCase({ productRepository }),
+				get: new GetProductUseCase({
+					productRepository,
+					stockLotRepository,
+					supplierRepository,
+				}),
+				units: {} as never,
 				update: new UpdateProductUseCase({ productRepository }),
 				remove: new DeleteProductUseCase({ productRepository }),
 				restore: new RestoreProductUseCase({ productRepository }),
@@ -158,6 +172,8 @@ describe("product endpoints", () => {
 			}),
 			mediaUploadSigner: {} as never,
 			movements: {} as never,
+			suppliers: {} as never,
+			lots: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
 				secure: false,
@@ -235,10 +251,33 @@ describe("product endpoints", () => {
 				photoUrl: null,
 				stockQuantity: 0,
 				lowStockThreshold: 0,
+				measureUnit: "KILOGRAM",
 				categoryId: null,
 				createdAt: expect.any(String),
 				updatedAt: expect.any(String),
 			});
+		});
+
+		it("keeps the measure unit the body names", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const body = await createProduct(app, { measureUnit: "LITRE" });
+
+			expect(body.measureUnit).toBe("LITRE");
+		});
+
+		it("defaults an absent measure unit to KILOGRAM", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe", sku: "CAF-500", price: "1500" });
+
+			expect(response.status).toBe(201);
+			expect(response.body.measureUnit).toBe("KILOGRAM");
 		});
 
 		it("lets an ADMIN create", async () => {
@@ -322,6 +361,8 @@ describe("product endpoints", () => {
 			["a non-numeric price", { price: "abc" }],
 			["an empty sku", { sku: "  " }],
 			["a photo url that is not http", { photoUrl: "ftp://example.com/a.png" }],
+			["a measure unit outside the closed list", { measureUnit: "POUND" }],
+			["a lowercased measure unit", { measureUnit: "kilogram" }],
 		])("answers 400 with issues for %s", async (_label, overrides) => {
 			const { app, seedRoster } = createTestApp();
 			seedRoster();
@@ -373,6 +414,29 @@ describe("product endpoints", () => {
 			expect(
 				response.body.map((product: { name: string }) => product.name),
 			).toEqual(["Cafe", "Zapallo"]);
+		});
+
+		it("returns the measure unit of every product", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			await createProduct(app, {
+				name: "Pintura",
+				sku: "PIN-1",
+				measureUnit: "LITRE",
+			});
+			await createProduct(app, { name: "Cafe", sku: "CAF-1" });
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(
+				response.body.map(
+					(product: { name: string; measureUnit: string }) =>
+						`${product.name}:${product.measureUnit}`,
+				),
+			).toEqual(["Cafe:KILOGRAM", "Pintura:LITRE"]);
 		});
 
 		it("searches by name or sku, case-insensitively", async () => {
@@ -532,7 +596,28 @@ describe("product endpoints", () => {
 				.set("authorization", authorization(MEMBER_SUB));
 
 			expect(response.status).toBe(200);
-			expect(response.body).toEqual(product);
+			expect(response.body).toEqual({
+				...product,
+				availableUnits: 0,
+				availableMeasure: "0.000",
+				costPerMeasure: null,
+				unitCost: null,
+				marginPerUnit: null,
+				lots: [],
+			});
+		});
+
+		it("returns the measure unit of the product", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app, { measureUnit: "METRE" });
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(response.body.measureUnit).toBe("METRE");
 		});
 
 		it("answers 404 product_not_found for another company's product", async () => {
@@ -604,6 +689,48 @@ describe("product endpoints", () => {
 				photoUrl: "https://example.com/a.png",
 				stockQuantity: 0,
 			});
+		});
+
+		it("changes the measure unit", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ measureUnit: "LITRE" });
+
+			expect(response.status).toBe(200);
+			expect(response.body.measureUnit).toBe("LITRE");
+		});
+
+		it("leaves the measure unit untouched when the body does not name it", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app, { measureUnit: "METRE" });
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe en grano" });
+
+			expect(response.status).toBe(200);
+			expect(response.body.measureUnit).toBe("METRE");
+		});
+
+		it("answers 400 for a measure unit outside the closed list", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ measureUnit: "POUND" });
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.issues.length).toBeGreaterThan(0);
 		});
 
 		it("clears description and photoUrl with an explicit null", async () => {

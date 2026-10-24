@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import { RegisterForm } from "../components/register-form";
 import { useRegister } from "../hooks/use-register";
+import { TERMS_INTRO, TERMS_SECTIONS } from "../utils/terms";
 
 jest.mock("@/src/features/auth/register/hooks/use-register.ts", () => ({
 	useRegister: jest.fn(),
@@ -37,7 +38,21 @@ function fill(values: {
 	});
 }
 
+/**
+ * A submit as a person does it: accepting the terms first.
+ *
+ * The dedicated test below is the one that omits the acceptance, so every other
+ * case keeps testing what it was written for instead of the new gate.
+ */
 function submit() {
+	const terms = screen.getByLabelText(
+		"Acepto los términos y condiciones",
+	) as HTMLInputElement;
+
+	if (!terms.checked) {
+		fireEvent.click(terms);
+	}
+
 	fireEvent.click(
 		screen.getByRole("button", { name: /Registrarme|Registrando/ }),
 	);
@@ -119,5 +134,41 @@ describe("RegisterForm", () => {
 			"disabled",
 			true,
 		);
+	});
+
+	it("refuses to create the account until the terms are accepted", () => {
+		mockRegister();
+		render(<RegisterForm />);
+
+		fill(VALID);
+		// Straight to the submit, without the checkbox: this is the path the
+		// native `required` never guarded, because the form is `noValidate`.
+		fireEvent.click(
+			screen.getByRole("button", { name: /Registrarme|Registrando/ }),
+		);
+
+		expect(mutate).not.toHaveBeenCalled();
+		expect(screen.getByRole("alert").textContent).toContain(
+			"Debe que aceptar los términos y condiciones para crear tu cuenta",
+		);
+	});
+
+	it("shows the terms in a modal, with the version being accepted", () => {
+		mockRegister();
+		render(<RegisterForm />);
+
+		fireEvent.click(screen.getByRole("button", { name: "Leer los términos" }));
+
+		expect(
+			screen.getByRole("dialog", {
+				name: "Términos y Condiciones de Uso – App de Gestión de Inventarios",
+			}),
+		).toBeTruthy();
+		expect(screen.getByText(TERMS_INTRO)).toBeTruthy();
+		expect(screen.getByText(TERMS_SECTIONS[0].heading)).toBeTruthy();
+
+		fireEvent.click(screen.getByRole("button", { name: "Entendido" }));
+
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 });

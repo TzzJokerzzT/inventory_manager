@@ -14,8 +14,10 @@ import type { ChangeMemberRoleUseCase } from "../../application/use-cases/change
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { CreateCustomerUseCase } from "../../application/use-cases/create-customer.js";
 import type { CreateProductUseCase } from "../../application/use-cases/create-product.js";
+import type { CreateSupplierUseCase } from "../../application/use-cases/create-supplier.js";
 import type { DeleteCustomerUseCase } from "../../application/use-cases/delete-customer.js";
 import type { DeleteProductUseCase } from "../../application/use-cases/delete-product.js";
+import type { DeleteSupplierUseCase } from "../../application/use-cases/delete-supplier.js";
 import type { EndSessionUseCase } from "../../application/use-cases/end-session.js";
 import type { GetCurrentUserUseCase } from "../../application/use-cases/get-current-user.js";
 import type { GetCustomerUseCase } from "../../application/use-cases/get-customer.js";
@@ -28,12 +30,15 @@ import type { ListCustomersUseCase } from "../../application/use-cases/list-cust
 import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
 import type { ListNotificationsUseCase } from "../../application/use-cases/list-notifications.js";
 import type { ListPendingInvitationsUseCase } from "../../application/use-cases/list-pending-invitations.js";
+import type { ListProductUnitsUseCase } from "../../application/use-cases/list-product-units.js";
 import type { ListProductsUseCase } from "../../application/use-cases/list-products.js";
 import type { ListStockMovementsUseCase } from "../../application/use-cases/list-stock-movements.js";
+import type { ListSuppliersUseCase } from "../../application/use-cases/list-suppliers.js";
 import type { LoginWithCredentialsUseCase } from "../../application/use-cases/login-with-credentials.js";
 import type { MarkNotificationsReadUseCase } from "../../application/use-cases/mark-notifications-read.js";
 import type { PurgeProductUseCase } from "../../application/use-cases/purge-product.js";
 import type { RefreshSessionUseCase } from "../../application/use-cases/refresh-session.js";
+import type { RegisterLotUseCase } from "../../application/use-cases/register-lot.js";
 import type { RegisterStockMovementUseCase } from "../../application/use-cases/register-stock-movement.js";
 import type { RegisterUserUseCase } from "../../application/use-cases/register-user.js";
 import type { RestoreProductUseCase } from "../../application/use-cases/restore-product.js";
@@ -42,6 +47,7 @@ import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke
 import type { StartSessionUseCase } from "../../application/use-cases/start-session.js";
 import type { UpdateCustomerUseCase } from "../../application/use-cases/update-customer.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
+import type { UpdateSupplierUseCase } from "../../application/use-cases/update-supplier.js";
 import type { UpdateUserFullNameUseCase } from "../../application/use-cases/update-user-full-name.js";
 import {
 	type AuthCookieOptions,
@@ -51,7 +57,9 @@ import { createCompanyController } from "./controllers/company-controller.js";
 import { createCustomerController } from "./controllers/customer-controller.js";
 import { createMeController } from "./controllers/me-controller.js";
 import { createProductController } from "./controllers/product-controller.js";
+import { createLotController } from "./controllers/stock-lot-controller.js";
 import { createStockMovementController } from "./controllers/stock-movement-controller.js";
+import { createSupplierController } from "./controllers/supplier-controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { notFoundHandler } from "./middlewares/not-found.js";
 import { apiRateLimiter } from "./middlewares/rate-limit.js";
@@ -125,6 +133,7 @@ export interface AppDependencies {
 		list: ListProductsUseCase;
 		create: CreateProductUseCase;
 		get: GetProductUseCase;
+		units: ListProductUnitsUseCase;
 		update: UpdateProductUseCase;
 		remove: DeleteProductUseCase;
 		restore: RestoreProductUseCase;
@@ -149,6 +158,24 @@ export interface AppDependencies {
 		register: RegisterStockMovementUseCase;
 		list: ListStockMovementsUseCase;
 		trend: GetMovementTrendUseCase;
+	};
+	/**
+	 * The supplier slice of S4. One field, not four, because the routes that
+	 * consume it are all mounted together on the company-scoped router.
+	 */
+	suppliers: {
+		list: ListSuppliersUseCase;
+		create: CreateSupplierUseCase;
+		update: UpdateSupplierUseCase;
+		remove: DeleteSupplierUseCase;
+	};
+	/**
+	 * The purchase lot slice of S6. One field, because the slice has one write and
+	 * the routes that consume it are all mounted together on the company-scoped
+	 * router.
+	 */
+	lots: {
+		register: RegisterLotUseCase;
 	};
 	authCookieOptions: AuthCookieOptions;
 	/**
@@ -191,6 +218,8 @@ export function buildApp(dependencies: AppDependencies): Express {
 			products: createProductController(dependencies.products),
 			customers: createCustomerController(dependencies.customers),
 			movements: createStockMovementController(dependencies.movements),
+			suppliers: createSupplierController(dependencies.suppliers),
+			lots: createLotController(dependencies.lots),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,
 				updateUserFullName: dependencies.updateUserFullName,

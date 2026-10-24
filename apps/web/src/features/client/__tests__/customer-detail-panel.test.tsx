@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import type { Customer, StockMovement } from "@/lib/api/schemas";
 import { useMovements } from "@/src/features/movement/api/use-movements";
@@ -11,8 +11,6 @@ jest.mock("@/src/features/movement/api/use-movements", () => ({
 const useMovementsMock = useMovements as jest.MockedFunction<
 	typeof useMovements
 >;
-
-const onClose = jest.fn();
 
 function customer(overrides: Partial<Customer> = {}): Customer {
 	return {
@@ -41,6 +39,12 @@ function sale(overrides: Partial<StockMovement> = {}): StockMovement {
 		actor: { id: "user-1", fullName: "Ana", email: "ana@empresa.com" },
 		customerId: "cu1",
 		customer: { id: "cu1", name: "Distribuidora Pérez" },
+		// Fields the purchase-lot feature added to the contract: a legacy sale
+		// carries no lot, no written price and no units.
+		lotId: null,
+		unitPrice: null,
+		units: [],
+		margin: null,
 		...overrides,
 	};
 }
@@ -59,13 +63,7 @@ function stubSales(
 }
 
 function renderPanel() {
-	return render(
-		<CustomerDetailPanel
-			companyId="c1"
-			customer={customer()}
-			onClose={onClose}
-		/>,
-	);
+	return render(<CustomerDetailPanel companyId="c1" customer={customer()} />);
 }
 
 describe("CustomerDetailPanel", () => {
@@ -188,20 +186,11 @@ describe("CustomerDetailPanel", () => {
 			<CustomerDetailPanel
 				companyId="c1"
 				customer={customer({ email: null, phone: null, address: null })}
-				onClose={onClose}
 			/>,
 		);
 
 		expect(screen.getByText("Sin motivo")).toBeTruthy();
 		expect(screen.getByText("Sin usuario")).toBeTruthy();
 		expect(screen.getAllByText("—").length).toBe(3);
-	});
-
-	it("closes the panel and returns to the list", () => {
-		renderPanel();
-
-		fireEvent.click(screen.getByRole("button", { name: "Volver al listado" }));
-
-		expect(onClose).toHaveBeenCalled();
 	});
 });

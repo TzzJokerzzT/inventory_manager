@@ -37,6 +37,14 @@ describe("StockMovement.create", () => {
 		expect(movement({ type: "OUT" }).type).toBe("OUT");
 	});
 
+	it("normalizes the optional lot reference of an entry", () => {
+		// S6: the `IN` of a purchase names the lot it brought in. Absent and blank
+		// both mean "no lot", so an exit never invents one.
+		expect(movement().lotId).toBeNull();
+		expect(movement({ lotId: "   " }).lotId).toBeNull();
+		expect(movement({ lotId: " lot-1 " }).lotId).toBe("lot-1");
+	});
+
 	it("stamps createdAt server-side when the caller does not supply one", () => {
 		const before = Date.now();
 		const created = movement({ createdAt: undefined });
@@ -93,6 +101,69 @@ describe("StockMovement.create", () => {
 		},
 	);
 
+	it("normalizes the written price of a sale to two decimals", () => {
+		// S1: the price is written on the sale itself, and the column is exact, so
+		// it is stored as the same `Decimal(12,2)` string the product price uses.
+		expect(movement({ unitPrice: "2500" }).unitPrice).toBe("2500.00");
+		expect(movement({ unitPrice: "2500.5" }).unitPrice).toBe("2500.50");
+		expect(movement({ unitPrice: " 1500.00 " }).unitPrice).toBe("1500.00");
+	});
+
+	it.each([[""], ["   "], [null], [undefined]])(
+		"normalizes the unitPrice %p to null",
+		(unitPrice) => {
+			// S9: a movement recorded before the field existed has no price, and the
+			// margin of those rows is reported as unknown instead of assumed.
+			expect(movement({ unitPrice }).unitPrice).toBeNull();
+		},
+	);
+
+	it.each([
+		["a malformed decimal", "12,50"],
+		["three decimals", "1500.123"],
+		["eleven integer digits", "12345678901"],
+		["a negative amount", "-1500"],
+		["zero", "0"],
+		["zero with decimals", "0.00"],
+	])("rejects a unitPrice that is %s", (_label, unitPrice) => {
+		expect(() => movement({ unitPrice })).toThrow(DomainError);
+	});
+
+	it("defaults unitIds to an empty list, so a quantity-only sale stays valid", () => {
+		expect(movement().unitIds).toEqual([]);
+	});
+
+	it("keeps the selected units, trimmed and in the order given", () => {
+		expect(movement({ unitIds: [" unit-1 ", "unit-2"] }).unitIds).toEqual([
+			"unit-1",
+			"unit-2",
+		]);
+	});
+
+	it("rejects a repeated unit, an empty id and more units than a lot can hold", () => {
+		expect(() => movement({ unitIds: ["unit-1", "unit-1"] })).toThrow(
+			DomainError,
+		);
+		expect(() => movement({ unitIds: ["  "] })).toThrow(DomainError);
+		expect(() =>
+			movement({
+				unitIds: Array.from(
+					{ length: 501 },
+					(_value, index) => `unit-${index}`,
+				),
+			}),
+		).toThrow(DomainError);
+	});
+
+	it("accepts the 500-unit cap", () => {
+		const unitIds = Array.from(
+			{ length: 500 },
+			(_value, index) => `unit-${index}`,
+		);
+
+		expect(movement({ unitIds }).unitIds).toHaveLength(500);
+	});
+
 	it("trims the reason", () => {
 		expect(movement({ reason: "  Compra a proveedor  " }).reason).toBe(
 			"Compra a proveedor",
@@ -137,6 +208,8 @@ describe("StockMovement.toJSON", () => {
 			reason: "Compra",
 			userId: "user-1",
 			customerId: null,
+			lotId: null,
+			unitPrice: null,
 			createdAt: "2026-10-21T12:00:00.000Z",
 		});
 		// The product, the actor and the resolved customer are the view's
@@ -158,6 +231,9 @@ describe("StockMovement immutability", () => {
 			"reason",
 			"userId",
 			"customerId",
+			"lotId",
+			"unitPrice",
+			"unitIds",
 			"createdAt",
 		]) {
 			const descriptor = Object.getOwnPropertyDescriptor(

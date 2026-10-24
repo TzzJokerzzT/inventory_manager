@@ -24,14 +24,18 @@ import {
 const TOP_PRODUCTS_LIMIT = 8;
 
 /**
- * Value of the inventory: `price × stock` of the real catalogue of the active
- * company, summed in integer cents (S4).
+ * Value of the inventory **at cost**: `unitCost × stock` of the real catalogue of
+ * the active company, summed in integer cents (L27).
  *
  * The sum happens in the client because `GET /products` already returns the whole
- * catalogue and the price is a decimal string; adding floats would show a total
+ * catalogue and the cost is a decimal string; adding floats would show a total
  * nobody can reconcile. The card shows the company's total and the bars rank the
  * products worth the most, with the same numbers repeated as text so the
  * information is never only a bar length.
+ *
+ * Products with no known cost are left out of both the card and the bars — they
+ * are not worth zero (L11) — which is what keeps the bars adding up to the card,
+ * and the same total the KPI above shows (L27).
  */
 export function InventoryValueChart({
 	companyId,
@@ -43,6 +47,9 @@ export function InventoryValueChart({
 	const { totalCents, topProducts } = inventoryValue(catalogue);
 	const top = topProducts.slice(0, TOP_PRODUCTS_LIMIT);
 	const bars = top.map((row) => ({ name: row.name, value: row.cents }));
+	// A catalogue with stock but no cost has nothing to draw and nothing to
+	// total, and saying "no stock" there would be false.
+	const hasStock = catalogue.some((product) => product.stockQuantity > 0);
 
 	let content: ReactNode;
 
@@ -69,21 +76,22 @@ export function InventoryValueChart({
 	} else if (top.length === 0) {
 		content = (
 			<ChartEmpty>
-				Ningún producto tiene stock todavía: el valor del inventario es{" "}
-				{formatCents(totalCents)}.
+				{hasStock
+					? `Ningún producto tiene costo conocido todavía: el valor del inventario a costo es ${formatCents(totalCents)}.`
+					: `Ningún producto tiene stock todavía: el valor del inventario a costo es ${formatCents(totalCents)}.`}
 			</ChartEmpty>
 		);
 	} else {
 		content = (
 			<figure
 				aria-label={[
-					`Valor del inventario: ${formatCents(totalCents)}.`,
+					`Valor del inventario a costo: ${formatCents(totalCents)}.`,
 					`Los ${top.length} productos de mayor valor, de mayor a menor.`,
 				].join(" ")}
 				className="flex min-w-0 flex-col gap-4"
 			>
 				<KpiCard
-					label="Valor total del inventario"
+					label="Valor total del inventario (a costo)"
 					value={formatCents(totalCents)}
 				/>
 
@@ -112,8 +120,8 @@ export function InventoryValueChart({
 
 				<table className="w-full text-sm">
 					<caption className="sr-only">
-						Los productos de mayor valor de la empresa activa, con sus unidades
-						y su valor
+						Los productos de mayor valor a costo de la empresa activa, con sus
+						unidades y su valor
 					</caption>
 					<thead>
 						<tr className="border-b border-border text-left text-text-secondary">
@@ -148,7 +156,7 @@ export function InventoryValueChart({
 		<ChartShell
 			ariaLabel="Valor del inventario"
 			title="Valor del inventario por producto"
-			caption="Datos reales de la empresa activa: precio por stock de cada producto, sumado en centavos."
+			caption="Datos reales de la empresa activa: costo por unidad × stock de cada producto, sumado en centavos. Los productos sin costo conocido no entran."
 		>
 			{content}
 		</ChartShell>

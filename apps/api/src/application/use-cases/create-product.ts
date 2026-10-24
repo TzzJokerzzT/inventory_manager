@@ -1,3 +1,4 @@
+import type { MeasureUnit } from "../../domain/entities/measure-unit.js";
 import type { MembershipRole } from "../../domain/entities/membership.js";
 import { Product } from "../../domain/entities/product.js";
 import { InsufficientRoleError } from "../../domain/errors/insufficient-role-error.js";
@@ -12,6 +13,11 @@ export interface CreateProductInput {
 	price: string;
 	description?: string | null;
 	photoUrl?: string | null;
+	/**
+	 * How the lots of this product are measured (L19). Absent means the
+	 * column's default, which the entity applies.
+	 */
+	measureUnit?: MeasureUnit;
 }
 
 export interface CreateProductContext {
@@ -64,6 +70,7 @@ export class CreateProductUseCase {
 			price: input.price,
 			description: input.description,
 			photoUrl: input.photoUrl,
+			measureUnit: input.measureUnit,
 		});
 
 		const existing = await this.productRepository.findBySku(

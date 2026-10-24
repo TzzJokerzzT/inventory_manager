@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
-import type { Product } from "@/lib/api/schemas";
+import type { ProductListItem } from "@/lib/api/schemas";
 import { useProducts } from "@/src/features/product/api/use-products";
 import { InventoryValueChart } from "../components/inventory-value-chart";
 
@@ -11,14 +11,24 @@ jest.mock("@/src/features/product/api/use-products", () => ({
 
 const useProductsMock = useProducts as jest.MockedFunction<typeof useProducts>;
 
-function product(overrides: Partial<Product> = {}): Product {
+/**
+ * One catalogue row with a known cost. `price` is far from `unitCost` on
+ * purpose: the chart values the stock at cost, never at the listed price (L27).
+ */
+function product(overrides: Partial<ProductListItem> = {}): ProductListItem {
 	return {
 		id: "p1",
 		companyId: "c1",
 		name: "Café molido 500g",
 		description: null,
 		sku: "CAF-500",
-		price: "1500.00",
+		price: "9999.00",
+		measureUnit: "KILOGRAM",
+		availableUnits: 1,
+		availableMeasure: "1.000",
+		costPerMeasure: "1000.000",
+		unitCost: "1500.00",
+		marginPerUnit: "500.00",
 		photoUrl: null,
 		stockQuantity: 1,
 		lowStockThreshold: 0,
@@ -29,8 +39,20 @@ function product(overrides: Partial<Product> = {}): Product {
 	};
 }
 
+/** A product with stock and no lots: it has no cost to draw (L11). */
+function uncosted(overrides: Partial<ProductListItem> = {}): ProductListItem {
+	return product({
+		availableUnits: 0,
+		availableMeasure: "0.000",
+		costPerMeasure: null,
+		unitCost: null,
+		marginPerUnit: null,
+		...overrides,
+	});
+}
+
 function mockProducts(
-	products: Product[] | undefined,
+	products: ProductListItem[] | undefined,
 	state: Record<string, unknown> = {},
 ) {
 	useProductsMock.mockReturnValue({
@@ -53,35 +75,36 @@ describe("InventoryValueChart", () => {
 		jest.clearAllMocks();
 	});
 
-	it("shows the total value of the catalogue in integer cents", () => {
+	it("shows the total value of the catalogue at cost, in integer cents", () => {
 		mockProducts([
-			product({ id: "p1", price: "1500.00", stockQuantity: 2 }),
+			product({ id: "p1", unitCost: "1500.00", stockQuantity: 2 }),
 			product({
 				id: "p2",
 				name: "Yerba 1kg",
-				price: "100.00",
+				unitCost: "100.00",
 				stockQuantity: 1,
 			}),
 		]);
 
 		render(<InventoryValueChart companyId="c1" />);
 
+		// 2 × 150000 + 1 × 10000 = 310000; el precio de lista no entra.
 		expect(screen.getByText("$ 3.100,00")).toBeTruthy();
 	});
 
-	it("draws a bar per product ordered by value", () => {
+	it("draws a bar per product ordered by cost value", () => {
 		mockProducts([
-			product({ id: "p1", price: "1500.00", stockQuantity: 2 }),
+			product({ id: "p1", unitCost: "1500.00", stockQuantity: 2 }),
 			product({
 				id: "p2",
 				name: "Yerba 1kg",
-				price: "100.00",
+				unitCost: "100.00",
 				stockQuantity: 1,
 			}),
 			product({
 				id: "p3",
 				name: "Azúcar 1kg",
-				price: "50.00",
+				unitCost: "50.00",
 				stockQuantity: 0,
 			}),
 		]);
@@ -94,13 +117,62 @@ describe("InventoryValueChart", () => {
 		]);
 	});
 
-	it("lists the same rows as text so the information is not chart-only", () => {
+	it("excludes the products with no known cost and sums the bars to the card", () => {
+		// L27: las barras excluyen lo que no tiene costo, así que suman la tarjeta.
 		mockProducts([
-			product({ id: "p1", price: "1500.00", stockQuantity: 2 }),
+			product({ id: "p1", unitCost: "1500.00", stockQuantity: 2 }),
 			product({
 				id: "p2",
 				name: "Yerba 1kg",
-				price: "100.00",
+				unitCost: "100.00",
+				stockQuantity: 3,
+			}),
+			uncosted({ id: "p3", name: "Azúcar 1kg", stockQuantity: 5 }),
+		]);
+
+		render(<InventoryValueChart companyId="c1" />);
+
+		const rows = chartData() as { name: string; value: number }[];
+		const bars = rows.reduce((total, row) => total + row.value, 0);
+
+		expect(rows.map((row) => row.name)).toEqual([
+			"Café molido 500g",
+			"Yerba 1kg",
+		]);
+		// 2 × 150000 + 3 × 10000 = 330000, la misma cifra que muestra la tarjeta.
+		expect(bars).toBe(330000);
+		expect(screen.getByText("$ 3.300,00")).toBeTruthy();
+	});
+
+	it("does not fall back to the listed price when the cost is unknown", () => {
+		// L27: sin costo no se asume el precio de lista como costo.
+		mockProducts([
+			uncosted({ id: "p1", price: "9999.00", stockQuantity: 4 }),
+			product({
+				id: "p2",
+				name: "Yerba 1kg",
+				unitCost: "100.00",
+				stockQuantity: 1,
+			}),
+		]);
+
+		render(<InventoryValueChart companyId="c1" />);
+
+		const table = screen.getByRole("table");
+
+		expect(chartData()).toEqual([{ name: "Yerba 1kg", value: 10000 }]);
+		// 9999,00 × 4 sería el valor si el costo faltante se leyera como el precio.
+		expect(screen.queryByText("$ 39.996,00")).toBeNull();
+		expect(within(table).getByText("$ 100,00")).toBeTruthy();
+	});
+
+	it("lists the same rows as text so the information is not chart-only", () => {
+		mockProducts([
+			product({ id: "p1", unitCost: "1500.00", stockQuantity: 2 }),
+			product({
+				id: "p2",
+				name: "Yerba 1kg",
+				unitCost: "100.00",
 				stockQuantity: 1,
 			}),
 		]);
@@ -123,7 +195,7 @@ describe("InventoryValueChart", () => {
 				product({
 					id: `p${index + 1}`,
 					name: `Producto ${index + 1}`,
-					price: `${(index + 1) * 10}.00`,
+					unitCost: `${(index + 1) * 10}.00`,
 					stockQuantity: 1,
 				}),
 			),
@@ -203,6 +275,21 @@ describe("InventoryValueChart", () => {
 
 		expect(
 			screen.getByText(/Ningún producto tiene stock todavía/i),
+		).toBeTruthy();
+		expect(screen.queryByTestId("chart-root")).toBeNull();
+	});
+
+	it("shows an empty state that names the missing cost instead of inventing a value", () => {
+		// L11: con stock pero sin costo no hay barras ni total real que dibujar.
+		mockProducts([
+			uncosted({ id: "p1", stockQuantity: 2 }),
+			uncosted({ id: "p2", name: "Yerba 1kg", stockQuantity: 3 }),
+		]);
+
+		render(<InventoryValueChart companyId="c1" />);
+
+		expect(
+			screen.getByText(/Ningún producto tiene costo conocido todavía/i),
 		).toBeTruthy();
 		expect(screen.queryByTestId("chart-root")).toBeNull();
 	});

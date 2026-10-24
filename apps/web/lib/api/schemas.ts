@@ -316,16 +316,23 @@ export function parseNotifications(data: unknown): NotificationsResponse {
 }
 
 /**
- * One product exactly as the products endpoints serialize it.
+ * The measure units the contract allows, spelled out at the boundary (L19).
  *
- * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
- * `Decimal(12,2)` and a float in the contract would lose precision at the first
- * rounding, so the boundary fails a numeric price instead of silently rounding
- * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
- * counts; `description`, `photoUrl` and `categoryId` are nullable because a
- * product can live without them.
+ * A closed picklist, not a free string: the interface names the unit of every
+ * `$ per measure` it shows, so an unknown value has to fail here instead of
+ * reaching a label map that would have no name for it. It is the one place both
+ * the catalogue and the supplier's last lot get it from.
  */
-export const productSchema = object({
+export const measureUnitSchema = picklist(["KILOGRAM", "LITRE", "METRE"]);
+
+/** How a product's lots are measured, derived from the OpenAPI contract. */
+export type MeasureUnit = components["schemas"]["MeasureUnit"];
+
+/**
+ * The fields every product response carries, shared by the catalogue row, the
+ * detail and the write answers.
+ */
+const productFields = {
 	id: string(),
 	companyId: string(),
 	name: string(),
@@ -335,13 +342,70 @@ export const productSchema = object({
 	photoUrl: nullable(string()),
 	stockQuantity: number(),
 	lowStockThreshold: number(),
+	measureUnit: measureUnitSchema,
 	categoryId: nullable(string()),
 	createdAt: string(),
 	updatedAt: string(),
-});
+} as const;
+
+/**
+ * One product exactly as the products endpoints serialize it.
+ *
+ * `price` is a **decimal string** (`"1500.00"`), never a number: the column is
+ * `Decimal(12,2)` and a float in the contract would lose precision at the first
+ * rounding, so the boundary fails a numeric price instead of silently rounding
+ * it. `stockQuantity` and `lowStockThreshold` are numbers because they are
+ * counts; `description`, `photoUrl` and `categoryId` are nullable because a
+ * product can live without them.
+ *
+ * `measureUnit` is how the lots of the product are measured, and it travels
+ * with every read and write (L19): the list renders `$ 5.900,00 / kg` from this
+ * value, never from an assumption about what the product is bought in.
+ */
+export const productSchema = object(productFields);
 
 /** One product, derived from the OpenAPI contract. */
 export type Product = components["schemas"]["Product"];
+
+/**
+ * One catalogue row: the product plus the costs the API derives from its
+ * available units (L12) and how many of those units are still `AVAILABLE`
+ * (L25).
+ *
+ * `availableUnits` is the figure the sale screen reads to decide how a product
+ * is sold. It is **required**: an absent counter is a shape change, not "zero
+ * units", because reading it as zero would offer a loose sale that the server
+ * then refuses with `units_required`.
+ *
+ * The three costs travel as **decimal strings**, like every amount in the
+ * contract, and they are **nullable**: a product with no available units has no
+ * cost and therefore no margin, and `null` is the honest answer (L11).
+ * `costPerMeasure` is `$/medida` and only the purchase screen and the suppliers
+ * roster compare it (L20); the catalogue shows `unitCost` and `marginPerUnit`,
+ * which are comparable with the sale price of one unit (L26). `marginPerUnit` is
+ * signed: the list price can sit below the cost.
+ */
+export type ProductListItem = components["schemas"]["ProductListItem"];
+
+/**
+ * One catalogue row as the boundary validates it, derived from the contract's
+ * `ProductListItem`: the stored fields, the derived costs and the availability
+ * counter. Every one of them is validated, because the catalogue renders all of
+ * them and a missing cost would otherwise reach the table as an empty cell.
+ */
+export const productListItemSchema = object({
+	...productFields,
+	// Required, exactly like the contract: an absent counter is a shape change,
+	// not "zero units". Reading it as zero would offer a loose sale that the
+	// server then refuses with `units_required`.
+	availableUnits: number(),
+	// Σ `measure` of those units, in the product's measure unit: a decimal
+	// string with three decimals, never a float.
+	availableMeasure: string(),
+	costPerMeasure: nullable(string()),
+	unitCost: nullable(string()),
+	marginPerUnit: nullable(string()),
+});
 
 /** Body of `POST /companies/{companyId}/products`, derived from the contract. */
 export type CreateProductRequest =
@@ -356,10 +420,10 @@ export type UpdateProductRequest =
 	components["schemas"]["UpdateProductRequest"];
 
 /** Shape of `GET /companies/{companyId}/products`: the company's catalogue. */
-export const productsResponseSchema = array(productSchema);
+export const productsResponseSchema = array(productListItemSchema);
 
 /** `GET /companies/{companyId}/products` response, derived from the contract. */
-export type ProductsResponse = components["schemas"]["Product"][];
+export type ProductsResponse = ProductListItem[];
 
 /**
  * Validates the catalogue at the boundary.
@@ -470,6 +534,240 @@ export function parseCustomer(data: unknown): Customer {
 }
 
 /**
+ * The latest purchase lot of a supplier, as the roster summarizes it (L12):
+ * which product it was, what one measure of it cost, the unit that measure is
+ * expressed in, and when it arrived.
+ *
+ * `costPerMeasure` is a **decimal string** for the same reason as `price`:
+ * money never travels as a float. `measureUnit` is a closed list, so an unknown
+ * unit fails at the boundary instead of reaching the label that names it.
+ */
+export const supplierLastLotSchema = object({
+	id: string(),
+	productId: string(),
+	// Resolved by the API, so a product soft-deleted afterwards still answers
+	// what was bought instead of leaving a hole.
+	productName: string(),
+	costPerMeasure: string(),
+	measureUnit: measureUnitSchema,
+	receivedAt: string(),
+});
+
+/** The last lot of a supplier, derived from the OpenAPI contract. */
+export type SupplierLastLot = components["schemas"]["SupplierLastLot"];
+
+/**
+ * The fields a supplier carries in every response, shared by the write answers
+ * and the roster list.
+ *
+ * `contact` is nullable because it is free text (a person, a phone, an email or
+ * all three) that the API stores as `null` when the box was left empty.
+ */
+const supplierFields = {
+	id: string(),
+	companyId: string(),
+	name: string(),
+	contact: nullable(string()),
+	createdAt: string(),
+	updatedAt: string(),
+} as const;
+
+/** One supplier exactly as the write endpoints serialize it. */
+export const supplierSchema = object(supplierFields);
+
+/** One supplier, derived from the OpenAPI contract. */
+export type Supplier = components["schemas"]["Supplier"];
+
+/**
+ * One roster row: the stored supplier plus its latest lot.
+ *
+ * `lastLot` is **required and nullable**, never optional: `null` is the honest
+ * "the company never bought from this supplier", while a missing key means the
+ * backend changed shape and has to fail here instead of rendering a supplier
+ * whose history silently disappeared.
+ */
+export const supplierListItemSchema = object({
+	...supplierFields,
+	lastLot: nullable(supplierLastLotSchema),
+});
+
+/** One roster row, derived from the OpenAPI contract. */
+export type SupplierListItem = components["schemas"]["SupplierListItem"];
+
+/** Body of `POST /companies/{companyId}/suppliers`, derived from the contract. */
+export type CreateSupplierRequest =
+	components["schemas"]["CreateSupplierRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/suppliers/{supplierId}`, derived from
+ * the contract. Every field is optional on purpose: an absent field keeps its
+ * value, while an explicit `null` clears `contact`.
+ */
+export type UpdateSupplierRequest =
+	components["schemas"]["UpdateSupplierRequest"];
+
+/**
+ * Shape of `GET /companies/{companyId}/suppliers`: the company's roster, already
+ * ordered by `name` and then `id` by the API, which is why it is shown in the
+ * order it arrives.
+ */
+export const supplierListSchema = array(supplierListItemSchema);
+
+/** `GET /companies/{companyId}/suppliers` response, derived from the contract. */
+export type SuppliersResponse = components["schemas"]["SupplierListItem"][];
+
+/**
+ * Validates the roster at the boundary.
+ *
+ * Same contract as {@link parseCustomers}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * table, and a `costPerMeasure` that is not a decimal string never reaches the
+ * price formatter.
+ */
+export function parseSuppliers(data: unknown): SuppliersResponse {
+	const result = safeParse(supplierListSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single supplier: the creation and the update answers.
+ *
+ * It exists so the supplier the form receives back goes through the same
+ * boundary as the listed ones: a cast here would let a shape change reach a
+ * view unnoticed.
+ */
+export function parseSupplier(data: unknown): Supplier {
+	const result = safeParse(supplierSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One physical unit of a lot, exactly as the lot endpoints serialize it: its
+ * code (generated from the position), its own `measure` and therefore its own
+ * `cost`.
+ *
+ * Both numbers are **decimal strings**, never numbers: they are weight and
+ * money, and the column keeps three and two decimals respectively. `status` is
+ * a closed list — a unit is available until a sale takes it (S2) — so an unknown
+ * value fails here instead of reaching a badge with no label for it.
+ */
+export const lotUnitSchema = object({
+	id: string(),
+	code: string(),
+	measure: string(),
+	cost: string(),
+	status: picklist(["AVAILABLE", "SOLD"]),
+});
+
+/** One unit of a purchase lot, derived from the OpenAPI contract. */
+export type StockLotUnit = components["schemas"]["StockLotUnit"];
+
+/**
+ * One purchase lot as `POST /companies/{companyId}/lots` answers it (S6): the
+ * supplier, the price of one measure, the number of physical units and every
+ * unit with its own measure and cost.
+ *
+ * `measureTotal` is what the **server derived** from the units and is kept as a
+ * decimal string; the client never sends it and never recomputes it (L6). The
+ * unit list is required and non-optional: an absent one means the backend
+ * changed shape, and the purchase cannot be shown without its detail.
+ */
+export const lotSchema = object({
+	id: string(),
+	companyId: string(),
+	productId: string(),
+	supplierId: string(),
+	receivedAt: string(),
+	measureTotal: string(),
+	costPerMeasure: string(),
+	unitCount: number(),
+	note: nullable(string()),
+	createdAt: string(),
+	units: array(lotUnitSchema),
+});
+
+/** One purchase lot, derived from the OpenAPI contract. */
+export type StockLot = components["schemas"]["StockLot"];
+
+/** Body of `POST /companies/{companyId}/lots`, derived from the contract. */
+export type CreateLotRequest = components["schemas"]["CreateLotRequest"];
+
+/**
+ * Validates the lot of a registered purchase at the boundary.
+ *
+ * Same contract as {@link parseSupplier}: a shape change fails as an
+ * {@link ApiError} with a readable message instead of reaching the success
+ * notice, and a numeric `measure` never gets formatted as weight.
+ */
+export function parseLot(data: unknown): StockLot {
+	const result = safeParse(lotSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * One physical unit of a product as `GET /products/{id}/units` answers it
+ * (L23): which unit it is, how much it measures, what it cost and where it came
+ * from.
+ *
+ * `measure` and `cost` are **decimal strings**, never numbers, for the same
+ * reason as the lot's: they are weight and money. `status` is a closed list — a
+ * unit is available until a sale takes it (S2) — so an unknown value fails here
+ * instead of reaching a checkbox the person could tick for a unit that already
+ * left. `lotId` and `receivedAt` are kept because they are what orders the list
+ * (oldest stock first) and what a sale would refer back to.
+ */
+export const productUnitSchema = object({
+	id: string(),
+	code: string(),
+	measure: string(),
+	cost: string(),
+	status: picklist(["AVAILABLE", "SOLD"]),
+	lotId: string(),
+	receivedAt: string(),
+});
+
+/** One unit of a product, derived from the OpenAPI contract. */
+export type ProductUnit = components["schemas"]["ProductUnit"];
+
+/**
+ * Shape of `GET /companies/{companyId}/products/{productId}/units`: the units
+ * of one product, oldest lot first and then by code, as the API orders them.
+ */
+export const productUnitsResponseSchema = array(productUnitSchema);
+
+/** `GET .../products/{productId}/units` response, derived from the contract. */
+export type ProductUnitsResponse = ProductUnit[];
+
+/**
+ * Validates the units of a product at the boundary.
+ *
+ * Same contract as {@link parseLot}: a shape change fails as an {@link ApiError}
+ * with a readable message instead of reaching the sale list, and a numeric
+ * `measure` never gets formatted as a weight. An empty list is valid and means
+ * "this product has no units in the requested status".
+ */
+export function parseProductUnits(data: unknown): ProductUnitsResponse {
+	const result = safeParse(productUnitsResponseSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
  * The upload contract `POST /companies/{companyId}/media/signature` returns:
  * the Cloudinary coordinates plus the limits the server already signed into
  * the signature. The browser validates the file against **these** values, not
@@ -537,6 +835,20 @@ export type MovementCustomer = components["schemas"]["MovementCustomer"];
  * movement has no association — an entry, or a sale without an identified
  * customer — and the table never reads `customerId` to decide what to show.
  */
+/**
+ * One physical unit a sale took, as `GET /movements` serializes it.
+ *
+ * `measure` and `cost` are **decimal strings**, not numbers: they are money and
+ * weight, and the API sends them as strings so no cent is lost in a float.
+ */
+export const movementUnitSchema = object({
+	id: string(),
+	code: string(),
+	// Validated as strings, never numbers, for the same reason as `price`.
+	measure: string(),
+	cost: string(),
+});
+
 const movementFields = {
 	id: string(),
 	companyId: string(),
@@ -549,6 +861,18 @@ const movementFields = {
 	actor: nullable(userSummarySchema),
 	customerId: nullable(string()),
 	customer: nullable(movementCustomerSchema),
+	// Added with the purchase-lot feature. The price and the margin are what the
+	// history renders from the lot feature on (L26), and they are validated here
+	// like every other contract field: the boundary either understands the
+	// response or fails loudly, and a movement parsed without its price would
+	// silently lose the sale's money.
+	lotId: nullable(string()),
+	unitPrice: nullable(string()),
+	units: array(movementUnitSchema),
+	// Server-computed: `unitPrice × quantity − Σ units.cost`, or `null` when the
+	// price or the units are unknown (a sale from before the lot feature). The
+	// front never recomputes it: money is not a place for client arithmetic.
+	margin: nullable(string()),
 } as const;
 
 /** One stock movement exactly as the movements endpoints serialize it. */

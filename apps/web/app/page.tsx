@@ -1,3 +1,4 @@
+import { LandingContact } from "@/src/features/landing/components/landing-contact";
 import { LandingFeatures } from "@/src/features/landing/components/landing-features";
 import {
 	LandingFooter,
@@ -27,6 +28,7 @@ export default function Home() {
 				<LandingFeatures />
 				<LandingSteps />
 				<LandingFree />
+				<LandingContact />
 			</main>
 			<LandingFooter />
 		</div>

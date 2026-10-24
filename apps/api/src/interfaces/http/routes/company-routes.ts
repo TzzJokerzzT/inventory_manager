@@ -2,7 +2,9 @@ import { Router } from "express";
 import type { CompanyController } from "../controllers/company-controller.js";
 import type { CustomerController } from "../controllers/customer-controller.js";
 import type { ProductController } from "../controllers/product-controller.js";
+import type { LotController } from "../controllers/stock-lot-controller.js";
 import type { StockMovementController } from "../controllers/stock-movement-controller.js";
+import type { SupplierController } from "../controllers/supplier-controller.js";
 
 /**
  * Company routes.
@@ -18,6 +20,8 @@ export function companyRoutes(
 	products: ProductController,
 	customers: CustomerController,
 	movements: StockMovementController,
+	suppliers: SupplierController,
+	lots: LotController,
 ): Router {
 	const router = Router();
 	router.post("/companies", controller.create);
@@ -51,6 +55,12 @@ export function companyRoutes(
 	// `manage_products` row of the matrix inside the use cases, not here.
 	companyScoped.get("/products", products.list);
 	companyScoped.post("/products", products.create);
+	// The concrete units of a product are a read of its purchase lots, so they hang
+	// off the product they belong to (L23). It is registered before
+	// `/products/:productId` for the same reason the longer delete path is: the
+	// longer path first keeps it obvious that the plain detail route can never
+	// swallow it. Any ACTIVE membership reads it, like the rest of the catalogue.
+	companyScoped.get("/products/:productId/units", products.units);
 	companyScoped.get("/products/:productId", products.get);
 	companyScoped.patch("/products/:productId", products.update);
 	// The permanent delete is declared BEFORE `/products/:productId` on purpose:
@@ -72,6 +82,24 @@ export function companyRoutes(
 	companyScoped.get("/customers/:customerId", customers.get);
 	companyScoped.patch("/customers/:customerId", customers.update);
 	companyScoped.delete("/customers/:customerId", customers.remove);
+	// Supplier routes. Same protected sub-router, same reasoning: the company
+	// comes from the path and the membership, never from the body. The ABM of S4
+	// is a write of the company catalogue, so `manage_products` decides who may
+	// create, edit and soft-delete it (OWNER and ADMIN write, MEMBER reads) --
+	// enforced by the use cases, not here. There is no restore route: the scope
+	// asks for a baja lógica, and a supplier is referenced by the purchase lots,
+	// so the row stays.
+	companyScoped.get("/suppliers", suppliers.list);
+	companyScoped.post("/suppliers", suppliers.create);
+	companyScoped.patch("/suppliers/:supplierId", suppliers.update);
+	companyScoped.delete("/suppliers/:supplierId", suppliers.remove);
+	// Purchase lot routes. Registering a lot is the way measured stock enters the
+	// company (S6): it is a catalogue write (`manage_products`, enforced by the
+	// use case) and it shares the protected sub-router, so the company comes from
+	// the path and the membership, never from the body. There is no edit nor
+	// delete route on purpose -- a lot is the trace of a purchase, and its stock
+	// only moves through the ledger.
+	companyScoped.post("/lots", lots.create);
 	// Stock movement routes. They share the protected sub-router, so they
 	// inherit `requireCompanyContext`: any ACTIVE membership registers and reads
 	// (S6), and the company comes from the path, never from the body. There is

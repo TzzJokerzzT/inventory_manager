@@ -8,6 +8,7 @@ import {
 	type RegisterMovementResponse,
 } from "@/lib/api/schemas";
 import { getAccessToken } from "@/src/features/auth/api/get-access-token";
+import { productUnitsQueryKey } from "@/src/features/lot/api/use-product-units";
 import { productsQueryPrefix } from "@/src/features/product/api/use-products";
 import { movementsQueryPrefix } from "./use-movements";
 
@@ -32,6 +33,12 @@ import { movementsQueryPrefix } from "./use-movements";
  * body **only when it is set**: an anonymous sale sends the same body it sent
  * before the association existed, and an entry never sends it at all — the API
  * answers `400 customer_requires_exit` if one arrives with `IN`.
+ *
+ * A sale of a product with units sends `unitIds` and `unitPrice` (L24). Those
+ * units are marked `SOLD` by the same transaction, so the mutation invalidates
+ * **that product's** units as well: without it the next sale would offer a unit
+ * that already left, and the person would only find out when the API answered
+ * `409 unit_not_available`.
  */
 export function useRegisterMovement(companyId: string | undefined) {
 	const queryClient = useQueryClient();
@@ -54,13 +61,20 @@ export function useRegisterMovement(companyId: string | undefined) {
 			);
 			return parseRegisterMovementResponse(response.data);
 		},
-		onSuccess: () => {
+		onSuccess: (_response, variables) => {
 			queryClient.invalidateQueries({
 				queryKey: movementsQueryPrefix(companyId),
 			});
 			queryClient.invalidateQueries({
 				queryKey: productsQueryPrefix(companyId),
 			});
+			if (variables.unitIds && variables.unitIds.length > 0) {
+				// La venta se llevó esas unidades: la lista del producto tiene que
+				// volver a pedirse antes de ofrecer otra.
+				queryClient.invalidateQueries({
+					queryKey: productUnitsQueryKey(companyId, variables.productId),
+				});
+			}
 		},
 	});
 }

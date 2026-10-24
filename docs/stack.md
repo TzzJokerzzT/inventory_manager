@@ -47,6 +47,7 @@
 | Gráficos | **Recharts** |
 | Estilos | **Tailwind CSS** |
 | Iconos | **lucide-react** |
+| Imagen de vista previa al compartir | **`next/og`** (`ImageResponse`): la tarjeta se renderiza en el build, sin servicio externo ni dependencia nueva |
 | Linter y formateo | **Biome** |
 | Tests unitarios | **Jest** |
 | Tests de integración | **React Testing Library** |

@@ -1,4 +1,10 @@
 # Plan de trabajo — Inventory Manager
+> **Nota de vigencia (2026-10-24).** Este documento es la foto del plan del 2026-10-06 y algunas filas
+> ya no describen el repo: `MI-37` (`.env.example`) y `MI-43` (contrato) están resueltos — hay
+> `.env.example` en la raíz y en `apps/api`, y el contrato vive en `apps/api/openapi.yaml` con tipos
+> generados en `apps/web/lib/api`. La verdad viva está en el `README.md` y en `odd/tasks/`. Las filas de
+> abajo se conservan porque explican por qué se decidió cada cosa, no porque sigan pendientes.
+
 
 **Generado:** 2026-10-06 · **Fuente:** Jira proyecto `MI` (55 issues) + estado real del repo + `docs/stack.md`
 **Estado:** 19 `Done` · 2 `In Progress` · **34 `To Do`**

@@ -244,6 +244,38 @@ dice. Los tres gráficos son:
 
 Los gráficos usan **Recharts** (ya estaba en el stack) y tienen estado de carga, de error y de vacío.
 
+**Escritura en rutas propias.** Los padrones de clientes y proveedores ya no abren el formulario
+dentro de la lista: cada vista tiene su dirección, así que recargar funciona y el link se puede
+compartir.
+
+```
+/dashboard/clients                     padrón            /dashboard/providers                     padrón
+/dashboard/clients/create              alta              /dashboard/providers/create              alta
+/dashboard/clients/[id]/edit           edición           /dashboard/providers/[id]/edit           edición
+/dashboard/clients/[id]/details        detalle + salidas
+```
+
+Cada página **lee por id**: un cliente borrado en otra pestaña muestra el 404 legible en vez de una
+pantalla vacía. La edición de proveedores es la excepción y no lee por id porque **el contrato no
+tiene `GET /suppliers/{id}`**: resuelve el id contra el padrón que la lista ya tiene cacheado, espera
+la carga antes de decidir y avisa cuando el proveedor ya no está.
+
+**Términos y condiciones.** El registro exige aceptar los términos antes de crear la cuenta, y el
+modal muestra el texto completo con su versión (`TERMS_VERSION`, hoy `2026-10-24`, la misma fecha que
+lleva el texto). El texto vive en un solo archivo (`src/features/auth/register/utils/terms.ts`):
+reemplazarlo y subir la versión es toda la integración.
+
+**Miniatura al compartir.** El enlace de la app se comparte con imagen, nombre y descripción. La
+metadata Open Graph/Twitter vive en `src/features/marketing/site-metadata.ts` y la tarjeta de
+**1200×630** la genera `app/opengraph-image.tsx` en el build (logo incluido, PNG autocontenido);
+`twitter-image` reusa la misma. El `metadataBase` sale de `NEXT_PUBLIC_SITE_URL`, si no de
+`VERCEL_URL`, y en local de `http://localhost:3000`: **sin base absoluta la imagen queda relativa y
+la vista previa no muestra nada**.
+
+**Contacto.** La landing cierra con un bloque de contacto y un `mailto:` al correo de quien mantiene
+el producto. No hay backend de contacto, así que el enlace abre el cliente de correo del visitante; la
+dirección también se muestra como texto para poder copiarla.
+
 **Design system.** Paleta de tokens (modo claro y oscuro), componentes base (`Button`, `Card`,
 `Spinner`, `Toast`) y componentes del design system (`Alert`, `DataTable`, `KpiCard`, `Modal`,
 `StockBadge`, `FormField`, `Checkbox`), con una página de referencia en `/design-system`.
@@ -572,8 +604,12 @@ inventory-manager/
 ├── apps/
 │   ├── web/                      # Next.js — puerto 3000
 │   │   ├── app/                  # App Router (layout, page, globals.css)
+│   │   │   ├── opengraph-image.tsx   # tarjeta 1200x630 que se ve al compartir
+│   │   │   └── twitter-image.tsx     # reusa la misma tarjeta
 │   │   ├── components/ui/        # shadcn/ui (button)
 │   │   ├── lib/                  # cn y utilidades
+│   │   ├── src/features/         # vertical slices (client, provider, marketing, landing, ...)
+│   │   ├── src/view/             # vistas de página que montan cada slice
 │   │   ├── public/
 │   │   ├── components.json       # config de shadcn/ui
 │   │   ├── postcss.config.mjs    # Tailwind v4

@@ -247,3 +247,9 @@ regeneración de `apps/web/lib/api/openapi.d.ts` también.
 L5 (riesgo asumido): `StockMovement.unitPrice` es nullable para no inventar precios del pasado; el margen de
 las filas viejas se informa como "sin costo". La alternativa (backfill con el precio de lista actual) habría
 fabricado datos.
+
+- **L29.** Las vistas de escritura de clientes y proveedores salieron de la lista y pasaron a rutas
+  propias (`/dashboard/{clients,providers}/create` y `/[id]/edit`, más `/dashboard/clients/[id]/details`).
+  La lista de proveedores ya no abre ningún panel, y la edición resuelve el proveedor contra el padrón
+  porque el contrato no tiene `GET /suppliers/{id}`. Detalle y evidencia en
+  `odd/tasks/ui-routes-and-share-preview.md`.

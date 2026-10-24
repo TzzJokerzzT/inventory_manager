@@ -1,18 +1,29 @@
-import type { MovementTrendPoint, Product } from "@/lib/api/schemas";
+import type { MovementTrendPoint, ProductListItem } from "@/lib/api/schemas";
 import { inventoryValue } from "./inventory-value";
 
 /**
  * The numbers the dashboard shows, all derived from the active company's data.
  *
  * Every field has a real source: the catalogue (`GET /products`, which already
- * returns the whole list unpaginated) and the movement trend report (one point
- * per UTC day). No field is a sample value.
+ * returns the whole list unpaginated, with the costs derived from its available
+ * units) and the movement trend report (one point per UTC day). No field is a
+ * sample value.
  */
 export type DashboardMetrics = {
 	/** Size of the catalogue (DASH-01). */
 	totalProducts: number;
-	/** `price × stock` of the whole catalogue, summed in integer cents. */
+	/** `unitCost × stock` of the whole catalogue, summed in integer cents (L27). */
 	inventoryValueCents: number;
+	/**
+	 * `marginPerUnit × stock` over the same products, in integer cents. Signed:
+	 * stock bought above its list price loses money (L27).
+	 */
+	marginPotentialCents: number;
+	/**
+	 * Products with stock but no known `unitCost`, which therefore contribute to
+	 * neither figure (L27). They are reported apart, never as a zero cost (L11).
+	 */
+	productsWithoutCost: number;
 	/** Products where `stockQuantity <= lowStockThreshold` (L4). */
 	criticalCount: number;
 	/** Critical products with no units at all. */
@@ -26,7 +37,7 @@ export type DashboardMetrics = {
 /** The metrics plus the rows of the critical stock table (S3). */
 export type DashboardMetricsResult = DashboardMetrics & {
 	/** The critical products, by units ascending and then by name. */
-	criticalProducts: Product[];
+	criticalProducts: ProductListItem[];
 };
 
 /**
@@ -37,7 +48,7 @@ export type DashboardMetricsResult = DashboardMetrics & {
  * user edit the threshold the "stock bajo" products join the same set without a
  * change here.
  */
-export function isCritical(product: Product): boolean {
+export function isCritical(product: ProductListItem): boolean {
 	return product.stockQuantity <= product.lowStockThreshold;
 }
 
@@ -47,17 +58,18 @@ export function isCritical(product: Product): boolean {
  * A single pass over the products fills the counters and the critical rows at
  * the same time, so the KPI, the alerts and the table can never disagree: they
  * are the same predicate. The money comes from {@link inventoryValue} instead of
- * being recomputed here, so the KPI and the MI-14 chart always show the same
- * total to the cent.
+ * being recomputed here, so the KPI, the margin card and the MI-14 chart always
+ * show the same totals to the cent — including how many products had no cost to
+ * contribute (L27).
  */
 export function dashboardMetrics(
-	products: Product[],
+	products: ProductListItem[],
 	series: MovementTrendPoint[],
 ): DashboardMetricsResult {
 	let criticalCount = 0;
 	let outOfStockCount = 0;
 	let lowStockOnlyCount = 0;
-	const criticalProducts: Product[] = [];
+	const criticalProducts: ProductListItem[] = [];
 
 	for (const product of products) {
 		if (!isCritical(product)) {
@@ -76,6 +88,8 @@ export function dashboardMetrics(
 
 	criticalProducts.sort(compareByUnitsThenName);
 
+	const value = inventoryValue(products);
+
 	// The series arrives oldest first, so the last point is today's (UTC). An
 	// empty series means the server had no day to report, not "no movements", so
 	// the safe reading of "moved today" is zero.
@@ -83,7 +97,9 @@ export function dashboardMetrics(
 
 	return {
 		totalProducts: products.length,
-		inventoryValueCents: inventoryValue(products).totalCents,
+		inventoryValueCents: value.totalCents,
+		marginPotentialCents: value.marginPotentialCents,
+		productsWithoutCost: value.productsWithoutCost,
 		criticalCount,
 		outOfStockCount,
 		lowStockOnlyCount,
@@ -92,7 +108,10 @@ export function dashboardMetrics(
 	};
 }
 
-function compareByUnitsThenName(left: Product, right: Product): number {
+function compareByUnitsThenName(
+	left: ProductListItem,
+	right: ProductListItem,
+): number {
 	if (left.stockQuantity !== right.stockQuantity) {
 		return left.stockQuantity - right.stockQuantity;
 	}

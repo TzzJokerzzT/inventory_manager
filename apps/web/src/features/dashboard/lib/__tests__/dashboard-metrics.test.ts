@@ -1,7 +1,8 @@
-import type { MovementTrendPoint, Product } from "@/lib/api/schemas";
+import type { MovementTrendPoint, ProductListItem } from "@/lib/api/schemas";
 import { dashboardMetrics } from "../dashboard-metrics";
 
-function product(overrides: Partial<Product> = {}): Product {
+/** One catalogue row with a known cost, so the money has a real source. */
+function product(overrides: Partial<ProductListItem> = {}): ProductListItem {
 	return {
 		id: "p1",
 		companyId: "c1",
@@ -10,6 +11,11 @@ function product(overrides: Partial<Product> = {}): Product {
 		sku: "CAF-500",
 		price: "1500.00",
 		measureUnit: "KILOGRAM",
+		availableUnits: 2,
+		availableMeasure: "2.000",
+		costPerMeasure: "1000.000",
+		unitCost: "1000.00",
+		marginPerUnit: "500.00",
 		photoUrl: null,
 		stockQuantity: 2,
 		lowStockThreshold: 0,
@@ -18,6 +24,18 @@ function product(overrides: Partial<Product> = {}): Product {
 		updatedAt: "2026-10-20T12:00:00.000Z",
 		...overrides,
 	};
+}
+
+/** A product with stock but no lots: no cost, no margin (L11). */
+function uncosted(overrides: Partial<ProductListItem> = {}): ProductListItem {
+	return product({
+		availableUnits: 0,
+		availableMeasure: "0.000",
+		costPerMeasure: null,
+		unitCost: null,
+		marginPerUnit: null,
+		...overrides,
+	});
 }
 
 function point(
@@ -34,6 +52,8 @@ describe("dashboardMetrics", () => {
 		expect(dashboardMetrics([], [])).toEqual({
 			totalProducts: 0,
 			inventoryValueCents: 0,
+			marginPotentialCents: 0,
+			productsWithoutCost: 0,
 			criticalCount: 0,
 			outOfStockCount: 0,
 			lowStockOnlyCount: 0,
@@ -54,15 +74,15 @@ describe("dashboardMetrics", () => {
 		expect(metrics.totalProducts).toBe(2);
 	});
 
-	it("sums the inventory value in integer cents", () => {
-		// Mismo cálculo que el gráfico de MI-14: precio × stock, sin floats.
+	it("values the inventory at cost, in integer cents", () => {
+		// L27: el mismo cálculo que el gráfico, Σ (unitCost × stock), sin floats.
 		const metrics = dashboardMetrics(
 			[
-				product({ id: "p1", price: "1500.00", stockQuantity: 2 }),
+				product({ id: "p1", unitCost: "1500.00", stockQuantity: 2 }),
 				product({
 					id: "p2",
 					name: "Yerba mate 1kg",
-					price: "0.10",
+					unitCost: "0.10",
 					stockQuantity: 3,
 				}),
 			],
@@ -70,6 +90,52 @@ describe("dashboardMetrics", () => {
 		);
 
 		expect(metrics.inventoryValueCents).toBe(300030);
+	});
+
+	it("sums the potential margin of the stock at cost, sign included", () => {
+		// L27: Σ (marginPerUnit × stock). Un producto bajo el costo baja el total.
+		const metrics = dashboardMetrics(
+			[
+				product({ id: "p1", marginPerUnit: "500.00", stockQuantity: 2 }),
+				product({
+					id: "p2",
+					name: "Yerba mate 1kg",
+					marginPerUnit: "-20500.00",
+					stockQuantity: 1,
+				}),
+			],
+			[],
+		);
+
+		expect(metrics.marginPotentialCents).toBe(-1950000);
+	});
+
+	it("counts the products with stock and no known cost", () => {
+		const metrics = dashboardMetrics(
+			[
+				product({ id: "p1" }),
+				uncosted({ id: "p2", name: "Yerba mate 1kg", stockQuantity: 3 }),
+				uncosted({ id: "p3", name: "Azúcar 1kg", stockQuantity: 1 }),
+			],
+			[],
+		);
+
+		expect(metrics.productsWithoutCost).toBe(2);
+		// Los dos sin costo no aportan: el valor es sólo el del producto con costo.
+		expect(metrics.inventoryValueCents).toBe(200000);
+	});
+
+	it("does not count a sold-out product as one without cost", () => {
+		const metrics = dashboardMetrics(
+			[
+				uncosted({ id: "p1", stockQuantity: 0 }),
+				product({ id: "p2", name: "Yerba mate 1kg" }),
+			],
+			[],
+		);
+
+		// Sin stock no hay valor que atribuir: el producto no es "sin costo".
+		expect(metrics.productsWithoutCost).toBe(0);
 	});
 
 	it("treats the threshold as inclusive, so a zero threshold flags stock 0", () => {

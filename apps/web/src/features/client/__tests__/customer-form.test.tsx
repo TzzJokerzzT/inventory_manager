@@ -13,6 +13,16 @@ jest.mock("../api/use-update-customer", () => ({
 	useUpdateCustomer: jest.fn(),
 }));
 
+// The form now resolves the active company itself instead of taking it as a
+// prop, so the suite provides one instead of a QueryClient.
+jest.mock("../../company/store/company-selectors", () => ({
+	useActiveCompany: jest.fn(() => ({
+		id: "c1",
+		name: "Empresa Uno",
+		createdAt: "2026-10-06T00:00:00.000Z",
+	})),
+}));
+
 const useCreateCustomerMock = useCreateCustomer as jest.MockedFunction<
 	typeof useCreateCustomer
 >;
@@ -84,19 +94,12 @@ function submit(label: string) {
 }
 
 function renderCreate() {
-	return render(
-		<CustomerForm companyId="c1" onSaved={onSaved} onCancel={onCancel} />,
-	);
+	return render(<CustomerForm onSaved={onSaved} onCancel={onCancel} />);
 }
 
 function renderEdit(value: Customer = customer()) {
 	return render(
-		<CustomerForm
-			companyId="c1"
-			customer={value}
-			onSaved={onSaved}
-			onCancel={onCancel}
-		/>,
+		<CustomerForm customer={value} onSaved={onSaved} onCancel={onCancel} />,
 	);
 }
 

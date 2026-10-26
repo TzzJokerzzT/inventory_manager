@@ -1,5 +1,9 @@
 import type { Column } from "@/components/design-system";
 import type { StockMovement } from "@/lib/api/schemas";
+import {
+	formatCents,
+	priceToCents,
+} from "@/src/features/dashboard/lib/inventory-value";
 import { MoneyValue } from "@/src/features/product/components/money-value";
 import { formatMovementDate } from "../lib/format-movement-date";
 import { MovementTypeBadge } from "./movement-type-badge";
@@ -24,9 +28,12 @@ const NO_CUSTOMER = "—";
 const NO_PRICE = "Sin precio";
 const NO_MARGIN = "Sin margen";
 
+/** A total needs the written price: without it the amount is unknown, never `0`. */
+const NO_TOTAL = "Sin total";
+
 /**
- * The history table: type, product, SKU, quantity, applied price, margin, reason,
- * customer, user and date.
+ * The history table: type, product, SKU, quantity, applied price, total, margin,
+ * reason, customer, user and date.
  *
  * The columns live in the feature, not in `src/utils/Columns.tsx`: those are the
  * mock tables, and a view only reads the columns it owns. Every cell reads from
@@ -34,7 +41,9 @@ const NO_MARGIN = "Sin margen";
  * (`product.name`/`sku`, `customer.name`), so the table never joins a cached
  * catalogue that could be stale, and a customer soft-deleted after the sale
  * still shows the name the ledger recorded (MI-10). The date is formatted
- * without a locale so tests and the browser agree.
+ * without a locale so tests and the browser agree. The total of a row is the
+ * written price times its quantity, in integer cents, and it is unknown — never
+ * zero — for an entry or a sale that wrote no price.
  */
 export const movementColumns: Column<StockMovement>[] = [
 	{
@@ -66,6 +75,23 @@ export const movementColumns: Column<StockMovement>[] = [
 		render: (row) => (
 			<MoneyValue value={row.unitPrice} unknownLabel={NO_PRICE} />
 		),
+	},
+	{
+		key: "total",
+		header: "Total",
+		align: "right",
+		// `unitPrice × quantity` in integer cents: the price travels as a
+		// `Decimal(12,2)` string, so multiplying a float would drift at the first
+		// cent. An entry, or a sale older than the written price, has no amount:
+		// the cell says "no total" instead of `0`.
+		render: (row) =>
+			row.unitPrice === null ? (
+				<MoneyValue value={null} unknownLabel={NO_TOTAL} />
+			) : (
+				<span className="whitespace-nowrap">
+					{formatCents(priceToCents(row.unitPrice) * row.quantity)}
+				</span>
+			),
 	},
 	{
 		key: "margin",

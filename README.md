@@ -140,8 +140,9 @@ el catálogo y recibe `403 insufficient_role` si intenta escribir. Crear y edita
 categoría de PROD-04 **no** está implementado.
 
 **Movimientos de stock.** Entradas (`IN`) y salidas (`OUT`) en `/dashboard/movements`: formulario con
-selector de producto real, cantidad y motivo opcional, más una tabla con tipo, producto, cantidad,
-motivo, usuario y fecha. `POST /companies/{id}/movements` responde `201` con el movimiento y el
+selector de producto real, cantidad y motivo opcional, más una tabla con tipo, producto, SKU, cantidad,
+precio escrito, total, margen, motivo, cliente, usuario y fecha.
+`POST /companies/{id}/movements` responde `201` con el movimiento y el
 `stockQuantity` del producto **después** del movimiento, y `GET /companies/{id}/movements` lista el
 historial de la empresa más reciente primero, con los filtros `productId`, `customerId` y `type`, y
 `limit` de `1` a `200` (default `50`). `customerId` es un **filtro de lectura** combinable con los
@@ -174,6 +175,11 @@ selector opcional con la opción "Sin cliente" y la tabla suma la columna Client
 mientras el formulario de entrada no lo muestra. No hizo falta migración: `customer_id` existe desde
 la migración inicial. Las fotos de producto no cambian y `stockQuantity` sigue sin ser escribible
 desde los endpoints de productos.
+
+El **total** de cada fila del historial es el precio escrito en la salida × la cantidad, multiplicado
+en **centavos enteros** (el precio es un string decimal y multiplicarlo como flotante pierde un
+centavo): es un total **por movimiento**, no un total de dinero de la empresa, y una entrada —o una
+venta anterior al precio escrito— muestra "sin total" en vez de `0`.
 
 **Clientes.** Padrón por empresa en `/dashboard/clients`: listado con búsqueda, alta y edición en un
 formulario en la misma página, y baja con confirmación en dos pasos. `GET

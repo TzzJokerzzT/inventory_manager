@@ -124,7 +124,10 @@ nuevo y con los días sin movimientos en cero, desde
 > mismo toast. Los movimientos son **inmutables** —no hay endpoints de edición
 > ni de borrado— porque son la traza de auditoría de MOV-05, con el `userId` y el `createdAt` puestos
 > por el servidor y `reason` opcional (≤300 caracteres). Cualquier membership `ACTIVE` registra y todos
-> los roles leen el historial. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede
+> los roles leen el historial. La tabla del historial suma la columna **Total**: el precio escrito en el
+> movimiento × la cantidad, multiplicado en **centavos enteros**, y **desconocido** ("sin total") para
+> una entrada o una venta sin precio escrito, nunca `0`. Es un total **por movimiento**, no un total de
+> dinero de la empresa. **Desde MI-10 (`odd/tasks/customer-links.md`) una salida puede
 > asociarse a un cliente**: `customerId` se acepta opcional y nullable en el alta y se expone en el
 > historial ya resuelto (`customerId` más `customer: { id, name } | null`). La lectura por lote de
 > clientes incluye las filas con `deletedAt`, así que un movimiento **sigue mostrando el nombre del

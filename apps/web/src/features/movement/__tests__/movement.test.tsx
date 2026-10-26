@@ -200,6 +200,7 @@ describe("Movement", () => {
 			"SKU",
 			"Cantidad",
 			"Precio",
+			"Total",
 			"Margen",
 			"Motivo",
 			"Cliente",
@@ -295,6 +296,26 @@ describe("Movement", () => {
 		expect(cellText(row, "Margen")).toBe("$ 1.800,00");
 	});
 
+	it("shows the total of the sale, computed in integer cents", () => {
+		setup({
+			rows: [
+				movement({
+					type: "OUT",
+					quantity: 3,
+					unitPrice: "1250.50",
+					reason: "Venta",
+				}),
+			],
+		});
+
+		render(<Movement />);
+
+		const row = screen.getByRole("row", { name: /Café molido 500g/ });
+		// 1250.50 × 3 = 3751.50 exacto: multiplicar como flotante daría
+		// 3751.4999999999995 y el total perdería un centavo al formatearse.
+		expect(cellText(row, "Total")).toBe("$ 3.751,50");
+	});
+
 	it("shows a negative margin with its sign", () => {
 		setup({
 			rows: [
@@ -332,10 +353,12 @@ describe("Movement", () => {
 
 		const row = screen.getByRole("row", { name: /Café molido 500g/ });
 		// El guión se ve; el motivo viaja al lector de pantalla.
-		expect(within(row).getAllByText("—")).toHaveLength(2);
+		expect(within(row).getAllByText("—")).toHaveLength(3);
 		expect(within(row).getByText("Sin precio")).toBeTruthy();
+		expect(within(row).getByText("Sin total")).toBeTruthy();
 		expect(within(row).getByText("Sin margen")).toBeTruthy();
 		expect(cellText(row, "Precio")).not.toContain("0");
+		expect(cellText(row, "Total")).not.toContain("0");
 		expect(cellText(row, "Margen")).not.toContain("0");
 	});
 

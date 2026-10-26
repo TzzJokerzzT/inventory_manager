@@ -4,8 +4,13 @@ import { Alert, type Column, DataTable } from "@/components/design-system";
 import { SpinnerMotion } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/client";
 import type { Customer, StockMovement } from "@/lib/api/schemas";
+import {
+	formatCents,
+	priceToCents,
+} from "@/src/features/dashboard/lib/inventory-value";
 import { useMovements } from "@/src/features/movement/api/use-movements";
 import { formatMovementDate } from "@/src/features/movement/lib/format-movement-date";
+import { MoneyValue } from "@/src/features/product/components/money-value";
 
 const LOAD_ERROR_FALLBACK = "Probá de nuevo en unos segundos.";
 
@@ -18,11 +23,20 @@ const NO_REASON = "Sin motivo";
 /** Shown when the API could not resolve the user behind the sale. */
 const NO_ACTOR = "Sin usuario";
 
+/**
+ * Shown when the sale never wrote a price: the field arrived after the ledger
+ * did, so a movement older than it has no amount to show (S9).
+ */
+const NO_PRICE = "Sin precio";
+
+/** A total needs the written price: without it the amount is unknown, never `0`. */
+const NO_TOTAL = "Sin total";
+
 const EMPTY_MESSAGE = "Este cliente todavía no tiene salidas registradas.";
 
 /**
- * The sales table of one customer: date, product, SKU, quantity, reason and
- * user.
+ * The sales table of one customer: date, product, SKU, quantity, written price,
+ * row total, reason and user.
  *
  * Every cell reads from the contract — the product comes resolved by the API
  * (`product.name`/`sku`) and the user from `actor` — so the panel never joins a
@@ -49,6 +63,34 @@ const salesColumns: Column<StockMovement>[] = [
 		header: "Cantidad",
 		align: "right",
 		render: (row) => String(row.quantity),
+	},
+	// The price **written on that sale**, not the product's current list price: a
+	// sale keeps the amount that was actually charged, and a movement older than
+	// the field says so instead of borrowing today's price (S9).
+	{
+		key: "unitPrice",
+		header: "Precio de venta",
+		align: "right",
+		render: (row) => (
+			<MoneyValue value={row.unitPrice} unknownLabel={NO_PRICE} />
+		),
+	},
+	{
+		key: "total",
+		header: "Total",
+		align: "right",
+		// `unitPrice × quantity` in integer cents (L27): the price travels as a
+		// `Decimal(12,2)` string, so multiplying a float would drift at the first
+		// cent. The helpers are the dashboard's, so the parser and the formatter
+		// stay single for every money figure in the app.
+		render: (row) =>
+			row.unitPrice === null ? (
+				<MoneyValue value={null} unknownLabel={NO_TOTAL} />
+			) : (
+				<span className="whitespace-nowrap">
+					{formatCents(priceToCents(row.unitPrice) * row.quantity)}
+				</span>
+			),
 	},
 	{
 		key: "reason",
@@ -90,9 +132,11 @@ function ContactField({
  * so this panel only paints what it is given. The sales are the company's
  * history narrowed with `customerId` and `type: "OUT"`:
  * there is no per-customer endpoint, and this view never touches the movements
- * page. It shows no money totals because a movement does not store a price; the
- * count of sales and the sum of units are the honest aggregate of what the
- * ledger recorded.
+ * page. Every row also carries the price **written on that sale** and the row
+ * total (`unitPrice × quantity`, in integer cents), so a sale recorded before
+ * the field existed says the amount is unknown instead of showing a zero. There
+ * is still no lifetime money total: the endpoint pages the history, so the
+ * count, the units and the money describe only the sales listed.
  */
 export function CustomerDetailPanel({
 	companyId,

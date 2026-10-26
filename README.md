@@ -191,13 +191,15 @@ leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404
 asociarse a un cliente (MI-10, ver **Movimientos de stock**). Cada fila suma además la acción
 **Detalle**, que abre un panel **en la misma página** con los datos de contacto del cliente y la tabla
 de **sus salidas** (`type=OUT`): fecha, producto, SKU, cantidad, motivo y usuario, más el conteo de
-salidas y el total de unidades **de las salidas listadas**. El panel aclara que son las más recientes
-porque el endpoint pagina el historial: informa lo que recibió, nunca un total histórico. Es de solo
-lectura, no tiene ruta propia ni endpoint nuevo —reutiliza `GET /companies/{id}/movements` con
-`customerId` (ver **Movimientos de stock**)— y **no muestra montos de dinero**, porque un movimiento
-no guarda precio. **El resumen de compras por cliente sigue sin construirse**: el padrón no muestra
-columnas "Compras"/"Total" (decisión L4 de `odd/tasks/customer-links.md`), así que la tabla
-principal sigue mostrando sólo los datos de contacto.
+salidas y el total de unidades **de las salidas listadas**. Cada fila suma además el **precio de venta**
+escrito en esa salida y su **total** (`precio × cantidad`, multiplicado en centavos enteros, nunca con
+flotantes), tomados del movimiento y no del catálogo: una venta conserva el precio que se cobró, y una
+salida anterior al precio escrito muestra "sin precio"/"sin total" en vez de un `0`. El panel aclara
+que son las más recientes porque el endpoint pagina el historial: informa lo que recibió, nunca un
+total histórico. Es de solo lectura, no tiene ruta propia ni endpoint nuevo —reutiliza
+`GET /companies/{id}/movements` con `customerId` (ver **Movimientos de stock**). **El resumen de compras
+por cliente sigue sin construirse**: el padrón no muestra columnas "Compras"/"Total" (decisión L4 de
+`odd/tasks/customer-links.md`), así que la tabla principal sigue mostrando sólo los datos de contacto.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
@@ -747,7 +749,7 @@ producto en sí**, no la infraestructura.
 - [x] **Dashboard con datos reales** — MI-6: los cuatro KPIs (total de productos, valor del inventario, productos con stock crítico y unidades movidas hoy en UTC), las alertas y la tabla de stock crítico se derivan de `GET /companies/{id}/products` y del reporte de evolución, y el aviso "Datos de muestra" se eliminó porque ya no había datos de muestra. Los gráficos ya eran reales (MI-14). MI-9 nombra el **historial de movimientos**, que está construido desde MI-8 (`/dashboard/movements`): no queda nada mockeado en el dashboard.
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
 - [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
-- [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.
+- [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El detalle de cada cliente muestra el precio de venta escrito en cada salida y su total (`precio × cantidad`, en centavos enteros). El resumen de compras por cliente en el padrón (columnas "Compras"/"Total") sigue sin construirse.
 - [x] **Purga física de productos** — `DELETE /companies/{id}/products/{productId}/permanent` (`204`) sobre la misma papelera: OWNER-only (`purge_products`; un `ADMIN` recibe `403 insufficient_role`), con `Modal` de confirmación, `409 product_not_deleted` para un producto activo y `409 product_has_movements` (con el conteo) cuando el producto tiene historial, porque `stock_movements.product_id` es `ON DELETE RESTRICT` y el ledger no se borra nunca. Purgar libera el SKU. La baja lógica reversible (**Restaurar**) sigue siendo el otro camino.
 - [ ] **Notificaciones de stock bajo** — MI-12.
 

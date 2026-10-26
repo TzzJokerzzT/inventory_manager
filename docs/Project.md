@@ -166,13 +166,15 @@ el padrón sigue mostrando sólo los datos de contacto.
 > **Detalle** abre un panel **en la misma página** con los datos de contacto y la tabla de **sus
 > salidas** (`type=OUT`) —fecha, producto, SKU, cantidad, motivo y usuario—, más el conteo de salidas y
 > el total de unidades **de las salidas listadas** (el panel aclara "Se muestran las salidas más
-> recientes", porque el endpoint pagina el historial: no promete un total histórico) y **no calcula
-> montos**, porque un movimiento no guarda precio. No es un requerimiento nuevo: es una **vista sobre
-> CLI-03/CLI-05/MOV-03**. No agrega endpoints —reutiliza `GET /companies/{companyId}/movements` con
-> `customerId`, un filtro de lectura que en un cliente de otra empresa devuelve `[]` en vez de
-> `404`— ni filas a `can()`, porque leer clientes y movimientos ya está permitido a cualquier
-> membership `ACTIVE`. La página de Movimientos queda igual: el detalle es adicional y de solo
-> lectura, y el resumen de compras por cliente sigue fuera de alcance.
+> recientes", porque el endpoint pagina el historial: no promete un total histórico). Cada fila suma el
+> **precio de venta** escrito en esa salida y su **total** (`precio × cantidad`, en centavos enteros):
+> son los del movimiento y no los del catálogo, así que una venta conserva el precio que se cobró y una
+> salida anterior al precio escrito muestra "sin precio"/"sin total", nunca `0`. No es un requerimiento
+> nuevo: es una **vista sobre CLI-03/CLI-05/MOV-03**. No agrega endpoints —reutiliza
+> `GET /companies/{companyId}/movements` con `customerId`, un filtro de lectura que en un cliente de
+> otra empresa devuelve `[]` en vez de `404`— ni filas a `can()`, porque leer clientes y movimientos ya
+> está permitido a cualquier membership `ACTIVE`. La página de Movimientos queda igual: el detalle es
+> adicional y de solo lectura, y el resumen de compras por cliente sigue fuera de alcance.
 
 ### 6. Gestión Multi-Empresa
 

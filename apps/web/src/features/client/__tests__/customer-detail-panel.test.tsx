@@ -112,6 +112,8 @@ describe("CustomerDetailPanel", () => {
 			"Producto",
 			"SKU",
 			"Cantidad",
+			"Precio de venta",
+			"Total",
 			"Motivo",
 			"Usuario",
 		]);
@@ -126,6 +128,36 @@ describe("CustomerDetailPanel", () => {
 		expect(screen.getByText("YER-1K")).toBeTruthy();
 		expect(screen.getByText("Venta mayorista")).toBeTruthy();
 		expect(screen.getByText("Bruno")).toBeTruthy();
+	});
+
+	it("shows the written sale price and the row total", () => {
+		stubSales([
+			sale({ quantity: 4, unitPrice: "1500.00" }),
+			sale({
+				id: "m2",
+				quantity: 3,
+				unitPrice: "1250.50",
+				product: { id: "p2", name: "Yerba 1kg", sku: "YER-1K" },
+			}),
+		]);
+
+		renderPanel();
+
+		// `unitPrice × quantity` in integer cents: 1250.50 × 3 is exactly
+		// 3751.50, never the 3751.4999999999995 a float multiplication gives.
+		expect(screen.getByText("$ 1.500,00")).toBeTruthy();
+		expect(screen.getByText("$ 6.000,00")).toBeTruthy();
+		expect(screen.getByText("$ 1.250,50")).toBeTruthy();
+		expect(screen.getByText("$ 3.751,50")).toBeTruthy();
+	});
+
+	it("says both amounts are unknown when the sale never wrote a price", () => {
+		stubSales([sale({ unitPrice: null })]);
+
+		renderPanel();
+
+		expect(screen.getByText("Sin precio")).toBeTruthy();
+		expect(screen.getByText("Sin total")).toBeTruthy();
 	});
 
 	it("shows the number of sales and the total units", () => {
@@ -191,6 +223,8 @@ describe("CustomerDetailPanel", () => {
 
 		expect(screen.getByText("Sin motivo")).toBeTruthy();
 		expect(screen.getByText("Sin usuario")).toBeTruthy();
-		expect(screen.getAllByText("—").length).toBe(3);
+		// Three contact fields plus the price and its total: this sale predates
+		// the written price, so money is unknown and never `0`.
+		expect(screen.getAllByText("—").length).toBe(5);
 	});
 });

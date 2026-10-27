@@ -10,6 +10,10 @@ const API_PREFIXES = [
 	"/auth/:path*",
 	"/companies/:path*",
 	"/me",
+	// `/me` alone only matches the bare identity read. The caller's invitation
+	// routes (`/me/invitations`, `/me/invitations/accept`) live one level down,
+	// and without this wildcard the deploy answered Next's own 404 for them.
+	"/me/:path*",
 	"/health",
 	"/docs/:path*",
 ];

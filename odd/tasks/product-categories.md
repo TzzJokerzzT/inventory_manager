@@ -119,3 +119,8 @@ L8. Restos en `/tmp` para que el humano borre: `/tmp/verify-cat-fD5vkg`,
 L9. Entrega: dos commits sobre `fix/dashboard`. `8a2f98b` contiene este feature completo; el commit
 siguiente lleva el slice del umbral de stock mínimo. El corte se hizo aislando primero el árbol de
 categorías y verificándolo con las suites completas (API 83/1311, web 139/1108) antes de commitear.
+
+L10. RDD: la revisión nativa no pudo cubrir este commit — el presupuesto de contexto de las lentes
+se excede incluso con 3 lentes, y el proveedor pide partirlo en commits chained más chicos. El
+humano decidió explícitamente dejar **este commit sin revisar**: no se debe volver a iniciar una
+revisión sobre este target.

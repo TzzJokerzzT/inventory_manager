@@ -1,5 +1,6 @@
 import { type RequestHandler, Router } from "express";
 import type { AuthController } from "../controllers/auth-controller.js";
+import type { CategoryController } from "../controllers/category-controller.js";
 import type { CompanyController } from "../controllers/company-controller.js";
 import type { CustomerController } from "../controllers/customer-controller.js";
 import type { MeController } from "../controllers/me-controller.js";
@@ -18,6 +19,7 @@ export interface HttpRoutesDependencies {
 	customers: CustomerController;
 	movements: StockMovementController;
 	suppliers: SupplierController;
+	categories: CategoryController;
 	lots: LotController;
 	me: MeController;
 	auth: AuthController;
@@ -48,6 +50,7 @@ export function buildRoutes(dependencies: HttpRoutesDependencies): Router {
 			dependencies.customers,
 			dependencies.movements,
 			dependencies.suppliers,
+			dependencies.categories,
 			dependencies.lots,
 		),
 	);

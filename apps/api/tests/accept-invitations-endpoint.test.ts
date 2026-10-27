@@ -135,6 +135,7 @@ describe("POST /me/invitations/accept", () => {
 			products: {} as never,
 			movements: {} as never,
 			suppliers: {} as never,
+			categories: {} as never,
 			lots: {} as never,
 			authCookieOptions: {
 				httpOnly: true,

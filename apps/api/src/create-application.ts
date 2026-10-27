@@ -2,10 +2,12 @@ import { v2 as cloudinary } from "cloudinary";
 import type { Express } from "express";
 import { AcceptInvitationsUseCase } from "./application/use-cases/accept-invitations.js";
 import { ChangeMemberRoleUseCase } from "./application/use-cases/change-member-role.js";
+import { CreateCategoryUseCase } from "./application/use-cases/create-category.js";
 import { CreateCompanyUseCase } from "./application/use-cases/create-company.js";
 import { CreateCustomerUseCase } from "./application/use-cases/create-customer.js";
 import { CreateProductUseCase } from "./application/use-cases/create-product.js";
 import { CreateSupplierUseCase } from "./application/use-cases/create-supplier.js";
+import { DeleteCategoryUseCase } from "./application/use-cases/delete-category.js";
 import { DeleteCustomerUseCase } from "./application/use-cases/delete-customer.js";
 import { DeleteProductUseCase } from "./application/use-cases/delete-product.js";
 import { DeleteSupplierUseCase } from "./application/use-cases/delete-supplier.js";
@@ -16,6 +18,7 @@ import { GetMovementTrendUseCase } from "./application/use-cases/get-movement-tr
 import { GetProductUseCase } from "./application/use-cases/get-product.js";
 import { InviteMemberUseCase } from "./application/use-cases/invite-member.js";
 import { LeaveCompanyUseCase } from "./application/use-cases/leave-company.js";
+import { ListCategoriesUseCase } from "./application/use-cases/list-categories.js";
 import { ListCompaniesUseCase } from "./application/use-cases/list-companies.js";
 import { ListCustomersUseCase } from "./application/use-cases/list-customers.js";
 import { ListMembersUseCase } from "./application/use-cases/list-members.js";
@@ -36,12 +39,14 @@ import { RestoreProductUseCase } from "./application/use-cases/restore-product.j
 import { ResumeSessionUseCase } from "./application/use-cases/resume-session.js";
 import { RevokeMembershipUseCase } from "./application/use-cases/revoke-membership.js";
 import { StartSessionUseCase } from "./application/use-cases/start-session.js";
+import { UpdateCategoryUseCase } from "./application/use-cases/update-category.js";
 import { UpdateCustomerUseCase } from "./application/use-cases/update-customer.js";
 import { UpdateProductUseCase } from "./application/use-cases/update-product.js";
 import { UpdateSupplierUseCase } from "./application/use-cases/update-supplier.js";
 import { UpdateUserFullNameUseCase } from "./application/use-cases/update-user-full-name.js";
 import { env } from "./config/env.js";
 import { Auth0IdentityProvider } from "./infrastructure/auth0/auth0-identity-provider.js";
+import { PrismaCategoryRepository } from "./infrastructure/database/prisma-category-repository.js";
 import { createPrismaClient } from "./infrastructure/database/prisma-client.js";
 import { PrismaCompanyRepository } from "./infrastructure/database/prisma-company-repository.js";
 import { PrismaCustomerRepository } from "./infrastructure/database/prisma-customer-repository.js";
@@ -75,6 +80,7 @@ const productRepository = new PrismaProductRepository({ prisma });
 const customerRepository = new PrismaCustomerRepository({ prisma });
 const stockMovementRepository = new PrismaStockMovementRepository({ prisma });
 const supplierRepository = new PrismaSupplierRepository({ prisma });
+const categoryRepository = new PrismaCategoryRepository({ prisma });
 const stockLotRepository = new PrismaStockLotRepository({ prisma });
 const sessionRepository = new PrismaSessionRepository({ prisma });
 
@@ -188,8 +194,14 @@ const app = buildApp({
 	}),
 	products: {
 		// The reads derive the cost per measure and the margin from the lots
-		// (L12), so they need the lot store next to the catalogue.
-		list: new ListProductsUseCase({ productRepository, stockLotRepository }),
+		// (L12), so they need the lot store next to the catalogue. They also
+		// resolve the category name of every row (S5/S7) through the category
+		// port, in one batch per read.
+		list: new ListProductsUseCase({
+			productRepository,
+			stockLotRepository,
+			categoryRepository,
+		}),
 		// Which concrete units a product has (L23): the sale screen lists them with
 		// their own measure and cost, so the read lives next to the other product
 		// reads and shares their lot source.
@@ -197,15 +209,22 @@ const app = buildApp({
 			productRepository,
 			stockLotRepository,
 		}),
-		create: new CreateProductUseCase({ productRepository }),
+		create: new CreateProductUseCase({ productRepository, categoryRepository }),
 		get: new GetProductUseCase({
 			productRepository,
 			stockLotRepository,
 			supplierRepository,
+			categoryRepository,
 		}),
-		update: new UpdateProductUseCase({ productRepository }),
+		update: new UpdateProductUseCase({
+			productRepository,
+			categoryRepository,
+		}),
 		remove: new DeleteProductUseCase({ productRepository }),
-		restore: new RestoreProductUseCase({ productRepository }),
+		restore: new RestoreProductUseCase({
+			productRepository,
+			categoryRepository,
+		}),
 		// The purge needs the ledger to count the movements that block it (S4):
 		// the row is never removed while the audit trail points at it (MOV-05).
 		purge: new PurgeProductUseCase({
@@ -246,6 +265,15 @@ const app = buildApp({
 		create: new CreateSupplierUseCase({ supplierRepository }),
 		update: new UpdateSupplierUseCase({ supplierRepository }),
 		remove: new DeleteSupplierUseCase({ supplierRepository }),
+	},
+	categories: {
+		// The delete counts the products that reference the category before
+		// removing it, so the adapter shares the same Prisma client as the
+		// product slice.
+		list: new ListCategoriesUseCase({ categoryRepository }),
+		create: new CreateCategoryUseCase({ categoryRepository }),
+		update: new UpdateCategoryUseCase({ categoryRepository }),
+		remove: new DeleteCategoryUseCase({ categoryRepository }),
 	},
 	// A lot is written by the entity (derived total, per-unit costs) and the
 	// adapter owns the single transaction that also moves the stock (L7).

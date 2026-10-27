@@ -135,7 +135,10 @@ número JSON perdería precisión. La foto se sube **directo a Cloudinary** con 
 dar de baja) exige `manage_products`, que la matriz resuelve como `ADMIN` u `OWNER`; un `MEMBER` lee
 el catálogo y recibe `403 insufficient_role` si intenta escribir. Crear y editar confirman con un
 **toast** y vuelven al listado. `stockQuantity` es del servidor
-(sólo lo mueven las entradas y salidas de MI-8) y `lowStockThreshold` sigue en el default de la base;
+(sólo lo mueven las entradas y salidas de MI-8); `lowStockThreshold` sí se edita: el formulario
+pide **Stock mínimo** (entero `>= 0`, `0` por defecto en el alta y preloado con el valor guardado en
+la edición) y es el umbral con el que el dashboard marca el stock crítico
+(`stockQuantity <= lowStockThreshold`, inclusive), así que `0` marca solo lo agotado;
 `categoryId` no se expone porque todavía no existe la feature de categorías, así que el filtro por
 categoría de PROD-04 **no** está implementado.
 
@@ -223,9 +226,10 @@ cierto. Los cuatro KPIs son:
 2. **Valor del inventario** — `precio × stock` de todo el catálogo, sumado en **centavos enteros** con
    el mismo helper del gráfico de valor, así que la tarjeta y el gráfico muestran el mismo total
    (DASH-04).
-3. **Productos con stock crítico** — los productos donde `stockQuantity <= lowStockThreshold`. Hoy el
-   umbral es siempre 0, así que son los **agotados**; cuando MI-12 permita editarlo, la misma regla
-   cubre el stock bajo sin tocar el dashboard.
+3. **Productos con stock crítico** — los productos donde `stockQuantity <= lowStockThreshold`. El
+   umbral es **por producto** (`Stock mínimo`, `0` por defecto), así que con `0` son los **agotados** y
+   cualquier valor mayor marca el stock bajo con la misma regla, sin tocar el dashboard. Las
+   notificaciones y el listado de reposición de MI-12 siguen **pendientes**.
 4. **Unidades movidas hoy (UTC)** — `entries + exits` del último punto del reporte de 30 días. Es UTC
    y así se rotula, porque el reporte agrega por **día UTC**: el número no es "hoy" en el calendario
    del navegador.
@@ -290,8 +294,9 @@ dirección también se muestra como texto para poder copiarla.
 
 ### Planificado
 
-**Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
-listado de reposición (MI-12).
+**Notificaciones de stock bajo.** El umbral mínimo por producto **ya se configura** en el formulario
+de productos (`Stock mínimo`) y el dashboard marca los críticos con él; lo que sigue pendiente es la
+alerta dedicada, el listado de reposición y las notificaciones por email (MI-12, NOTIF-02/03/04).
 
 **Recuperación de contraseña.** Flujo de reset (MI-16); hoy no existe.
 

@@ -67,12 +67,41 @@ const measureUnitSchema = v.picklist(
 );
 
 /**
+ * `lowStockThreshold` is a count, so it travels as a JSON number and stays a
+ * non-negative integer: the dashboard flags `stockQuantity <=
+ * lowStockThreshold`, and a fractional or negative value would make the
+ * comparison meaningless (S2/NOTIF-01). The three failures (not a number, not
+ * an integer, negative) share one message because it is one rule.
+ *
+ * Absent keeps its meaning on both endpoints: `0` on create (the column's
+ * default) and the stored value on update.
+ */
+const lowStockThresholdSchema = v.pipe(
+	v.number("lowStockThreshold must be a non-negative integer"),
+	v.integer("lowStockThreshold must be a non-negative integer"),
+	v.minValue(0, "lowStockThreshold must be a non-negative integer"),
+);
+
+/**
+ * The category of a product (S7). It travels as the id the category endpoints
+ * answer, never as a name: the write validates that the category exists in the
+ * same company and the read resolves the name, so the two never drift.
+ *
+ * The format is checked here so a malformed id is a 400 with the issue list and
+ * never a lookup that could probe another company's ids.
+ */
+const categoryIdSchema = v.pipe(
+	v.string(),
+	v.uuid("categoryId must be a uuid"),
+);
+
+/**
  * Request schema for `POST /companies/:companyId/products`.
  *
- * Only the creatable fields exist here: `stockQuantity` and
- * `lowStockThreshold` are server-owned (MI-8, MI-12) and `categoryId` has no
- * feature yet (L4), so valibot drops them from the parsed output instead of
- * letting an unknown key reach the use case.
+ * Only the creatable fields exist here: `stockQuantity` is server-owned (MI-8),
+ * so valibot drops it from the parsed output instead of letting an unknown key
+ * reach the use case. `lowStockThreshold` is writable since NOTIF-01 (S2) and
+ * `categoryId` since S7.
  */
 export const createProductSchema = v.object({
 	name: nameSchema,
@@ -83,14 +112,19 @@ export const createProductSchema = v.object({
 	// Absent keeps the column's default (KILOGRAM), which is what a product
 	// created before the purchase lots carries.
 	measureUnit: v.optional(measureUnitSchema),
+	// Absent keeps the column's default (0), which is what every product
+	// created before NOTIF-01 carries.
+	lowStockThreshold: v.optional(lowStockThresholdSchema),
+	// Absent means "no category", which is the column's default (`null`).
+	categoryId: v.optional(v.nullable(categoryIdSchema)),
 });
 
 /**
  * Request schema for `PATCH /companies/:companyId/products/:productId`.
  *
  * Every field is optional and its absence means "unchanged", while an explicit
- * `null` clears `description` or `photoUrl` -- that is why the fields are
- * `optional(nullable(...))` and not `optional(..., null)`.
+ * `null` clears `description`, `photoUrl` or `categoryId` -- that is why the
+ * fields are `optional(nullable(...))` and not `optional(..., null)`.
  */
 export const updateProductSchema = v.object({
 	name: v.optional(nameSchema),
@@ -100,6 +134,12 @@ export const updateProductSchema = v.object({
 	photoUrl: v.optional(v.nullable(photoUrlSchema)),
 	// Absent means "unchanged": the stored unit is kept.
 	measureUnit: v.optional(measureUnitSchema),
+	// Absent means "unchanged": the stored threshold is kept. An explicit `0`
+	// is a value, not an absent field.
+	lowStockThreshold: v.optional(lowStockThresholdSchema),
+	// Absent means "unchanged": the product keeps its category. An explicit
+	// `null` clears it, and an id moves it to that category (S7).
+	categoryId: v.optional(v.nullable(categoryIdSchema)),
 });
 
 /**

@@ -152,6 +152,17 @@ describe("Product.create server-owned fields", () => {
 	});
 });
 
+describe("Product.create categoryId", () => {
+	it("keeps the category the caller names", () => {
+		expect(create({ categoryId: "category-1" }).categoryId).toBe("category-1");
+	});
+
+	it("defaults an absent or null category to null", () => {
+		expect(create().categoryId).toBeNull();
+		expect(create({ categoryId: null }).categoryId).toBeNull();
+	});
+});
+
 describe("Product.create measureUnit", () => {
 	it("defaults an absent measure unit to KILOGRAM", () => {
 		expect(create().measureUnit).toBe("KILOGRAM");
@@ -205,6 +216,14 @@ describe("Product.toJSON", () => {
 		expect(create({ measureUnit: "METRE" }).toJSON().measureUnit).toBe("METRE");
 	});
 
+	it("serializes the category the product belongs to", () => {
+		// S7: the id travels with the product, and the name is resolved by the
+		// read (it is not part of the product row).
+		expect(create({ categoryId: "category-1" }).toJSON().categoryId).toBe(
+			"category-1",
+		);
+	});
+
 	it("never exposes the soft-delete timestamp", () => {
 		const product = create({ deletedAt: new Date("2026-10-22T12:00:00.000Z") });
 
@@ -254,6 +273,36 @@ describe("Product.withChanges", () => {
 		expect(updated.photoUrl).toBe("https://example.com/a.png");
 	});
 
+	it("changes the low-stock threshold and keeps it when the change does not name it", () => {
+		const product = create({ lowStockThreshold: 3 });
+
+		expect(
+			product.withChanges({ lowStockThreshold: 7 }).lowStockThreshold,
+		).toBe(7);
+		expect(product.withChanges({ name: "Otro nombre" }).lowStockThreshold).toBe(
+			3,
+		);
+	});
+
+	it("accepts an explicit zero threshold as a value, not as 'unchanged'", () => {
+		const product = create({ lowStockThreshold: 3 });
+
+		expect(
+			product.withChanges({ lowStockThreshold: 0 }).lowStockThreshold,
+		).toBe(0);
+	});
+
+	it("re-validates the low-stock threshold through the factory", () => {
+		const product = create();
+
+		expect(() => product.withChanges({ lowStockThreshold: -1 })).toThrow(
+			DomainError,
+		);
+		expect(() => product.withChanges({ lowStockThreshold: 1.5 })).toThrow(
+			DomainError,
+		);
+	});
+
 	it("changes the measure unit and keeps it when the change does not name it", () => {
 		const product = create({ measureUnit: "KILOGRAM" });
 
@@ -263,6 +312,25 @@ describe("Product.withChanges", () => {
 		expect(product.withChanges({ name: "Otro nombre" }).measureUnit).toBe(
 			"KILOGRAM",
 		);
+	});
+
+	it("changes the category and keeps it when the change does not name it", () => {
+		// S7: an absent change keeps the stored category; only an explicit id
+		// moves the product to another one.
+		const product = create({ categoryId: "category-1" });
+
+		expect(product.withChanges({ categoryId: "category-2" }).categoryId).toBe(
+			"category-2",
+		);
+		expect(product.withChanges({ name: "Otro nombre" }).categoryId).toBe(
+			"category-1",
+		);
+	});
+
+	it("clears the category when null is passed explicitly", () => {
+		const product = create({ categoryId: "category-1" });
+
+		expect(product.withChanges({ categoryId: null }).categoryId).toBeNull();
 	});
 
 	it("clears description and photoUrl when null is passed explicitly", () => {

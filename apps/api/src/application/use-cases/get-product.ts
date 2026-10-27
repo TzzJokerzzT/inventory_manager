@@ -1,9 +1,11 @@
 import { ProductNotFoundError } from "../../domain/errors/product-not-found-error.js";
+import type { CategoryRepository } from "../../domain/repositories/category-repository.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
 import type { StockLotRepository } from "../../domain/repositories/stock-lot-repository.js";
 import type { SupplierRepository } from "../../domain/repositories/supplier-repository.js";
 import type { ProductLotView } from "./product-view.js";
 import {
+	categoryNamesOf,
 	type ProductDetailView,
 	toProductDetailView,
 	toProductLotView,
@@ -28,6 +30,7 @@ export interface GetProductDependencies {
 	productRepository: ProductRepository;
 	stockLotRepository: StockLotRepository;
 	supplierRepository: SupplierRepository;
+	categoryRepository: CategoryRepository;
 }
 
 /**
@@ -43,8 +46,10 @@ export interface GetProductDependencies {
  * lots with the supplier of each. That is the comparison "which supplier
  * should I buy from", answered by the server because it is money.
  *
- * The read is four queries -- the product, the sums of its available units,
- * its latest lots and one batch of their suppliers -- never one per lot.
+ * The read is five queries -- the product, the sums of its available units,
+ * its latest lots, one batch of their suppliers and one batch with the
+ * product's category -- never one per lot. The category is resolved by the API
+ * (S5/S7), so the client never joins a cached catalogue to name it.
  *
  * Reading needs no role: the company context already proved an ACTIVE
  * membership.
@@ -53,11 +58,13 @@ export class GetProductUseCase {
 	private readonly productRepository: ProductRepository;
 	private readonly stockLotRepository: StockLotRepository;
 	private readonly supplierRepository: SupplierRepository;
+	private readonly categoryRepository: CategoryRepository;
 
 	constructor(dependencies: GetProductDependencies) {
 		this.productRepository = dependencies.productRepository;
 		this.stockLotRepository = dependencies.stockLotRepository;
 		this.supplierRepository = dependencies.supplierRepository;
+		this.categoryRepository = dependencies.categoryRepository;
 	}
 
 	async execute(
@@ -115,7 +122,27 @@ export class GetProductUseCase {
 		return toProductDetailView(
 			product,
 			totals.get(product.id) ?? null,
+			await this.findCategoryNames(context.companyId, product.categoryId),
 			lotViews,
 		);
+	}
+
+	/**
+	 * Resolves the name of the product's category with the same batch read the
+	 * list uses, or no lookup at all when the product has no category (S7).
+	 */
+	private async findCategoryNames(
+		companyId: string,
+		categoryId: string | null,
+	): Promise<Map<string, string>> {
+		if (categoryId === null) {
+			return new Map();
+		}
+
+		const categories = await this.categoryRepository.findByIds(companyId, [
+			categoryId,
+		]);
+
+		return categoryNamesOf(categories);
 	}
 }

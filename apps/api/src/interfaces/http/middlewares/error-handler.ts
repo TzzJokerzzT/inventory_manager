@@ -2,6 +2,18 @@ import type { ErrorRequestHandler } from "express";
 import { StatusCodes } from "http-status-codes";
 import { ValiError } from "valibot";
 import {
+	CATEGORY_IN_USE_CODE,
+	CategoryInUseError,
+} from "../../../domain/errors/category-in-use-error.js";
+import {
+	CATEGORY_NAME_ALREADY_EXISTS_CODE,
+	CategoryNameAlreadyExistsError,
+} from "../../../domain/errors/category-name-already-exists-error.js";
+import {
+	CATEGORY_NOT_FOUND_CODE,
+	CategoryNotFoundError,
+} from "../../../domain/errors/category-not-found-error.js";
+import {
 	CUSTOMER_NOT_FOUND_CODE,
 	CustomerNotFoundError,
 } from "../../../domain/errors/customer-not-found-error.js";
@@ -314,6 +326,43 @@ export const errorHandler: ErrorRequestHandler = (
 			error: {
 				message: error.message,
 				code: SUPPLIER_NAME_ALREADY_EXISTS_CODE,
+			},
+		});
+		return;
+	}
+
+	if (error instanceof CategoryNotFoundError) {
+		// The same 404 a foreign id and an absent one get: the category is not in
+		// this company's catalogue, and which of the two it was is not something
+		// the caller needs to know (S4).
+		response.status(StatusCodes.NOT_FOUND).json({
+			error: { message: error.message, code: CATEGORY_NOT_FOUND_CODE },
+		});
+		return;
+	}
+
+	if (error instanceof CategoryNameAlreadyExistsError) {
+		// 409, not 400: the body is well formed, the company just already has a
+		// category with that name (the `@@unique([companyId, name])` index is
+		// case-sensitive, so only an exact collision lands here).
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: CATEGORY_NAME_ALREADY_EXISTS_CODE,
+			},
+		});
+		return;
+	}
+
+	if (error instanceof CategoryInUseError) {
+		// 409, not 400: the body is well formed and the caller may delete, the
+		// category simply still has products pointing at it -- soft-deleted ones
+		// included, because the foreign key is RESTRICT for every row. Nothing was
+		// deleted; the message carries the count (S4).
+		response.status(StatusCodes.CONFLICT).json({
+			error: {
+				message: error.message,
+				code: CATEGORY_IN_USE_CODE,
 			},
 		});
 		return;

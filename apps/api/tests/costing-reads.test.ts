@@ -7,6 +7,7 @@ import { Product } from "../src/domain/entities/product.js";
 import { StockLot } from "../src/domain/entities/stock-lot.js";
 import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { Supplier } from "../src/domain/entities/supplier.js";
+import { InMemoryCategoryRepository } from "../src/infrastructure/database/in-memory-category-repository.js";
 import { InMemoryCustomerRepository } from "../src/infrastructure/database/in-memory-customer-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
@@ -326,8 +327,13 @@ describe("product costs derived from the available units (L12)", () => {
 				productRepository,
 				stockLotRepository,
 				supplierRepository,
+				categoryRepository: new InMemoryCategoryRepository(productRepository),
 			}),
-			list: new ListProductsUseCase({ productRepository, stockLotRepository }),
+			list: new ListProductsUseCase({
+				productRepository,
+				stockLotRepository,
+				categoryRepository: new InMemoryCategoryRepository(productRepository),
+			}),
 			stockMovementRepository,
 			stockLotRepository,
 			supplierRepository,
@@ -424,6 +430,7 @@ describe("product lots (L12)", () => {
 				productRepository,
 				stockLotRepository,
 				supplierRepository,
+				categoryRepository: new InMemoryCategoryRepository(productRepository),
 			}),
 			stockLotRepository,
 			supplierRepository,

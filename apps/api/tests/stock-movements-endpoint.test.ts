@@ -12,6 +12,7 @@ import {
 import { Product } from "../src/domain/entities/product.js";
 import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { User } from "../src/domain/entities/user.js";
+import { InMemoryCategoryRepository } from "../src/infrastructure/database/in-memory-category-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryCustomerRepository } from "../src/infrastructure/database/in-memory-customer-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
@@ -140,6 +141,7 @@ describe("stock movement endpoints", () => {
 				list: new ListProductsUseCase({
 					productRepository,
 					stockLotRepository,
+					categoryRepository: new InMemoryCategoryRepository(productRepository),
 				}),
 				create: {} as never,
 				get: {} as never,
@@ -172,6 +174,7 @@ describe("stock movement endpoints", () => {
 			// Not exercised by this suite: the supplier slice keeps the app
 			// buildable, and its own suite wires it for real.
 			suppliers: {} as never,
+			categories: {} as never,
 			lots: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,

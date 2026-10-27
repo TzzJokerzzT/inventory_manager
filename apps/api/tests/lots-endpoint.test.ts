@@ -149,6 +149,7 @@ describe("lot endpoints", () => {
 			products: {} as never,
 			movements: {} as never,
 			suppliers: {} as never,
+			categories: {} as never,
 			lots: {
 				register: new RegisterLotUseCase({
 					productRepository,

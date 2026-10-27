@@ -22,6 +22,8 @@ export type ProductFormValues = {
 	name: string;
 	sku: string;
 	price: string;
+	/** Held as text: the input is a number, the body sends an integer. */
+	lowStockThreshold: string;
 	description: string;
 };
 
@@ -42,6 +44,9 @@ const PRICE_REQUIRED = "Ingresá el precio unitario.";
 const PRICE_INVALID =
 	"Usá un número con hasta dos decimales, por ejemplo 1500.00.";
 const DESCRIPTION_TOO_LONG = `Usá ${MAX_PRODUCT_DESCRIPTION_LENGTH} caracteres como máximo en la descripción.`;
+const LOW_STOCK_REQUIRED = "Ingresá el stock mínimo.";
+const LOW_STOCK_INVALID =
+	"Usá un número entero igual o mayor a 0, por ejemplo 5.";
 const PHOTO_TOO_LARGE = `La foto no puede superar los ${formatMegabytes(MAX_PHOTO_BYTES)}.`;
 const PHOTO_FORMAT = "La foto debe ser JPG, PNG o WebP.";
 
@@ -86,6 +91,22 @@ const descriptionSchema = pipe(
 );
 
 /**
+ * The threshold is a non-negative integer, exactly the API's rule: a blank
+ * value is not "0" (the person would be storing a threshold nobody asked for),
+ * and a decimal or negative one would make the dashboard's `stockQuantity <=
+ * lowStockThreshold` compare against a number that is not a count.
+ */
+const lowStockThresholdSchema = pipe(
+	string(),
+	check((value) => value.trim() !== "", LOW_STOCK_REQUIRED),
+	check(
+		(value) =>
+			/^\d+$/.test(value.trim()) && Number.isSafeInteger(Number(value)),
+		LOW_STOCK_INVALID,
+	),
+);
+
+/**
  * Validates every field and returns the messages to show.
  *
  * It reports all invalid fields at once, not just the first one: a person
@@ -112,6 +133,14 @@ export function validateProduct(values: ProductFormValues): ProductFormErrors {
 	const description = safeParse(descriptionSchema, values.description);
 	if (!description.success) {
 		errors.description = description.issues[0]?.message;
+	}
+
+	const lowStockThreshold = safeParse(
+		lowStockThresholdSchema,
+		values.lowStockThreshold,
+	);
+	if (!lowStockThreshold.success) {
+		errors.lowStockThreshold = lowStockThreshold.issues[0]?.message;
 	}
 
 	return errors;
@@ -149,4 +178,12 @@ export function normalizeSku(sku: string): string {
 export function toNullableDescription(description: string): string | null {
 	const trimmed = description.trim();
 	return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * The threshold travels as the JSON integer the contract validates, never as
+ * the string the input holds: `"5"` -> `5`, `"0"` -> `0`.
+ */
+export function toLowStockThreshold(threshold: string): number {
+	return Number(threshold.trim());
 }

@@ -61,7 +61,7 @@ export function Dashboard() {
 	const emptyMessage = hasReadError
 		? "No pudimos cargar los productos de la empresa activa."
 		: metrics
-			? "No hay productos con stock crítico."
+			? "No hay productos con stock mínimo."
 			: "Cargando los datos de la empresa activa…";
 
 	return (
@@ -100,7 +100,7 @@ export function Dashboard() {
 					</div>
 				</SectionTitle>
 
-				<SectionTitle ariaLabel="Stock crítico" title="Stock">
+				<SectionTitle ariaLabel="Stock mínimo" title="Tabla de stock mínimo">
 					<DataTable
 						columns={stockColumns}
 						rows={metrics?.criticalProducts ?? []}

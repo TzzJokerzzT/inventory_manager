@@ -113,6 +113,12 @@ export class InMemoryProductRepository implements ProductRepository {
 			.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 	}
 
+	/**
+	 * The entity is immutable, so the update replaces the row under the same
+	 * id. The threshold travels inside the entity like every other field: an
+	 * absent change already carries the stored value, so nothing is lost and a
+	 * given one (including `0`) is stored (S2/NOTIF-01).
+	 */
 	async update(product: Product): Promise<Product | null> {
 		const existing = this.products.get(product.id);
 

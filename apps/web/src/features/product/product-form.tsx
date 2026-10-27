@@ -20,6 +20,7 @@ import {
 	MEASURE_UNIT_OPTIONS,
 } from "@/lib/measure-unit";
 import { AlertToast } from "@/src/shared/components/AlertToast";
+import { useCategories } from "../category/api/use-categories";
 import { useCreateProduct } from "./api/use-create-product";
 import { useUpdateProduct } from "./api/use-update-product";
 import { useUploadProductPhoto } from "./api/use-upload-product-photo";
@@ -27,6 +28,7 @@ import { ProductPhotoField } from "./components/product-photo-field";
 import {
 	normalizePrice,
 	normalizeSku,
+	toLowStockThreshold,
 	toNullableDescription,
 	validateProduct,
 	validateProductPhoto,
@@ -34,6 +36,7 @@ import {
 
 const FALLBACK_ERROR = "No pudimos guardar el producto. Probá de nuevo.";
 const PHOTO_FALLBACK_ERROR = "No pudimos subir la foto. Probá de nuevo.";
+const CATEGORIES_FALLBACK_ERROR = "No pudimos cargar las categorías.";
 
 /**
  * Turns the API's machine-readable `code` into something a person can act on.
@@ -72,6 +75,18 @@ function saveErrorMessage(error: unknown): string | undefined {
  * "Unidad de medida" is how the lots of this product are measured (L19): the
  * purchase form shows `$ per kg` or `$ per litre` from this value, so it is
  * always sent, defaulting to kilograms — the API's own default.
+ *
+ * "Stock mínimo" is the threshold the dashboard compares against (S2): a
+ * product is stock mínimo while `stockQuantity <= lowStockThreshold`, so `0`
+ * flags only the out-of-stock ones. It defaults to that same `0` on create and
+ * is preloaded with the stored value on edit.
+ *
+ * "Categoría" is optional (S7): the selector offers "Sin categoría" plus the
+ * active company's catalogue, starts without a category on create and on the
+ * stored `categoryId` on edit, and always sends `categoryId` (the id or `null`).
+ * The catalogue is a read of its own, so the selector stays disabled while it
+ * loads; if it fails, the form still submits — the category is optional — and a
+ * muted note says the catalogue could not be read.
  */
 export function ProductForm({
 	companyId,
@@ -89,7 +104,13 @@ export function ProductForm({
 	const [measureUnit, setMeasureUnit] = useState(
 		product?.measureUnit ?? DEFAULT_MEASURE_UNIT,
 	);
+	const [lowStockThreshold, setLowStockThreshold] = useState(
+		String(product?.lowStockThreshold ?? 0),
+	);
 	const [description, setDescription] = useState(product?.description ?? "");
+	const [categoryId, setCategoryId] = useState<string | null>(
+		product?.categoryId ?? null,
+	);
 	const [photoUrl, setPhotoUrl] = useState<string | null>(
 		product?.photoUrl ?? null,
 	);
@@ -100,10 +121,18 @@ export function ProductForm({
 	const create = useCreateProduct(companyId);
 	const update = useUpdateProduct(companyId);
 	const upload = useUploadProductPhoto(companyId);
+	const categories = useCategories(companyId);
+
+	// The server's order (`name`, then `id`) is kept: this selector is not the
+	// place to re-sort a catalogue the API already sorted.
+	const categoryOptions = (categories.data ?? []).map((category) => ({
+		value: category.id,
+		label: category.name,
+	}));
 
 	const isPending = create.isPending || update.isPending;
 	const errors = attempted
-		? validateProduct({ name, sku, price, description })
+		? validateProduct({ name, sku, price, lowStockThreshold, description })
 		: {};
 	const saveError = saveErrorMessage(create.error ?? update.error);
 	const uploadError =
@@ -134,7 +163,13 @@ export function ProductForm({
 		event.preventDefault();
 		setAttempted(true);
 
-		const nextErrors = validateProduct({ name, sku, price, description });
+		const nextErrors = validateProduct({
+			name,
+			sku,
+			price,
+			lowStockThreshold,
+			description,
+		});
 		if (Object.keys(nextErrors).length > 0) {
 			nameRef.current?.focus();
 			return;
@@ -144,9 +179,11 @@ export function ProductForm({
 			name: name.trim(),
 			sku: normalizeSku(sku),
 			price: normalizePrice(price),
+			lowStockThreshold: toLowStockThreshold(lowStockThreshold),
 			description: toNullableDescription(description),
 			photoUrl,
 			measureUnit,
+			categoryId,
 		};
 
 		if (product) {
@@ -235,6 +272,40 @@ export function ProductForm({
 					}
 				}}
 				className="sm:col-span-2"
+			/>
+
+			<div className="flex min-w-0 flex-col gap-2 sm:col-span-2">
+				<SelectField
+					label="Categoría"
+					name="categoryId"
+					placeholder="Sin categoría"
+					options={categoryOptions}
+					value={categoryId}
+					onValueChange={(next) => {
+						// The primitive's cleared option arrives as `""`; the body's cleared
+						// value is `null`.
+						setCategoryId(next === "" ? null : next);
+					}}
+					disabled={categories.isPending || isPending}
+				/>
+				{categories.isError ? (
+					<p className="text-xs text-text-muted">{CATEGORIES_FALLBACK_ERROR}</p>
+				) : null}
+			</div>
+
+			<TextField
+				label="Stock mínimo"
+				name="lowStockThreshold"
+				type="number"
+				inputMode="numeric"
+				min={0}
+				step={1}
+				className="sm:col-span-full"
+				value={lowStockThreshold}
+				onChange={(event) => setLowStockThreshold(event.target.value)}
+				error={errors.lowStockThreshold}
+				hint="Avisa cuando el stock llegue a este número. 0 = solo cuando se agote."
+				disabled={isPending}
 			/>
 
 			<TextareaField

@@ -135,13 +135,17 @@ número JSON perdería precisión. La foto se sube **directo a Cloudinary** con 
 dar de baja) exige `manage_products`, que la matriz resuelve como `ADMIN` u `OWNER`; un `MEMBER` lee
 el catálogo y recibe `403 insufficient_role` si intenta escribir. Crear y editar confirman con un
 **toast** y vuelven al listado. `stockQuantity` es del servidor
-(sólo lo mueven las entradas y salidas de MI-8) y `lowStockThreshold` sigue en el default de la base;
+(sólo lo mueven las entradas y salidas de MI-8); `lowStockThreshold` sí se edita: el formulario
+pide **Stock mínimo** (entero `>= 0`, `0` por defecto en el alta y preloado con el valor guardado en
+la edición) y es el umbral con el que el dashboard marca el stock crítico
+(`stockQuantity <= lowStockThreshold`, inclusive), así que `0` marca solo lo agotado;
 `categoryId` no se expone porque todavía no existe la feature de categorías, así que el filtro por
 categoría de PROD-04 **no** está implementado.
 
 **Movimientos de stock.** Entradas (`IN`) y salidas (`OUT`) en `/dashboard/movements`: formulario con
-selector de producto real, cantidad y motivo opcional, más una tabla con tipo, producto, cantidad,
-motivo, usuario y fecha. `POST /companies/{id}/movements` responde `201` con el movimiento y el
+selector de producto real, cantidad y motivo opcional, más una tabla con tipo, producto, SKU, cantidad,
+precio escrito, total, margen, motivo, cliente, usuario y fecha.
+`POST /companies/{id}/movements` responde `201` con el movimiento y el
 `stockQuantity` del producto **después** del movimiento, y `GET /companies/{id}/movements` lista el
 historial de la empresa más reciente primero, con los filtros `productId`, `customerId` y `type`, y
 `limit` de `1` a `200` (default `50`). `customerId` es un **filtro de lectura** combinable con los
@@ -175,6 +179,11 @@ mientras el formulario de entrada no lo muestra. No hizo falta migración: `cust
 la migración inicial. Las fotos de producto no cambian y `stockQuantity` sigue sin ser escribible
 desde los endpoints de productos.
 
+El **total** de cada fila del historial es el precio escrito en la salida × la cantidad, multiplicado
+en **centavos enteros** (el precio es un string decimal y multiplicarlo como flotante pierde un
+centavo): es un total **por movimiento**, no un total de dinero de la empresa, y una entrada —o una
+venta anterior al precio escrito— muestra "sin total" en vez de `0`.
+
 **Clientes.** Padrón por empresa en `/dashboard/clients`: listado con búsqueda, alta y edición en un
 formulario en la misma página, y baja con confirmación en dos pasos. `GET
 /companies/{id}/customers?search=` devuelve los clientes **activos** ordenados por nombre y luego por
@@ -191,13 +200,15 @@ leen; un `customerId` de otra empresa y uno dado de baja responden el mismo `404
 asociarse a un cliente (MI-10, ver **Movimientos de stock**). Cada fila suma además la acción
 **Detalle**, que abre un panel **en la misma página** con los datos de contacto del cliente y la tabla
 de **sus salidas** (`type=OUT`): fecha, producto, SKU, cantidad, motivo y usuario, más el conteo de
-salidas y el total de unidades **de las salidas listadas**. El panel aclara que son las más recientes
-porque el endpoint pagina el historial: informa lo que recibió, nunca un total histórico. Es de solo
-lectura, no tiene ruta propia ni endpoint nuevo —reutiliza `GET /companies/{id}/movements` con
-`customerId` (ver **Movimientos de stock**)— y **no muestra montos de dinero**, porque un movimiento
-no guarda precio. **El resumen de compras por cliente sigue sin construirse**: el padrón no muestra
-columnas "Compras"/"Total" (decisión L4 de `odd/tasks/customer-links.md`), así que la tabla
-principal sigue mostrando sólo los datos de contacto.
+salidas y el total de unidades **de las salidas listadas**. Cada fila suma además el **precio de venta**
+escrito en esa salida y su **total** (`precio × cantidad`, multiplicado en centavos enteros, nunca con
+flotantes), tomados del movimiento y no del catálogo: una venta conserva el precio que se cobró, y una
+salida anterior al precio escrito muestra "sin precio"/"sin total" en vez de un `0`. El panel aclara
+que son las más recientes porque el endpoint pagina el historial: informa lo que recibió, nunca un
+total histórico. Es de solo lectura, no tiene ruta propia ni endpoint nuevo —reutiliza
+`GET /companies/{id}/movements` con `customerId` (ver **Movimientos de stock**). **El resumen de compras
+por cliente sigue sin construirse**: el padrón no muestra columnas "Compras"/"Total" (decisión L4 de
+`odd/tasks/customer-links.md`), así que la tabla principal sigue mostrando sólo los datos de contacto.
 
 **Subida de media por empresa.** El backend firma los parámetros de subida directa a Cloudinary
 (`POST /companies/{id}/media/signature`): la carpeta, los formatos y el tamaño los decide el servidor,
@@ -215,9 +226,10 @@ cierto. Los cuatro KPIs son:
 2. **Valor del inventario** — `precio × stock` de todo el catálogo, sumado en **centavos enteros** con
    el mismo helper del gráfico de valor, así que la tarjeta y el gráfico muestran el mismo total
    (DASH-04).
-3. **Productos con stock crítico** — los productos donde `stockQuantity <= lowStockThreshold`. Hoy el
-   umbral es siempre 0, así que son los **agotados**; cuando MI-12 permita editarlo, la misma regla
-   cubre el stock bajo sin tocar el dashboard.
+3. **Productos con stock crítico** — los productos donde `stockQuantity <= lowStockThreshold`. El
+   umbral es **por producto** (`Stock mínimo`, `0` por defecto), así que con `0` son los **agotados** y
+   cualquier valor mayor marca el stock bajo con la misma regla, sin tocar el dashboard. Las
+   notificaciones y el listado de reposición de MI-12 siguen **pendientes**.
 4. **Unidades movidas hoy (UTC)** — `entries + exits` del último punto del reporte de 30 días. Es UTC
    y así se rotula, porque el reporte agrega por **día UTC**: el número no es "hoy" en el calendario
    del navegador.
@@ -282,8 +294,9 @@ dirección también se muestra como texto para poder copiarla.
 
 ### Planificado
 
-**Notificaciones de stock bajo.** Umbral mínimo por producto, alerta visual en el dashboard y
-listado de reposición (MI-12).
+**Notificaciones de stock bajo.** El umbral mínimo por producto **ya se configura** en el formulario
+de productos (`Stock mínimo`) y el dashboard marca los críticos con él; lo que sigue pendiente es la
+alerta dedicada, el listado de reposición y las notificaciones por email (MI-12, NOTIF-02/03/04).
 
 **Recuperación de contraseña.** Flujo de reset (MI-16); hoy no existe.
 
@@ -747,7 +760,7 @@ producto en sí**, no la infraestructura.
 - [x] **Dashboard con datos reales** — MI-6: los cuatro KPIs (total de productos, valor del inventario, productos con stock crítico y unidades movidas hoy en UTC), las alertas y la tabla de stock crítico se derivan de `GET /companies/{id}/products` y del reporte de evolución, y el aviso "Datos de muestra" se eliminó porque ya no había datos de muestra. Los gráficos ya eran reales (MI-14). MI-9 nombra el **historial de movimientos**, que está construido desde MI-8 (`/dashboard/movements`): no queda nada mockeado en el dashboard.
 - [x] **Entradas y salidas de stock** — MI-8 (vista MI-26): stock atómico, historial y auditoría.
 - [x] **CRUD de clientes** — MI-11 (vista MI-24): CRUD por empresa, baja lógica y búsqueda por nombre, email o teléfono.
-- [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El resumen de compras por cliente (columnas "Compras"/"Total") sigue sin construirse.
+- [x] **Vinculación de clientes a las salidas** — MI-10 (CLI-04): `customerId` opcional sólo en `OUT` (`400 customer_requires_exit` / `404 customer_not_found` antes de tocar el stock), selector "Sin cliente" en el formulario de salida y columna Cliente en el historial. El detalle de cada cliente muestra el precio de venta escrito en cada salida y su total (`precio × cantidad`, en centavos enteros). El resumen de compras por cliente en el padrón (columnas "Compras"/"Total") sigue sin construirse.
 - [x] **Purga física de productos** — `DELETE /companies/{id}/products/{productId}/permanent` (`204`) sobre la misma papelera: OWNER-only (`purge_products`; un `ADMIN` recibe `403 insufficient_role`), con `Modal` de confirmación, `409 product_not_deleted` para un producto activo y `409 product_has_movements` (con el conteo) cuando el producto tiene historial, porque `stock_movements.product_id` es `ON DELETE RESTRICT` y el ledger no se borra nunca. Purgar libera el SKU. La baja lógica reversible (**Restaurar**) sigue siendo el otro camino.
 - [ ] **Notificaciones de stock bajo** — MI-12.
 

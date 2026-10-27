@@ -210,6 +210,7 @@ describe("product unit endpoints", () => {
 			customers: {} as never,
 			movements: {} as never,
 			suppliers: {} as never,
+			categories: {} as never,
 			lots: {} as never,
 			requireAuth: createRequireAuth({
 				issuerBaseURL: issuer.issuerBaseURL,

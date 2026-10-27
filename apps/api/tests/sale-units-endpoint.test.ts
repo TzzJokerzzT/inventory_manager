@@ -155,6 +155,7 @@ describe("sale of a lot-managed product", () => {
 				trend: {} as never,
 			},
 			suppliers: {} as never,
+			categories: {} as never,
 			lots: {
 				register: new RegisterLotUseCase({
 					productRepository,

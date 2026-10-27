@@ -52,7 +52,11 @@ export interface CreateProductProps {
 	photoUrl?: string | null;
 	/** Server-owned: only stock movements change it (MI-8). */
 	stockQuantity?: number;
-	/** Server-owned: keeps the database default until NOTIF-01/MI-12. */
+	/**
+	 * The number the dashboard compares against: a product is stock crítico
+	 * while `stockQuantity <= lowStockThreshold` (S2/NOTIF-01). Absent keeps the
+	 * column's default (`0`, only out-of-stock products are flagged).
+	 */
 	lowStockThreshold?: number;
 	/**
 	 * The measure a lot of this product is expressed in. Absent means the
@@ -60,7 +64,12 @@ export interface CreateProductProps {
 	 * created before the lot feature carries (S9: nothing is backfilled).
 	 */
 	measureUnit?: MeasureUnit;
-	/** Categories have no feature yet, so this is always `null` today. */
+	/**
+	 * The category of the product, or `null` for an uncategorized one (S7).
+	 * Absent means `null`: a product created without a category is stored
+	 * uncategorized, and the use case validates the reference in the company
+	 * before writing it.
+	 */
 	categoryId?: string | null;
 	id?: string;
 	deletedAt?: Date | null;
@@ -69,9 +78,13 @@ export interface CreateProductProps {
 }
 
 /**
- * The fields a product write may change. `stockQuantity`, `lowStockThreshold`,
- * `categoryId` and the soft-delete stamp are absent on purpose: they are not
- * writable from the product endpoints.
+ * The fields a product write may change. `stockQuantity` and the soft-delete
+ * stamp are absent on purpose: they are not writable from the product
+ * endpoints. `lowStockThreshold` is writable (S2): the dashboard flags
+ * `stockQuantity <= lowStockThreshold`, so the person has to be able to set it.
+ * `categoryId` is writable too (S7): an id moves the product to that category
+ * and an explicit `null` clears it, while an absent one keeps the stored
+ * category.
  */
 export interface ProductChanges {
 	name?: string;
@@ -80,6 +93,9 @@ export interface ProductChanges {
 	price?: string;
 	photoUrl?: string | null;
 	measureUnit?: MeasureUnit;
+	lowStockThreshold?: number;
+	/** Absent means "unchanged"; an explicit `null` clears the category. */
+	categoryId?: string | null;
 }
 
 /**
@@ -348,8 +364,9 @@ export class Product {
 	/**
 	 * Builds the next state of this product, re-validating the changed fields
 	 * through the same factory. An absent change keeps the current value; an
-	 * explicit `null` clears `description` or `photoUrl` (the partial-update
-	 * contract of `PATCH`). The server-owned fields are carried over untouched.
+	 * explicit `null` clears `description`, `photoUrl` or `categoryId` (the
+	 * partial-update contract of `PATCH`). The server-owned fields are carried
+	 * over untouched.
 	 */
 	withChanges(changes: ProductChanges): Product {
 		return Product.create({
@@ -365,11 +382,18 @@ export class Product {
 			photoUrl:
 				changes.photoUrl === undefined ? this.photoUrl : changes.photoUrl,
 			stockQuantity: this.stockQuantity,
-			lowStockThreshold: this.lowStockThreshold,
+			// An absent change keeps the stored threshold; `0` is a value, so the
+			// merge is `??` (like `name`) and not an undefined check with a falsy
+			// shortcut. The factory re-validates the threshold it receives.
+			lowStockThreshold: changes.lowStockThreshold ?? this.lowStockThreshold,
 			// An absent change keeps the stored unit; the entity re-validates a
 			// given one against the closed enum.
 			measureUnit: changes.measureUnit ?? this.measureUnit,
-			categoryId: this.categoryId,
+			// An absent change keeps the stored category, while an explicit `null`
+			// clears it: `null` is a value here, so the merge is an `undefined`
+			// check and not `??` (S7).
+			categoryId:
+				changes.categoryId === undefined ? this.categoryId : changes.categoryId,
 			deletedAt: this.deletedAt,
 			createdAt: this.createdAt,
 			updatedAt: new Date(),

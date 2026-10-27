@@ -1,5 +1,7 @@
 import { ApiError } from "./client";
 import {
+	parseCategories,
+	parseCategory,
 	parseCompaniesResponse,
 	parseCompany,
 	parseCustomer,
@@ -472,6 +474,9 @@ function product(overrides: Record<string, unknown> = {}) {
 		lowStockThreshold: 0,
 		measureUnit: "KILOGRAM",
 		categoryId: null,
+		// L31: el nombre resuelto viaja con el producto; `null` significa "sin
+		// categoría", nunca "no lo mandaron".
+		categoryName: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
 		// La fila del listado lleva cuántas unidades siguen disponibles (L25): es
@@ -558,6 +563,40 @@ describe("parseProducts", () => {
 			"https://res.cloudinary.com/demo/image/upload/cafe.jpg",
 		);
 		expect(parsed[0].categoryId).toBe("cat-1");
+	});
+
+	it("keeps the category name the API resolved", () => {
+		const parsed = parseProducts([
+			product({ categoryId: "cat-1", categoryName: "Bebidas" }),
+		]);
+
+		expect(parsed[0].categoryName).toBe("Bebidas");
+	});
+
+	it("accepts a product without a category", () => {
+		// S7: la categoría es opcional, así que el nombre resuelto es `null` y no
+		// una cadena vacía ni un campo ausente.
+		const parsed = parseProducts([
+			product({ categoryId: null, categoryName: null }),
+		]);
+
+		expect(parsed[0].categoryName).toBeNull();
+	});
+
+	it("rejects a product missing the resolved category name", () => {
+		// S5: `categoryName` es requerido, así que un producto que no lo trae es
+		// una deriva del contrato y no un producto sin categoría.
+		const { categoryName: _categoryName, ...withoutCategoryName } = product();
+
+		expect(() => parseProducts([withoutCategoryName])).toThrow(
+			/respuesta inesperada/,
+		);
+	});
+
+	it("rejects a category name that is not a string", () => {
+		expect(() => parseProducts([product({ categoryName: 7 })])).toThrow(
+			/respuesta inesperada/,
+		);
 	});
 
 	it("rejects a null where the contract requires a value", () => {
@@ -692,6 +731,17 @@ describe("parseProduct", () => {
 
 	it("rejects a product whose shape changed", () => {
 		expect(() => parseProduct({ id: "p1" })).toThrow(ApiError);
+	});
+
+	it("requires the resolved category name on the detail and write answers", () => {
+		const { categoryName: _categoryName, ...withoutCategoryName } = product();
+
+		expect(() => parseProduct(withoutCategoryName)).toThrow(
+			/respuesta inesperada/,
+		);
+		expect(
+			parseProduct(product({ categoryName: "Bebidas" })).categoryName,
+		).toBe("Bebidas");
 	});
 });
 
@@ -1030,6 +1080,57 @@ describe("parseSupplier", () => {
 
 	it("rejects a supplier whose shape changed", () => {
 		expect(() => parseSupplier({ id: "su1" })).toThrow(ApiError);
+	});
+});
+
+function category(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "ca1",
+		companyId: "c1",
+		name: "Bebidas",
+		createdAt: "2026-10-22T12:00:00.000Z",
+		updatedAt: "2026-10-22T12:00:00.000Z",
+		...overrides,
+	};
+}
+
+describe("parseCategories", () => {
+	it("returns the catalogue exactly as the API serializes it", () => {
+		const list = [category(), category({ id: "ca2", name: "Lácteos" })];
+
+		expect(parseCategories(list)).toEqual(list);
+	});
+
+	it("accepts an empty catalogue, the normal case for a new company", () => {
+		expect(parseCategories([])).toEqual([]);
+	});
+
+	it("rejects a category whose shape changed", () => {
+		expect(() => parseCategories([{ id: "ca1" }])).toThrow(
+			/respuesta inesperada/,
+		);
+
+		expect(() =>
+			parseCategories([category({ createdAt: 1761220800000 })]),
+		).toThrow(/respuesta inesperada/);
+	});
+
+	it("rejects a non-array response", () => {
+		expect(() => parseCategories({ categories: [] })).toThrow(ApiError);
+	});
+});
+
+describe("parseCategory", () => {
+	it("returns the category of a creation or a rename", () => {
+		const parsed = parseCategory(category());
+
+		expect(parsed.id).toBe("ca1");
+		expect(parsed.companyId).toBe("c1");
+		expect(parsed.name).toBe("Bebidas");
+	});
+
+	it("rejects a category whose shape changed", () => {
+		expect(() => parseCategory({ id: "ca1" })).toThrow(ApiError);
 	});
 });
 

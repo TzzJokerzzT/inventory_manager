@@ -1,7 +1,8 @@
+import type { CategoryRepository } from "../../domain/repositories/category-repository.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
 import type { StockLotRepository } from "../../domain/repositories/stock-lot-repository.js";
 import type { ProductListView } from "./product-view.js";
-import { toProductListView } from "./product-view.js";
+import { categoryNamesOf, toProductListView } from "./product-view.js";
 
 export interface ListProductsInput {
 	/** Free text matched against the name or the SKU. */
@@ -22,6 +23,7 @@ export interface ListProductsContext {
 export interface ListProductsDependencies {
 	productRepository: ProductRepository;
 	stockLotRepository: StockLotRepository;
+	categoryRepository: CategoryRepository;
 }
 
 /**
@@ -44,14 +46,21 @@ export interface ListProductsDependencies {
  * resolved in **one** batch read for the whole page instead of one per product.
  * The list has no lots: those belong to the detail, where the comparison is
  * made, and loading 50 lots per catalogue row would be a different feature.
+ *
+ * Each row also carries the name of its category (S5/S7), resolved with **one**
+ * deduplicated batch read through the category port -- the same shape the stock
+ * movements use for their related rows -- so the client never has to join a
+ * catalogue it only has cached.
  */
 export class ListProductsUseCase {
 	private readonly productRepository: ProductRepository;
 	private readonly stockLotRepository: StockLotRepository;
+	private readonly categoryRepository: CategoryRepository;
 
 	constructor(dependencies: ListProductsDependencies) {
 		this.productRepository = dependencies.productRepository;
 		this.stockLotRepository = dependencies.stockLotRepository;
+		this.categoryRepository = dependencies.categoryRepository;
 	}
 
 	async execute(
@@ -76,8 +85,27 @@ export class ListProductsUseCase {
 			products.map((product) => product.id),
 		);
 
+		// Deduplicated before the read: several products of the same category must
+		// cost one lookup, not one per row. When no row has a category the batch is
+		// skipped entirely.
+		const categoryIds = [
+			...new Set(
+				products.flatMap((product) =>
+					product.categoryId === null ? [] : [product.categoryId],
+				),
+			),
+		];
+		const categories =
+			categoryIds.length === 0
+				? []
+				: await this.categoryRepository.findByIds(
+						context.companyId,
+						categoryIds,
+					);
+		const categoryNames = categoryNamesOf(categories);
+
 		return products.map((product) =>
-			toProductListView(product, totals.get(product.id) ?? null),
+			toProductListView(product, totals.get(product.id) ?? null, categoryNames),
 		);
 	}
 }

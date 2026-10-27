@@ -142,7 +142,7 @@ export function Product() {
 				<MoneyValue value={row.marginPerUnit} unknownLabel={NO_UNIT_MARGIN} />
 			),
 		},
-		{ key: "stockQuantity", header: "Unidades", align: "right" },
+		{ key: "stockQuantity", header: "Stock", align: "right" },
 	];
 
 	if (canManage) {

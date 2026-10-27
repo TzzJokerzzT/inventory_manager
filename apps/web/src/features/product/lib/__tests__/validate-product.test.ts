@@ -1,6 +1,7 @@
 import {
 	normalizePrice,
 	normalizeSku,
+	toLowStockThreshold,
 	toNullableDescription,
 	validateProduct,
 	validateProductPhoto,
@@ -10,6 +11,7 @@ const valid = {
 	name: "Café molido 500g",
 	sku: "CAF-500",
 	price: "1500.00",
+	lowStockThreshold: "0",
 	description: "Molido medio",
 };
 
@@ -82,6 +84,34 @@ describe("validateProduct", () => {
 		);
 	});
 
+	it("accepts a low-stock threshold of zero and of any positive integer", () => {
+		expect(
+			validateProduct({ ...valid, lowStockThreshold: "0" }).lowStockThreshold,
+		).toBe(undefined);
+		expect(
+			validateProduct({ ...valid, lowStockThreshold: "5" }).lowStockThreshold,
+		).toBe(undefined);
+	});
+
+	it("reports a negative low-stock threshold", () => {
+		expect(
+			validateProduct({ ...valid, lowStockThreshold: "-1" }).lowStockThreshold,
+		).toBe("Usá un número entero igual o mayor a 0, por ejemplo 5.");
+	});
+
+	it("reports a fractional low-stock threshold", () => {
+		expect(
+			validateProduct({ ...valid, lowStockThreshold: "2.5" }).lowStockThreshold,
+		).toBe("Usá un número entero igual o mayor a 0, por ejemplo 5.");
+	});
+
+	it("reports a blank low-stock threshold instead of reading it as zero", () => {
+		// Blank is not "0": the API would store a threshold nobody asked for.
+		expect(
+			validateProduct({ ...valid, lowStockThreshold: "   " }).lowStockThreshold,
+		).toBe("Ingresá el stock mínimo.");
+	});
+
 	it("reports a description longer than 1000 characters", () => {
 		expect(
 			validateProduct({ ...valid, description: "a".repeat(1001) }).description,
@@ -93,11 +123,13 @@ describe("validateProduct", () => {
 			name: "",
 			sku: "",
 			price: "",
+			lowStockThreshold: "",
 			description: "a".repeat(1001),
 		});
 
 		expect(Object.keys(errors).sort()).toEqual([
 			"description",
+			"lowStockThreshold",
 			"name",
 			"price",
 			"sku",
@@ -132,6 +164,20 @@ describe("toNullableDescription", () => {
 
 	it("keeps and trims a real description", () => {
 		expect(toNullableDescription("  Molido medio  ")).toBe("Molido medio");
+	});
+});
+
+describe("toLowStockThreshold", () => {
+	it("sends the threshold as the JSON integer the API validates", () => {
+		expect(toLowStockThreshold("5")).toBe(5);
+	});
+
+	it("keeps an explicit zero as zero", () => {
+		expect(toLowStockThreshold("0")).toBe(0);
+	});
+
+	it("trims the value around the number", () => {
+		expect(toLowStockThreshold("  7  ")).toBe(7);
 	});
 });
 

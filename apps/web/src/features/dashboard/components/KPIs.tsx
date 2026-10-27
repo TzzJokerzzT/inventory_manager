@@ -72,7 +72,7 @@ export function KPIs({
 				value={value((data) => formatCents(data.marginPotentialCents))}
 			/>
 			<KpiCard
-				label="Productos con stock crítico"
+				label="Productos con stock mínimo"
 				value={value((data) => data.criticalCount)}
 				tone={(metrics?.criticalCount ?? 0) > 0 ? "alert" : "default"}
 			/>

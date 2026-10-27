@@ -8,17 +8,17 @@ import { stockStatusFor } from "../lib/stock-status";
  *
  * The rows are the products the dashboard already filtered as critical, so the
  * table does not filter again: one predicate feeds the KPI, the alerts and this
- * list. The category is a dash because the category feature does not exist yet —
- * every product still has a null `categoryId` — and showing an empty cell would
- * read as missing data instead of a feature that is not there.
+ * list. The category is the name the API resolved for the product (S7) and falls
+ * back to a dash when the product has none, because an empty cell would read as
+ * missing data instead of an optional field.
  */
 export const stockColumns: Column<Product>[] = [
 	{ key: "name", header: "Producto" },
 	{ key: "sku", header: "SKU" },
 	{
-		key: "categoryId",
+		key: "categoryName",
 		header: "Categoría",
-		render: () => "—",
+		render: (row) => row.categoryName ?? "—",
 	},
 	{
 		key: "price",

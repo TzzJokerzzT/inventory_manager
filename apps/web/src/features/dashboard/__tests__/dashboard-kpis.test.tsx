@@ -32,7 +32,7 @@ describe("KPIs", () => {
 		expect(cardValue("Total de productos")).toBe("3");
 		expect(cardValue("Valor del inventario (a costo)")).toBe("$ 3.000,00");
 		expect(cardValue("Margen potencial")).toBe("$ 1.200,00");
-		expect(cardValue("Productos con stock crítico")).toBe("2");
+		expect(cardValue("Productos con stock mínimo")).toBe("2");
 		expect(cardValue("Unidades movidas hoy (UTC)")).toBe("7");
 	});
 

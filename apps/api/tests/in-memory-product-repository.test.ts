@@ -260,6 +260,31 @@ describe("InMemoryProductRepository.update", () => {
 		).rejects.toThrow(SkuAlreadyExistsError);
 	});
 
+	it("stores the low-stock threshold the change names", async () => {
+		const repository = repositoryWith([product()]);
+
+		await repository.update(product().withChanges({ lowStockThreshold: 5 }));
+
+		await expect(
+			repository.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ lowStockThreshold: 5 });
+	});
+
+	it("keeps the stored low-stock threshold when the change does not name it", async () => {
+		// The update always comes from the stored row (`withChanges` carries the
+		// current value), which is why an absent field is not a reset.
+		const repository = repositoryWith([product({ lowStockThreshold: 5 })]);
+		const stored = await repository.findActiveById(COMPANY, "product-1");
+
+		await repository.update(
+			(stored as Product).withChanges({ name: "Cafe en grano" }),
+		);
+
+		await expect(
+			repository.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ lowStockThreshold: 5 });
+	});
+
 	it("lets a product keep its own sku", async () => {
 		const repository = repositoryWith([product()]);
 

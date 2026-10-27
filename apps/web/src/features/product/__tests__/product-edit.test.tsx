@@ -134,6 +134,33 @@ describe("EditProduct", () => {
 		).toBe("Café molido 500g");
 	});
 
+	it("prefills the low-stock threshold of the loaded product", () => {
+		setup({
+			data: {
+				id: "p1",
+				companyId: "c1",
+				name: "Café molido 500g",
+				description: null,
+				sku: "CAF-500",
+				price: "1500.00",
+				photoUrl: null,
+				stockQuantity: 0,
+				lowStockThreshold: 4,
+				measureUnit: "KILOGRAM",
+				categoryId: null,
+				categoryName: null,
+				createdAt: "2026-10-20T12:00:00.000Z",
+				updatedAt: "2026-10-20T12:00:00.000Z",
+			},
+		});
+
+		render(<EditProduct productId="p1" />);
+
+		expect(
+			(screen.getByLabelText("Stock mínimo") as HTMLInputElement).value,
+		).toBe("4");
+	});
+
 	it("shows a loading state while the product is being read", () => {
 		setup({ data: undefined, isPending: true });
 

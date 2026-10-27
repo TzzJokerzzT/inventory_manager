@@ -115,3 +115,7 @@ producto: comportamiento aceptado, no un defecto de permisos.
 
 L8. Restos en `/tmp` para que el humano borre: `/tmp/verify-cat-fD5vkg`,
 `/tmp/categories-delete-mutation.FDZQ60` y `/tmp/gpqkBhjq/ga8zjT7W/tmp.bCnAQj97QZ`.
+
+L9. Entrega: dos commits sobre `fix/dashboard`. `8a2f98b` contiene este feature completo; el commit
+siguiente lleva el slice del umbral de stock mínimo. El corte se hizo aislando primero el árbol de
+categorías y verificándolo con las suites completas (API 83/1311, web 139/1108) antes de commitear.

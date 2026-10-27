@@ -196,6 +196,7 @@ describe("ProductForm (create)", () => {
 				name: "Café molido 500g",
 				sku: "CAF-500",
 				price: "1500.00",
+				lowStockThreshold: 0,
 				description: "Molido medio",
 				photoUrl: null,
 				measureUnit: "KILOGRAM",
@@ -276,6 +277,53 @@ describe("ProductForm (create)", () => {
 			expect.objectContaining({ categoryId: null }),
 			expect.any(Object),
 		);
+	});
+
+	it("asks for the low-stock threshold, defaulting it to 0", () => {
+		// S2/NOTIF-01: the dashboard compares `stockQuantity <=
+		// lowStockThreshold`, so the person has to be able to set it.
+		render(<ProductForm companyId="c1" />);
+
+		expect(
+			(screen.getByLabelText("Stock mínimo") as HTMLInputElement).value,
+		).toBe("0");
+		expect(
+			screen.getByText(
+				"Avisa cuando el stock llegue a este número. 0 = solo cuando se agote.",
+			),
+		).toBeTruthy();
+	});
+
+	it("sends the low-stock threshold the person types", () => {
+		render(<ProductForm companyId="c1" />);
+		fill("Nombre del producto", "Café molido 500g");
+		fill("Código SKU", "CAF-500");
+		fill("Precio unitario", "1500");
+		fill("Stock mínimo", "5");
+
+		submit("Crear producto");
+
+		expect(createMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ lowStockThreshold: 5 }),
+			expect.any(Object),
+		);
+	});
+
+	it("rejects a low-stock threshold the API would reject", () => {
+		render(<ProductForm companyId="c1" />);
+		fill("Nombre del producto", "Café molido 500g");
+		fill("Código SKU", "CAF-500");
+		fill("Precio unitario", "1500");
+		fill("Stock mínimo", "-1");
+
+		submit("Crear producto");
+
+		expect(
+			screen.getByText(
+				"Usá un número entero igual o mayor a 0, por ejemplo 5.",
+			),
+		).toBeTruthy();
+		expect(createMutate).not.toHaveBeenCalled();
 	});
 
 	it("starts with Kilogramo and sends the unit the person picks", () => {
@@ -380,11 +428,33 @@ describe("ProductForm (edit)", () => {
 				name: "Café molido 500g",
 				sku: "CAF-500",
 				price: "1500.00",
+				lowStockThreshold: 0,
 				description: null,
 				photoUrl: null,
 				measureUnit: "KILOGRAM",
 				categoryId: null,
 			},
+			expect.any(Object),
+		);
+	});
+
+	it("preloads the stored low-stock threshold and sends a change to it", () => {
+		render(
+			<ProductForm
+				companyId="c1"
+				product={product({ lowStockThreshold: 3 })}
+			/>,
+		);
+
+		expect(
+			(screen.getByLabelText("Stock mínimo") as HTMLInputElement).value,
+		).toBe("3");
+
+		fill("Stock mínimo", "8");
+		submit("Guardar cambios");
+
+		expect(updateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ lowStockThreshold: 8 }),
 			expect.any(Object),
 		);
 	});

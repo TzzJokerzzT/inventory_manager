@@ -92,10 +92,8 @@ describe("stockColumns", () => {
 	});
 
 	it("shows the empty message when there is no critical product", () => {
-		renderTable([], "No hay productos con stock crítico.");
+		renderTable([], "No hay productos con stock mínimo.");
 
-		expect(
-			screen.getByText("No hay productos con stock crítico."),
-		).toBeTruthy();
+		expect(screen.getByText("No hay productos con stock mínimo.")).toBeTruthy();
 	});
 });

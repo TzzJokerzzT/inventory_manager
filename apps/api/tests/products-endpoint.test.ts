@@ -320,17 +320,39 @@ describe("product endpoints", () => {
 			expect(response.body.price).toBe("1.50");
 		});
 
-		it("ignores stock and the low-stock threshold in the body", async () => {
+		it("keeps the low-stock threshold the body names", async () => {
+			// S2/NOTIF-01: the dashboard flags `stockQuantity <=
+			// lowStockThreshold`, so the value has to be stored and read back.
 			const { app, seedRoster } = createTestApp();
 			seedRoster();
 
-			const body = await createProduct(app, {
-				stockQuantity: 99,
-				lowStockThreshold: 5,
-			});
+			const body = await createProduct(app, { lowStockThreshold: 5 });
+
+			expect(body.lowStockThreshold).toBe(5);
+
+			const read = await request(app)
+				.get(`/companies/${COMPANY}/products/${body.id}`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(read.body.lowStockThreshold).toBe(5);
+		});
+
+		it("defaults an absent low-stock threshold to zero", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const body = await createProduct(app);
+
+			expect(body.lowStockThreshold).toBe(0);
+		});
+
+		it("ignores stock in the body", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const body = await createProduct(app, { stockQuantity: 99 });
 
 			expect(body.stockQuantity).toBe(0);
-			expect(body.lowStockThreshold).toBe(0);
 		});
 
 		it("creates a product with a category of the company and answers its name", async () => {
@@ -445,6 +467,9 @@ describe("product endpoints", () => {
 			["a measure unit outside the closed list", { measureUnit: "POUND" }],
 			["a lowercased measure unit", { measureUnit: "kilogram" }],
 			["a category id that is not a uuid", { categoryId: "bebidas" }],
+			["a negative low-stock threshold", { lowStockThreshold: -1 }],
+			["a fractional low-stock threshold", { lowStockThreshold: 2.5 }],
+			["a low-stock threshold sent as a string", { lowStockThreshold: "5" }],
 		])("answers 400 with issues for %s", async (_label, overrides) => {
 			const { app, seedRoster } = createTestApp();
 			seedRoster();
@@ -859,6 +884,75 @@ describe("product endpoints", () => {
 
 			expect(response.status).toBe(400);
 			expect(response.body.error.issues.length).toBeGreaterThan(0);
+		});
+
+		it("changes the low-stock threshold", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app);
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ lowStockThreshold: 5 });
+
+			expect(response.status).toBe(200);
+			expect(response.body.lowStockThreshold).toBe(5);
+		});
+
+		it("sets the low-stock threshold to zero when zero is sent", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app, { lowStockThreshold: 5 });
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ lowStockThreshold: 0 });
+
+			expect(response.status).toBe(200);
+			expect(response.body.lowStockThreshold).toBe(0);
+		});
+
+		it("leaves the low-stock threshold untouched when the body does not name it", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app, { lowStockThreshold: 5 });
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe en grano" });
+
+			expect(response.status).toBe(200);
+			expect(response.body.lowStockThreshold).toBe(5);
+		});
+
+		it.each([
+			["a negative low-stock threshold", { lowStockThreshold: -1 }],
+			["a fractional low-stock threshold", { lowStockThreshold: 2.5 }],
+			["a low-stock threshold sent as a string", { lowStockThreshold: "5" }],
+		])("answers 400 with issues for %s", async (_label, overrides) => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+			const product = await createProduct(app, { lowStockThreshold: 5 });
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send(overrides);
+
+			expect(response.status).toBe(400);
+			expect(response.body.error.issues).toEqual([
+				"lowStockThreshold must be a non-negative integer",
+			]);
+
+			// The rejected write leaves the stored threshold as it was.
+			const read = await request(app)
+				.get(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(read.body.lowStockThreshold).toBe(5);
 		});
 
 		it("clears description and photoUrl with an explicit null", async () => {

@@ -52,7 +52,11 @@ export interface CreateProductProps {
 	photoUrl?: string | null;
 	/** Server-owned: only stock movements change it (MI-8). */
 	stockQuantity?: number;
-	/** Server-owned: keeps the database default until NOTIF-01/MI-12. */
+	/**
+	 * The number the dashboard compares against: a product is stock crítico
+	 * while `stockQuantity <= lowStockThreshold` (S2/NOTIF-01). Absent keeps the
+	 * column's default (`0`, only out-of-stock products are flagged).
+	 */
 	lowStockThreshold?: number;
 	/**
 	 * The measure a lot of this product is expressed in. Absent means the
@@ -74,11 +78,13 @@ export interface CreateProductProps {
 }
 
 /**
- * The fields a product write may change. `stockQuantity`, `lowStockThreshold`
- * and the soft-delete stamp are absent on purpose: they are not writable from
- * the product endpoints. `categoryId` is writable (S7): an id moves the
- * product to that category and an explicit `null` clears it, while an absent
- * one keeps the stored category.
+ * The fields a product write may change. `stockQuantity` and the soft-delete
+ * stamp are absent on purpose: they are not writable from the product
+ * endpoints. `lowStockThreshold` is writable (S2): the dashboard flags
+ * `stockQuantity <= lowStockThreshold`, so the person has to be able to set it.
+ * `categoryId` is writable too (S7): an id moves the product to that category
+ * and an explicit `null` clears it, while an absent one keeps the stored
+ * category.
  */
 export interface ProductChanges {
 	name?: string;
@@ -87,6 +93,7 @@ export interface ProductChanges {
 	price?: string;
 	photoUrl?: string | null;
 	measureUnit?: MeasureUnit;
+	lowStockThreshold?: number;
 	/** Absent means "unchanged"; an explicit `null` clears the category. */
 	categoryId?: string | null;
 }
@@ -375,7 +382,10 @@ export class Product {
 			photoUrl:
 				changes.photoUrl === undefined ? this.photoUrl : changes.photoUrl,
 			stockQuantity: this.stockQuantity,
-			lowStockThreshold: this.lowStockThreshold,
+			// An absent change keeps the stored threshold; `0` is a value, so the
+			// merge is `??` (like `name`) and not an undefined check with a falsy
+			// shortcut. The factory re-validates the threshold it receives.
+			lowStockThreshold: changes.lowStockThreshold ?? this.lowStockThreshold,
 			// An absent change keeps the stored unit; the entity re-validates a
 			// given one against the closed enum.
 			measureUnit: changes.measureUnit ?? this.measureUnit,

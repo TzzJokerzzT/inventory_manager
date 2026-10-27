@@ -22,19 +22,21 @@ Sistema de gestión de inventarios multi-empresa. Permite a los usuarios adminis
 | ---- | --------------- | ----------- |
 | DASH-01 | Visualización del número total de productos activos | Alta |
 | DASH-02 | Gráficos de distribución de stock (por categoría, estado, etc.) | Media |
-| DASH-03 | Tabla resumen de productos con stock crítico | Alta |
+| DASH-03 | Tabla resumen de productos con stock mínimo | Alta |
 | DASH-04 | Indicador de valor total del inventario | Media |
 | DASH-05 | Filtrado por empresa (si el usuario tiene múltiples) | Alta |
 
 > **Estado (MI-6, `odd/tasks/dashboard-metrics.md`; gráficos en MI-14):** el dashboard ya **no muestra
-datos de muestra**: los cuatro KPIs, las alertas y la tabla de stock crítico se derivan de dos
+datos de muestra**: los cuatro KPIs, las alertas y la tabla de stock mínimo se derivan de dos
 lecturas de la empresa activa —`GET /companies/{companyId}/products`, que devuelve el catálogo
 completo sin paginar, y el reporte de evolución de los últimos 30 días— **sin endpoint nuevo**. El
 aviso "Datos de muestra" se eliminó porque ya no era cierto. **DASH-01** (total de productos activos)
-es real (el tamaño del catálogo); **DASH-03** (tabla de stock crítico) es real y usa el predicado
-`stockQuantity <= lowStockThreshold` —hoy el umbral es siempre 0, así que la tabla son los
-**agotados**; cuando MI-12 permita editarlo, la misma regla cubre el stock bajo sin tocar el
-dashboard—, ordenada por unidades ascendente y luego por nombre, con las columnas Producto, SKU,
+es real (el tamaño del catálogo); **DASH-03** (tabla de stock mínimo) es real y usa el predicado
+`stockQuantity <= lowStockThreshold` —el umbral es **por producto** (`Stock mínimo`, entero `>= 0`,
+`0` por defecto y editable en el alta y en la edición), así que con `0` la tabla son los **agotados** y
+cualquier valor mayor marca el stock bajo con la misma regla, sin tocar el dashboard; las
+notificaciones y el listado de reposición de MI-12 siguen **pendientes**—, ordenada por unidades
+ascendente y luego por nombre, con las columnas Producto, SKU,
 Categoría (el nombre resuelto por la API, o **—** cuando el producto no tiene), Precio, Unidades y
 Estado (`StockBadge`); **DASH-04**
 (valor del inventario) es real **en la tarjeta y en el gráfico**, ambos calculados en el cliente en
@@ -216,7 +218,7 @@ el padrón sigue mostrando sólo los datos de contacto.
 | NOTIF-01 | Configuración de umbral mínimo de stock por producto | Alta |
 | NOTIF-02 | Alerta visual en el dashboard cuando un producto está por debajo del umbral | Alta |
 | NOTIF-03 | Listado de productos con stock bajo | Alta |
-| NOTIF-04 | (Futuro) Notificaciones por email de stock crítico | Baja |
+| NOTIF-04 | (Futuro) Notificaciones por email de stock mínimo | Baja |
 
 ---
 
@@ -302,7 +304,7 @@ StockMovement         ← inmutable: sólo created_at, sin updated_at
 ### Fase 2 — Core de Inventario
 
 - [x] CRUD de Productos (con SKU y foto)
-- [x] Dashboard con métricas básicas (MI-6: cuatro KPIs, alertas y tabla de stock crítico con datos reales)
+- [x] Dashboard con métricas básicas (MI-6: cuatro KPIs, alertas y tabla de stock mínimo con datos reales)
 - [x] Entradas y salidas de stock
 - [x] Historial de movimientos
 

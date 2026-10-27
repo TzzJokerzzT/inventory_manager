@@ -20,6 +20,8 @@ export interface UpdateProductInput {
 	photoUrl?: string | null;
 	/** Absent means "unchanged": the product keeps the unit it stores. */
 	measureUnit?: MeasureUnit;
+	/** Absent means "unchanged": an explicit `0` is a value, not a missing one. */
+	lowStockThreshold?: number;
 	/**
 	 * Absent means "unchanged": the product keeps its category. An explicit
 	 * `null` clears it and a given id has to belong to the company (S7).
@@ -53,8 +55,9 @@ export interface UpdateProductDependencies {
  * the product's own SKU is not a conflict (S2) -- and only then does the
  * guarded write happen.
  *
- * `stockQuantity` and `lowStockThreshold` are carried by the entity, so an
- * update can never move the stock: only the movements of MI-8 do (S1/L4).
+ * `stockQuantity` is carried by the entity, so an update can never move the
+ * stock: only the movements of MI-8 do (S1/L4). `lowStockThreshold` is
+ * writable (S2/NOTIF-01): absent keeps the stored value and `0` is a value.
  */
 export class UpdateProductUseCase {
 	private readonly productRepository: ProductRepository;
@@ -97,6 +100,7 @@ export class UpdateProductUseCase {
 			price: input.price,
 			photoUrl: input.photoUrl,
 			measureUnit: input.measureUnit,
+			lowStockThreshold: input.lowStockThreshold,
 			categoryId: input.categoryId,
 		});
 

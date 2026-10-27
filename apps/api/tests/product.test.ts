@@ -273,6 +273,36 @@ describe("Product.withChanges", () => {
 		expect(updated.photoUrl).toBe("https://example.com/a.png");
 	});
 
+	it("changes the low-stock threshold and keeps it when the change does not name it", () => {
+		const product = create({ lowStockThreshold: 3 });
+
+		expect(
+			product.withChanges({ lowStockThreshold: 7 }).lowStockThreshold,
+		).toBe(7);
+		expect(product.withChanges({ name: "Otro nombre" }).lowStockThreshold).toBe(
+			3,
+		);
+	});
+
+	it("accepts an explicit zero threshold as a value, not as 'unchanged'", () => {
+		const product = create({ lowStockThreshold: 3 });
+
+		expect(
+			product.withChanges({ lowStockThreshold: 0 }).lowStockThreshold,
+		).toBe(0);
+	});
+
+	it("re-validates the low-stock threshold through the factory", () => {
+		const product = create();
+
+		expect(() => product.withChanges({ lowStockThreshold: -1 })).toThrow(
+			DomainError,
+		);
+		expect(() => product.withChanges({ lowStockThreshold: 1.5 })).toThrow(
+			DomainError,
+		);
+	});
+
 	it("changes the measure unit and keeps it when the change does not name it", () => {
 		const product = create({ measureUnit: "KILOGRAM" });
 

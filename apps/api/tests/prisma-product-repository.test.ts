@@ -95,6 +95,23 @@ describe("PrismaProductRepository.create", () => {
 		expect(created).toBeInstanceOf(Product);
 	});
 
+	it("writes the low-stock threshold the entity carries on create", async () => {
+		const { delegate, create } = buildFakeDelegate();
+		create.mockResolvedValue(row({ lowStockThreshold: 5 }));
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const created = await repository.create(
+			product().withChanges({ lowStockThreshold: 5 }),
+		);
+
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ lowStockThreshold: 5 }),
+			}),
+		);
+		expect(created.lowStockThreshold).toBe(5);
+	});
+
 	it("translates a P2002 unique violation into SkuAlreadyExistsError", async () => {
 		const { delegate, create } = buildFakeDelegate();
 		create.mockRejectedValue(
@@ -275,6 +292,7 @@ describe("PrismaProductRepository.update", () => {
 				price: "1500.00",
 				photoUrl: null,
 				measureUnit: "KILOGRAM",
+				lowStockThreshold: 0,
 				categoryId: null,
 				updatedAt: updated.updatedAt,
 			},
@@ -296,6 +314,23 @@ describe("PrismaProductRepository.update", () => {
 		expect(updateMany).toHaveBeenCalledWith(
 			expect.objectContaining({
 				data: expect.objectContaining({ measureUnit: "LITRE" }),
+			}),
+		);
+	});
+
+	it("writes the low-stock threshold the entity carries, so a change is persisted", async () => {
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(row({ lowStockThreshold: 5 }));
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		const updated = product().withChanges({ lowStockThreshold: 5 });
+
+		await repository.update(updated);
+
+		expect(updateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ lowStockThreshold: 5 }),
 			}),
 		);
 	});

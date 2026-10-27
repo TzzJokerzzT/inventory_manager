@@ -796,10 +796,11 @@ paths:
         them: deleting a product reserves its SKU.
 
         `stockQuantity` is server-owned and is not accepted here: only stock
-        movements change it. `lowStockThreshold` keeps the database default
-        until the low-stock feature lands. `categoryId` is accepted: it must
-        belong to this company, and the response answers the resolved
-        `categoryName`.
+        movements change it. `lowStockThreshold` is accepted: absent keeps the
+        database default (`0`), and it is the value the dashboard compares
+        against (`stockQuantity <= lowStockThreshold`). `categoryId` is
+        accepted too: it must belong to this company, and the response answers
+        the resolved `categoryName`.
       security:
         - bearerAuth: []
       parameters:
@@ -930,7 +931,8 @@ paths:
 
         Changing the SKU re-checks uniqueness against every row of the company,
         soft-deleted ones included; keeping the product's own SKU is not a
-        conflict. `stockQuantity` is never settable here.
+        conflict. `stockQuantity` is never settable here. `lowStockThreshold`
+        is: absent keeps the stored value and an explicit `0` is a value.
       security:
         - bearerAuth: []
       parameters:
@@ -2867,8 +2869,10 @@ components:
         would lose precision at the first rounding.
 
         `stockQuantity` is server-owned: only stock movements change it, never
-        a product write. `lowStockThreshold` keeps the database default until
-        the low-stock feature exposes it.
+        a product write. `lowStockThreshold` is the threshold the dashboard
+        compares against: a product is stock crítico while `stockQuantity <=
+        lowStockThreshold` (inclusive), so `0` -- the column's default -- flags
+        only the out-of-stock products.
 
         `categoryId` is the category the product belongs to, or `null` for an
         uncategorized product. It is validated on write: a category of another
@@ -3138,6 +3142,16 @@ components:
           nullable: true
         measureUnit:
           $ref: "#/components/schemas/MeasureUnit"
+        lowStockThreshold:
+          type: integer
+          minimum: 0
+          description: |
+            The threshold the dashboard flags: a product counts as stock
+            crítico while `stockQuantity <= lowStockThreshold` (inclusive), so
+            `0` -- the default -- flags only an out-of-stock product. A
+            non-negative integer on purpose: it is a count of whole units.
+
+            Absent keeps the database default (`0`).
         categoryId:
           type: string
           format: uuid
@@ -3178,6 +3192,16 @@ components:
           nullable: true
         measureUnit:
           $ref: "#/components/schemas/MeasureUnit"
+        lowStockThreshold:
+          type: integer
+          minimum: 0
+          description: |
+            The threshold the dashboard flags: a product counts as stock
+            crítico while `stockQuantity <= lowStockThreshold` (inclusive), so
+            `0` flags only an out-of-stock product.
+
+            Absent keeps the stored value; an explicit `0` is a value, not
+            "unchanged".
         categoryId:
           type: string
           format: uuid

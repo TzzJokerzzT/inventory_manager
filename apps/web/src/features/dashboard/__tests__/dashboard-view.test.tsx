@@ -170,7 +170,7 @@ describe("DashboardView", () => {
 		expect(cardValue("Valor del inventario (a costo)")).toBe("$ 7.700,00");
 		// Y el margen potencial del mismo stock: 500,00 × 3 + 200,00 × 4.
 		expect(cardValue("Margen potencial")).toBe("$ 2.300,00");
-		expect(cardValue("Productos con stock crítico")).toBe("2");
+		expect(cardValue("Productos con stock mínimo")).toBe("2");
 		// entries + exits del último punto de la serie (hoy, UTC).
 		expect(cardValue("Unidades movidas hoy (UTC)")).toBe("4");
 	});
@@ -213,7 +213,7 @@ describe("DashboardView", () => {
 		// S3: la tabla es la misma regla que el KPI, no una lista aparte.
 		render(<Dashboard />);
 
-		const table = screen.getByRole("region", { name: "Stock crítico" });
+		const table = screen.getByRole("region", { name: "Stock mínimo" });
 		const rows = within(table).getAllByRole("row");
 
 		expect(rows).toHaveLength(3);
@@ -231,9 +231,9 @@ describe("DashboardView", () => {
 
 		render(<Dashboard />);
 
-		const table = screen.getByRole("region", { name: "Stock crítico" });
+		const table = screen.getByRole("region", { name: "Stock mínimo" });
 		expect(
-			within(table).getByText("No hay productos con stock crítico."),
+			within(table).getByText("No hay productos con stock mínimo."),
 		).toBeTruthy();
 	});
 
@@ -381,9 +381,9 @@ describe("DashboardView", () => {
 		view.rerender(<Dashboard />);
 
 		expect(cardValue("Total de productos")).toBe("1");
-		expect(cardValue("Productos con stock crítico")).toBe("1");
+		expect(cardValue("Productos con stock mínimo")).toBe("1");
 		expect(cardValue("Unidades movidas hoy (UTC)")).toBe("0");
-		const table = screen.getByRole("region", { name: "Stock crítico" });
+		const table = screen.getByRole("region", { name: "Stock mínimo" });
 		expect(within(table).getByText("Fideos 500g")).toBeTruthy();
 		expect(within(table).queryByText("Yerba mate 1kg")).toBeNull();
 	});

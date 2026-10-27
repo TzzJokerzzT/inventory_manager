@@ -36,6 +36,7 @@ interface SeedInput {
 	description?: string | null;
 	photoUrl?: string | null;
 	stockQuantity?: number;
+	lowStockThreshold?: number;
 	categoryId?: string | null;
 	deleted?: boolean;
 }
@@ -53,6 +54,7 @@ function seed(
 		description: input.description ?? null,
 		photoUrl: input.photoUrl ?? null,
 		stockQuantity: input.stockQuantity ?? 0,
+		lowStockThreshold: input.lowStockThreshold ?? 0,
 		categoryId: input.categoryId ?? null,
 		deletedAt: input.deleted ? new Date("2026-10-22T12:00:00.000Z") : null,
 	});
@@ -142,22 +144,20 @@ describe("CreateProductUseCase", () => {
 		).resolves.toMatchObject({ id: created.id, categoryId: null });
 	});
 
-	it("never accepts stock or the low-stock threshold from the body", async () => {
-		// S1/L4: stock is moved by the stock movements of MI-8 and the threshold
-		// belongs to NOTIF-01. The category is writable since S7.
+	it("never accepts stock from the body", async () => {
+		// S1/L4: stock is moved by the stock movements of MI-8. The threshold is
+		// writable since NOTIF-01 (S2) and the category since S7.
 		const created = await createProduct(repository()).execute(
 			{
 				name: "Cafe",
 				sku: "CAF-500",
 				price: "1500",
 				stockQuantity: 99,
-				lowStockThreshold: 5,
 			} as never,
 			context("OWNER"),
 		);
 
 		expect(created.stockQuantity).toBe(0);
-		expect(created.lowStockThreshold).toBe(0);
 	});
 
 	it("persists the category the body names, when it belongs to the company", async () => {
@@ -234,6 +234,49 @@ describe("CreateProductUseCase", () => {
 			),
 		).rejects.toThrow(CategoryNotFoundError);
 		await expect(repository_.list(COMPANY)).resolves.toEqual([]);
+	});
+
+	it("keeps the low-stock threshold the body names", async () => {
+		// S2/NOTIF-01: the dashboard compares `stockQuantity <=
+		// lowStockThreshold`, so the threshold has to reach the row.
+		const repository_ = repository();
+
+		const created = await createProduct(repository_).execute(
+			{ name: "Cafe", sku: "CAF-500", price: "1500", lowStockThreshold: 5 },
+			context("OWNER"),
+		);
+
+		expect(created.lowStockThreshold).toBe(5);
+		await expect(
+			repository_.findActiveById(COMPANY, created.id),
+		).resolves.toMatchObject({ lowStockThreshold: 5 });
+	});
+
+	it("defaults an absent low-stock threshold to zero", async () => {
+		const created = await createProduct(repository()).execute(
+			{ name: "Cafe", sku: "CAF-500", price: "1500" },
+			context("OWNER"),
+		);
+
+		expect(created.lowStockThreshold).toBe(0);
+	});
+
+	it("rejects a negative or fractional low-stock threshold", async () => {
+		// The entity re-validates it, so a caller that skips the HTTP boundary
+		// cannot store a value the dashboard would read as "always critical".
+		await expect(
+			createProduct(repository()).execute(
+				{ name: "Cafe", sku: "CAF-500", price: "1500", lowStockThreshold: -1 },
+				context("OWNER"),
+			),
+		).rejects.toThrow(DomainError);
+
+		await expect(
+			createProduct(repository()).execute(
+				{ name: "Cafe", sku: "CAF-500", price: "1500", lowStockThreshold: 1.5 },
+				context("OWNER"),
+			),
+		).rejects.toThrow(DomainError);
 	});
 
 	it("rejects a MEMBER with InsufficientRoleError, before validating anything", async () => {
@@ -654,6 +697,58 @@ describe("UpdateProductUseCase", () => {
 		);
 
 		expect(updated.stockQuantity).toBe(12);
+	});
+
+	it("changes the low-stock threshold and persists it", async () => {
+		// S2/NOTIF-01: absent keeps the stored value, a given one replaces it.
+		const repository_ = repository();
+		seed(repository_, { id: "product-1" });
+
+		const updated = await updateProduct(repository_).execute(
+			{ productId: "product-1", lowStockThreshold: 5 },
+			context("OWNER"),
+		);
+
+		expect(updated.lowStockThreshold).toBe(5);
+		await expect(
+			repository_.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ lowStockThreshold: 5 });
+	});
+
+	it("sets the low-stock threshold to zero when zero is sent explicitly", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", lowStockThreshold: 5 });
+
+		const updated = await updateProduct(repository_).execute(
+			{ productId: "product-1", lowStockThreshold: 0 },
+			context("OWNER"),
+		);
+
+		expect(updated.lowStockThreshold).toBe(0);
+	});
+
+	it("keeps the stored low-stock threshold when the body does not name it", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", lowStockThreshold: 5 });
+
+		const updated = await updateProduct(repository_).execute(
+			{ productId: "product-1", name: "Cafe en grano" },
+			context("OWNER"),
+		);
+
+		expect(updated.lowStockThreshold).toBe(5);
+	});
+
+	it("re-validates the low-stock threshold", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1" });
+
+		await expect(
+			updateProduct(repository_).execute(
+				{ productId: "product-1", lowStockThreshold: -1 },
+				context("OWNER"),
+			),
+		).rejects.toThrow(DomainError);
 	});
 
 	it("clears description and photoUrl when null is sent explicitly", async () => {

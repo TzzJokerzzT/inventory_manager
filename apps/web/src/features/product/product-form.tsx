@@ -28,6 +28,7 @@ import { ProductPhotoField } from "./components/product-photo-field";
 import {
 	normalizePrice,
 	normalizeSku,
+	toLowStockThreshold,
 	toNullableDescription,
 	validateProduct,
 	validateProductPhoto,
@@ -75,6 +76,11 @@ function saveErrorMessage(error: unknown): string | undefined {
  * purchase form shows `$ per kg` or `$ per litre` from this value, so it is
  * always sent, defaulting to kilograms — the API's own default.
  *
+ * "Stock mínimo" is the threshold the dashboard compares against (S2): a
+ * product is stock mínimo while `stockQuantity <= lowStockThreshold`, so `0`
+ * flags only the out-of-stock ones. It defaults to that same `0` on create and
+ * is preloaded with the stored value on edit.
+ *
  * "Categoría" is optional (S7): the selector offers "Sin categoría" plus the
  * active company's catalogue, starts without a category on create and on the
  * stored `categoryId` on edit, and always sends `categoryId` (the id or `null`).
@@ -97,6 +103,9 @@ export function ProductForm({
 	const [price, setPrice] = useState(product?.price ?? "");
 	const [measureUnit, setMeasureUnit] = useState(
 		product?.measureUnit ?? DEFAULT_MEASURE_UNIT,
+	);
+	const [lowStockThreshold, setLowStockThreshold] = useState(
+		String(product?.lowStockThreshold ?? 0),
 	);
 	const [description, setDescription] = useState(product?.description ?? "");
 	const [categoryId, setCategoryId] = useState<string | null>(
@@ -123,7 +132,7 @@ export function ProductForm({
 
 	const isPending = create.isPending || update.isPending;
 	const errors = attempted
-		? validateProduct({ name, sku, price, description })
+		? validateProduct({ name, sku, price, lowStockThreshold, description })
 		: {};
 	const saveError = saveErrorMessage(create.error ?? update.error);
 	const uploadError =
@@ -158,6 +167,7 @@ export function ProductForm({
 			name,
 			sku,
 			price,
+			lowStockThreshold,
 			description,
 		});
 		if (Object.keys(nextErrors).length > 0) {
@@ -169,6 +179,7 @@ export function ProductForm({
 			name: name.trim(),
 			sku: normalizeSku(sku),
 			price: normalizePrice(price),
+			lowStockThreshold: toLowStockThreshold(lowStockThreshold),
 			description: toNullableDescription(description),
 			photoUrl,
 			measureUnit,
@@ -281,6 +292,21 @@ export function ProductForm({
 					<p className="text-xs text-text-muted">{CATEGORIES_FALLBACK_ERROR}</p>
 				) : null}
 			</div>
+
+			<TextField
+				label="Stock mínimo"
+				name="lowStockThreshold"
+				type="number"
+				inputMode="numeric"
+				min={0}
+				step={1}
+				className="sm:col-span-full"
+				value={lowStockThreshold}
+				onChange={(event) => setLowStockThreshold(event.target.value)}
+				error={errors.lowStockThreshold}
+				hint="Avisa cuando el stock llegue a este número. 0 = solo cuando se agote."
+				disabled={isPending}
+			/>
 
 			<TextareaField
 				label="Descripción del producto"

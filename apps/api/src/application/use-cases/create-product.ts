@@ -23,6 +23,11 @@ export interface CreateProductInput {
 	 */
 	measureUnit?: MeasureUnit;
 	/**
+	 * The number the dashboard compares against (S2/NOTIF-01). Absent means the
+	 * column's default (`0`), which the entity applies.
+	 */
+	lowStockThreshold?: number;
+	/**
 	 * The category of the new product (S7). Absent means "no category", and a
 	 * given id has to belong to the company.
 	 */
@@ -58,9 +63,9 @@ export interface CreateProductDependencies {
  *    This read is the readable 409; the unique index is the authority for two
  *    concurrent creates, which is why the adapter translates `P2002` too.
  *
- * Only the fields of this input are accepted: `stockQuantity` and
- * `lowStockThreshold` are server-owned (MI-8, MI-12), so an unknown body key
- * never reaches the entity. `categoryId` is writable since S7.
+ * Only the fields of this input are accepted: `stockQuantity` is server-owned
+ * (MI-8), so an unknown body key never reaches the entity. `lowStockThreshold`
+ * is writable since NOTIF-01 (S2) and `categoryId` since S7.
  */
 export class CreateProductUseCase {
 	private readonly productRepository: ProductRepository;
@@ -87,6 +92,7 @@ export class CreateProductUseCase {
 			description: input.description,
 			photoUrl: input.photoUrl,
 			measureUnit: input.measureUnit,
+			lowStockThreshold: input.lowStockThreshold,
 			categoryId: input.categoryId,
 		});
 

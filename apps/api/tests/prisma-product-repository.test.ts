@@ -275,6 +275,7 @@ describe("PrismaProductRepository.update", () => {
 				price: "1500.00",
 				photoUrl: null,
 				measureUnit: "KILOGRAM",
+				categoryId: null,
 				updatedAt: updated.updatedAt,
 			},
 		});
@@ -295,6 +296,25 @@ describe("PrismaProductRepository.update", () => {
 		expect(updateMany).toHaveBeenCalledWith(
 			expect.objectContaining({
 				data: expect.objectContaining({ measureUnit: "LITRE" }),
+			}),
+		);
+	});
+
+	it("writes the category the entity carries, so a change and a clear are persisted", async () => {
+		// S7: the entity carries the stored category when the change did not name
+		// one, so the column cannot drift from it.
+		const { delegate, updateMany, findFirst } = buildFakeDelegate();
+		updateMany.mockResolvedValue({ count: 1 });
+		findFirst.mockResolvedValue(row({ categoryId: "category-1" }));
+
+		const repository = new PrismaProductRepository({ prisma: delegate });
+		await repository.update(
+			product().withChanges({ categoryId: "category-1" }),
+		);
+
+		expect(updateMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ categoryId: "category-1" }),
 			}),
 		);
 	});

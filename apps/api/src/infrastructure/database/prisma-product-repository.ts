@@ -218,6 +218,10 @@ export class PrismaProductRepository implements ProductRepository {
 					// Written on every update: the entity carries the stored unit when
 					// the change did not name one, so the column cannot drift from it.
 					measureUnit: product.measureUnit,
+					// And the same for the category: the entity carries the stored id
+					// when the change did not name one, so `null` (an explicit clear)
+					// and an id are written and an absent change is not a reset (S7).
+					categoryId: product.categoryId,
 					updatedAt: product.updatedAt,
 				},
 			}));

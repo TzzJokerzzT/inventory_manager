@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { CategoryController } from "../controllers/category-controller.js";
 import type { CompanyController } from "../controllers/company-controller.js";
 import type { CustomerController } from "../controllers/customer-controller.js";
 import type { ProductController } from "../controllers/product-controller.js";
@@ -21,6 +22,7 @@ export function companyRoutes(
 	customers: CustomerController,
 	movements: StockMovementController,
 	suppliers: SupplierController,
+	categories: CategoryController,
 	lots: LotController,
 ): Router {
 	const router = Router();
@@ -93,6 +95,16 @@ export function companyRoutes(
 	companyScoped.post("/suppliers", suppliers.create);
 	companyScoped.patch("/suppliers/:supplierId", suppliers.update);
 	companyScoped.delete("/suppliers/:supplierId", suppliers.remove);
+	// Category routes. Same protected sub-router and same reasoning: the company
+	// comes from the path and the membership, never from the body. Writing the
+	// category catalogue is the same `manage_products` permission as the product
+	// catalogue (enforced by the use cases, not here), and any ACTIVE membership
+	// reads it. The delete is a hard delete guarded by the products that
+	// reference the category, so there is no restore route to pair with it.
+	companyScoped.get("/categories", categories.list);
+	companyScoped.post("/categories", categories.create);
+	companyScoped.patch("/categories/:categoryId", categories.update);
+	companyScoped.delete("/categories/:categoryId", categories.remove);
 	// Purchase lot routes. Registering a lot is the way measured stock enters the
 	// company (S6): it is a catalogue write (`manage_products`, enforced by the
 	// use case) and it shares the protected sub-router, so the company comes from

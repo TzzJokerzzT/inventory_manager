@@ -3,6 +3,7 @@ import type {
 	ProductCosts,
 } from "../../domain/costing/derived-costs.js";
 import { deriveProductCosts } from "../../domain/costing/derived-costs.js";
+import type { Category } from "../../domain/entities/category.js";
 import type { LotUnitStatus } from "../../domain/entities/lot-unit.js";
 import type { MeasureUnit } from "../../domain/entities/measure-unit.js";
 import type { Product } from "../../domain/entities/product.js";
@@ -34,6 +35,12 @@ export interface ProductFields {
 	 */
 	measureUnit: MeasureUnit;
 	categoryId: string | null;
+	/**
+	 * The name of the category the product belongs to, resolved by the API
+	 * (S5/S7): `null` means the product has no category, and a client renders it
+	 * without joining a catalogue it only has cached.
+	 */
+	categoryName: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -71,19 +78,78 @@ export interface ProductDetailView extends ProductListView {
 }
 
 /**
- * Builds the product read from the entity and the sums of its available units.
+ * Builds the product read from the entity, the sums of its available units and
+ * the category names resolved by the use case.
  *
  * The derived fields come from {@link deriveProductCosts}, the one place that
  * owns that arithmetic, so the list and the detail cannot disagree on a cost.
+ * The names arrive as one map for the whole page, built from a single batch
+ * read through the category port (S7), and the resolution happens here so the
+ * list and the detail cannot disagree on a name either.
  */
 export function toProductListView(
 	product: Product,
 	totals: AvailableUnitTotals | null | undefined,
+	categoryNames: ReadonlyMap<string, string>,
 ): ProductListView {
 	return {
 		...product.toJSON(),
+		categoryName: resolveCategoryName(product, categoryNames),
 		...deriveProductCosts(product.price, totals),
 	};
+}
+
+/**
+ * Builds the plain product response a write answers: the stored entity plus the
+ * name of its category.
+ *
+ * The writes answer the fields every product response carries, not the costs of
+ * the reads: deriving them for a product nobody has bought yet would be four
+ * nulls on every create.
+ */
+export function toProductFields(
+	product: Product,
+	categoryName: string | null,
+): ProductFields {
+	return { ...product.toJSON(), categoryName };
+}
+
+/**
+ * Builds the `id -> name` lookup of a batch of categories, so the join happens
+ * once per read instead of once per row.
+ */
+export function categoryNamesOf(
+	categories: readonly Category[],
+): Map<string, string> {
+	return new Map(categories.map((category) => [category.id, category.name]));
+}
+
+/**
+ * Resolves the name of the product's category from the batch lookup, or `null`
+ * when the product has none.
+ *
+ * A product that points at a category the batch did not answer means the store
+ * is inconsistent -- the foreign key is `RESTRICT`, so the row cannot vanish
+ * while a product references it -- and that is reported instead of papered over
+ * with an invented name.
+ */
+export function resolveCategoryName(
+	product: Product,
+	categoryNames: ReadonlyMap<string, string>,
+): string | null {
+	if (product.categoryId === null) {
+		return null;
+	}
+
+	const name = categoryNames.get(product.categoryId);
+
+	if (name === undefined) {
+		throw new Error(
+			`Product ${product.id} points at category ${product.categoryId}, which does not exist`,
+		);
+	}
+
+	return name;
 }
 
 /**
@@ -95,9 +161,10 @@ export function toProductListView(
 export function toProductDetailView(
 	product: Product,
 	totals: AvailableUnitTotals | null | undefined,
+	categoryNames: ReadonlyMap<string, string>,
 	lots: ProductLotView[],
 ): ProductDetailView {
-	return { ...toProductListView(product, totals), lots };
+	return { ...toProductListView(product, totals, categoryNames), lots };
 }
 
 /** Maps the stored lot plus its supplier name to the view. */

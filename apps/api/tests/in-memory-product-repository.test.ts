@@ -267,6 +267,26 @@ describe("InMemoryProductRepository.update", () => {
 			repository.update(product().withChanges({ name: "Cafe en grano" })),
 		).resolves.toMatchObject({ sku: "CAF-500" });
 	});
+
+	it("stores a category change and an explicit clear", async () => {
+		// S7: the entity carries the stored category when the change did not name
+		// one, so `null` is a value here, not "unchanged".
+		const repository = repositoryWith([product()]);
+
+		await repository.update(
+			product().withChanges({ categoryId: "category-1" }),
+		);
+
+		await expect(
+			repository.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ categoryId: "category-1" });
+
+		await repository.update(product().withChanges({ categoryId: null }));
+
+		await expect(
+			repository.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ categoryId: null });
+	});
 });
 
 describe("InMemoryProductRepository.softDelete", () => {

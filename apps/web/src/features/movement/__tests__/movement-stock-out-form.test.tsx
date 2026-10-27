@@ -68,6 +68,7 @@ function product(overrides: Partial<ProductRow> = {}): ProductRow {
 		stockQuantity: 12,
 		lowStockThreshold: 0,
 		categoryId: null,
+		categoryName: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
 		availableUnits: 0,

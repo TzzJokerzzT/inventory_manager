@@ -344,6 +344,10 @@ const productFields = {
 	lowStockThreshold: number(),
 	measureUnit: measureUnitSchema,
 	categoryId: nullable(string()),
+	// S5: el nombre lo resuelve la API y es **requerido** aunque sea nullable, así
+	// que un producto sin `categoryName` es una deriva del contrato y no un
+	// producto sin categoría.
+	categoryName: nullable(string()),
 	createdAt: string(),
 	updatedAt: string(),
 } as const;
@@ -361,6 +365,11 @@ const productFields = {
  * `measureUnit` is how the lots of the product are measured, and it travels
  * with every read and write (L19): the list renders `$ 5.900,00 / kg` from this
  * value, never from an assumption about what the product is bought in.
+ *
+ * `categoryName` is the name of `categoryId` **resolved by the API** (S5), so the
+ * UI never has to cross the cached catalogues. It is `null` exactly when
+ * `categoryId` is, and it is required on the wire: a response that omits it is a
+ * shape change, not a product without a category.
  */
 export const productSchema = object(productFields);
 
@@ -642,6 +651,79 @@ export function parseSuppliers(data: unknown): SuppliersResponse {
  */
 export function parseSupplier(data: unknown): Supplier {
 	const result = safeParse(supplierSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * The fields a category carries in every response. It has no nullable field: a
+ * category is its name inside the company, and the delete is hard (`S3`), so
+ * there is no `deletedAt` to model either.
+ */
+const categoryFields = {
+	id: string(),
+	companyId: string(),
+	name: string(),
+	createdAt: string(),
+	updatedAt: string(),
+} as const;
+
+/** One category exactly as the category endpoints serialize it. */
+export const categorySchema = object(categoryFields);
+
+/** One category, derived from the OpenAPI contract. */
+export type Category = components["schemas"]["Category"];
+
+/** Body of `POST /companies/{companyId}/categories`, derived from the contract. */
+export type CreateCategoryRequest =
+	components["schemas"]["CreateCategoryRequest"];
+
+/**
+ * Body of `PATCH /companies/{companyId}/categories/{categoryId}`, derived from
+ * the contract. The name is the only writable field and its absence means
+ * "unchanged".
+ */
+export type UpdateCategoryRequest =
+	components["schemas"]["UpdateCategoryRequest"];
+
+/**
+ * Shape of `GET /companies/{companyId}/categories`: the company's catalogue,
+ * already ordered by `name` and then `id` by the API, which is why it is shown
+ * in the order it arrives.
+ */
+export const categoryListSchema = array(categorySchema);
+
+/** `GET /companies/{companyId}/categories` response, derived from the contract. */
+export type CategoriesResponse = components["schemas"]["Category"][];
+
+/**
+ * Validates the catalogue at the boundary.
+ *
+ * Same contract as {@link parseSuppliers}: a backend that changes shape fails as
+ * an {@link ApiError} with a readable message instead of exploding inside the
+ * table.
+ */
+export function parseCategories(data: unknown): CategoriesResponse {
+	const result = safeParse(categoryListSchema, data);
+	if (!result.success) {
+		throw new ApiError(UNEXPECTED_RESPONSE);
+	}
+
+	return result.output;
+}
+
+/**
+ * Validates a single category: the creation and the rename answers.
+ *
+ * It exists so the category a form receives back goes through the same boundary
+ * as the listed ones: a cast here would let a shape change reach a view
+ * unnoticed.
+ */
+export function parseCategory(data: unknown): Category {
+	const result = safeParse(categorySchema, data);
 	if (!result.success) {
 		throw new ApiError(UNEXPECTED_RESPONSE);
 	}

@@ -12,6 +12,7 @@ import { StockLot } from "../src/domain/entities/stock-lot.js";
 import { Supplier } from "../src/domain/entities/supplier.js";
 import { User } from "../src/domain/entities/user.js";
 import { COMPANY_CONTEXT_FORBIDDEN_CODE } from "../src/domain/errors/company-context-forbidden-error.js";
+import { InMemoryCategoryRepository } from "../src/infrastructure/database/in-memory-category-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
@@ -74,6 +75,11 @@ describe("costing endpoints", () => {
 		const stockMovementRepository = new InMemoryStockMovementRepository(store);
 		const stockLotRepository = new InMemoryStockLotRepository(
 			stockMovementRepository,
+		);
+		// The product reads resolve the category name through this port, so the
+		// app wires it next to the catalogue it serves.
+		const categoryRepository = new InMemoryCategoryRepository(
+			productRepository,
 		);
 
 		const owner = User.create({ auth0Sub: OWNER_SUB, email: "owner@x.com" });
@@ -200,11 +206,13 @@ describe("costing endpoints", () => {
 				list: new ListProductsUseCase({
 					productRepository,
 					stockLotRepository,
+					categoryRepository,
 				}),
 				get: new GetProductUseCase({
 					productRepository,
 					stockLotRepository,
 					supplierRepository,
+					categoryRepository,
 				}),
 				create: {} as never,
 				units: {} as never,
@@ -223,6 +231,7 @@ describe("costing endpoints", () => {
 				update: {} as never,
 				remove: {} as never,
 			},
+			categories: {} as never,
 			customers: {} as never,
 			movements: {} as never,
 			lots: {} as never,

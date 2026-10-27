@@ -1,10 +1,16 @@
 import type { MembershipRole } from "../../domain/entities/membership.js";
-import type { Product } from "../../domain/entities/product.js";
 import { InsufficientRoleError } from "../../domain/errors/insufficient-role-error.js";
 import { ProductNotDeletedError } from "../../domain/errors/product-not-deleted-error.js";
 import { ProductNotFoundError } from "../../domain/errors/product-not-found-error.js";
 import { can } from "../../domain/policies/authorization.js";
+import type { CategoryRepository } from "../../domain/repositories/category-repository.js";
 import type { ProductRepository } from "../../domain/repositories/product-repository.js";
+import {
+	categoryNamesOf,
+	type ProductFields,
+	resolveCategoryName,
+	toProductFields,
+} from "./product-view.js";
 
 export interface RestoreProductInput {
 	productId: string;
@@ -17,6 +23,7 @@ export interface RestoreProductContext {
 
 export interface RestoreProductDependencies {
 	productRepository: ProductRepository;
+	categoryRepository: CategoryRepository;
 }
 
 /**
@@ -42,15 +49,17 @@ export interface RestoreProductDependencies {
  */
 export class RestoreProductUseCase {
 	private readonly productRepository: ProductRepository;
+	private readonly categoryRepository: CategoryRepository;
 
 	constructor(dependencies: RestoreProductDependencies) {
 		this.productRepository = dependencies.productRepository;
+		this.categoryRepository = dependencies.categoryRepository;
 	}
 
 	async execute(
 		input: RestoreProductInput,
 		context: RestoreProductContext,
-	): Promise<Product> {
+	): Promise<ProductFields> {
 		if (!can(context.actorRole, "manage_products")) {
 			throw new InsufficientRoleError();
 		}
@@ -74,7 +83,20 @@ export class RestoreProductUseCase {
 		);
 
 		if (restored !== null) {
-			return restored;
+			// The restore answers the same product write contract as the create and
+			// the update, so the resolved category name travels with it (S5): the
+			// response shape never depends on which write produced it.
+			const categories =
+				restored.categoryId === null
+					? []
+					: await this.categoryRepository.findByIds(context.companyId, [
+							restored.categoryId,
+						]);
+
+			return toProductFields(
+				restored,
+				resolveCategoryName(restored, categoryNamesOf(categories)),
+			);
 		}
 
 		// The write matched no row: somebody else changed the state between the

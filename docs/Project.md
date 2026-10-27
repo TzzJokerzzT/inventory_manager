@@ -35,16 +35,16 @@ es real (el tamaño del catálogo); **DASH-03** (tabla de stock crítico) es rea
 `stockQuantity <= lowStockThreshold` —hoy el umbral es siempre 0, así que la tabla son los
 **agotados**; cuando MI-12 permita editarlo, la misma regla cubre el stock bajo sin tocar el
 dashboard—, ordenada por unidades ascendente y luego por nombre, con las columnas Producto, SKU,
-Categoría (**—** mientras no exista la feature), Precio, Unidades y Estado (`StockBadge`); **DASH-04**
+Categoría (el nombre resuelto por la API, o **—** cuando el producto no tiene), Precio, Unidades y
+Estado (`StockBadge`); **DASH-04**
 (valor del inventario) es real **en la tarjeta y en el gráfico**, ambos calculados en el cliente en
 **centavos enteros** desde el precio decimal por el stock con el mismo helper, así que muestran el
 mismo total; **DASH-05** lo resuelve el contexto de empresa (la empresa activa: el catálogo y el
 reporte ya vienen filtrados por `companyId`), no un filtro nuevo. **DASH-02** se cumple
 **parcialmente**: el gráfico de distribución del stock es por **estado** (agotados contra con stock),
-**no por categoría**, porque la feature de categorías no existe y el `categoryId` de todos los
-productos es nulo —un gráfico por categoría mostraría una sola porción "Sin categoría"—; el
-**desglose por categoría queda pendiente de esa feature** y la reemplazará, no se sumará como cuarto
-gráfico. Librería: **Recharts**, que ya estaba en el stack. Los tres gráficos son: **distribución del
+**no por categoría**, aunque las categorías ya existen: el **desglose por categoría sigue pendiente**
+como su propio trabajo y reemplazará a este gráfico, no se sumará como cuarto. Un gráfico por
+categoría hoy mostraría una porción "Sin categoría" por cada producto sin asignar. Librería: **Recharts**, que ya estaba en el stack. Los tres gráficos son: **distribución del
 stock por estado**; **valor del inventario**, con el total de la empresa y las barras de los 8
 productos de mayor valor; y **evolución de entradas/salidas** por **día UTC**, del más viejo al más
 nuevo y con los días sin movimientos en cero, desde
@@ -64,13 +64,28 @@ nuevo y con los días sin movimientos en cero, desde
 > **Estado (MI-7, `odd/tasks/products.md`):** el alta, la edición y la baja lógica (PROD-01, PROD-02,
 > PROD-03) están implementadas, igual que la unicidad de SKU por empresa (PROD-05, con el SKU
 > normalizado a mayúsculas porque el índice `UNIQUE` de Postgres distingue grafía) y la foto
-> (PROD-06). PROD-04 se cumple **sólo por nombre y por SKU**: el **filtro por categoría no está
-> implementado** porque todavía no existe la feature de categorías (ni CRUD, ni endpoint, ni UI) y
-> `categoryId` no se expone en el contrato; entra cuando esa feature exista. PROD-06 se resuelve con
+> (PROD-06). PROD-04 se cumple **por nombre y por SKU**: el **filtro por categoría sigue sin
+> implementarse**, aunque la feature de categorías ya existe (CRUD, `categoryId` escribible y
+> `categoryName` resuelto, ver **Categorías**); el filtro entra como trabajo propio sobre ese
+> contrato. PROD-06 se resuelve con
 > **subida directa firmada** a Cloudinary: el formulario pide la firma a
 > `POST /companies/{companyId}/media/signature`, sube el archivo y guarda únicamente el `secure_url`;
 > la optimización es la entrega de Cloudinary, no un paso de código propio. Crear y editar
 > confirman con un toast y vuelven al listado.
+
+> **Estado (categorías, `odd/tasks/product-categories.md`):** la tabla `Category` ya no está sin
+> usar. `GET`/`POST /companies/{companyId}/categories` y
+> `PATCH`/`DELETE .../categories/{categoryId}` dan el ABM por empresa con `name` de 1..120 y
+> **unicidad case-sensitive** (`409 category_name_already_exists`), lectura para cualquier
+> membership `ACTIVE` y escritura con `manage_products`. La baja es **dura** y solo se permite
+> cuando ningún producto de la empresa la referencia, **incluidos los dados de baja**: si hay
+> alguno responde `409 category_in_use` con el conteo, y la carrera contra la FK `RESTRICT`
+> responde lo mismo. Una categoría de otra empresa y una inexistente responden el mismo
+> `404 category_not_found`. En la UI, `/dashboard/categories` lista, crea, edita y da de baja con
+> confirmación; el alta y la edición de producto suman el selector **Categoría** con "Sin
+> categoría", y el contrato expone `categoryId` escribible más `categoryName` **resuelto por el
+> servidor en una lectura por lote**, así que la columna **Categoría** del dashboard muestra el
+> nombre. Sin migración: la tabla existía desde el inicio.
 >
 > **PROD-03 es una baja lógica reversible** (`odd/tasks/product-restore.md`): la baja estampa
 > `deletedAt` y la restauración la deshace con

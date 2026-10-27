@@ -52,11 +52,13 @@ export type PurgeProductResult =
  *   restore resolve to a single winner.
  *
  * The write surface is deliberately narrow: `stockQuantity`,
- * `lowStockThreshold`, `categoryId` and the soft-delete stamp are not settable
- * from the product endpoints (MI-8, MI-12, L4), so no method accepts them;
- * only `softDelete` and `restore` move the stamp, each with its own guard, and
- * `purge` is the single method that removes a row -- guarded on the stamp it
- * requires, so the trash is the only way in.
+ * `lowStockThreshold` and the soft-delete stamp are not settable from the
+ * product endpoints (MI-8, MI-12), so no method accepts them; only `softDelete`
+ * and `restore` move the stamp, each with its own guard, and `purge` is the
+ * single method that removes a row -- guarded on the stamp it requires, so the
+ * trash is the only way in. `categoryId` travels inside the entity: the use
+ * cases validate that the category exists in the same company before writing
+ * (S7), so the port never receives a reference it has to verify.
  */
 export interface ProductRepository {
 	/**

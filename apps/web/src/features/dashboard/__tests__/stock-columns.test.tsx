@@ -16,6 +16,7 @@ function product(overrides: Partial<Product> = {}): Product {
 		stockQuantity: 0,
 		lowStockThreshold: 0,
 		categoryId: null,
+		categoryName: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
 		...overrides,
@@ -51,11 +52,30 @@ describe("stockColumns", () => {
 
 		expect(row.getByText("Café molido 500g")).toBeTruthy();
 		expect(row.getByText("CAF-500")).toBeTruthy();
-		// La categoría todavía no existe como feature: se muestra una raya.
+		// S7: la columna muestra el nombre y una raya cuando no hay categoría; el
+		// producto de esta fila no tiene ninguna.
 		expect(row.getByText("—")).toBeTruthy();
 		expect(row.getByText("$ 1.500,00")).toBeTruthy();
 		expect(row.getByText("0")).toBeTruthy();
 		expect(row.getByText("Agotado")).toBeTruthy();
+	});
+
+	it("shows the category name of the product", () => {
+		// S7: la columna deja de ser una raya constante.
+		renderTable([product({ categoryId: "cat-1", categoryName: "Bebidas" })]);
+
+		const row = within(screen.getAllByRole("row")[1]);
+
+		expect(row.getByText("Bebidas")).toBeTruthy();
+		expect(row.queryByText("—")).toBeNull();
+	});
+
+	it("shows a dash when the product has no category", () => {
+		renderTable([product({ categoryId: null, categoryName: null })]);
+
+		const row = within(screen.getAllByRole("row")[1]);
+
+		expect(row.getByText("—")).toBeTruthy();
 	});
 
 	it("marks a product with units up to its threshold as low stock", () => {

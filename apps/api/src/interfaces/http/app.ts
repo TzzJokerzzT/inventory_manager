@@ -11,10 +11,12 @@ import YAML from "yamljs";
 import type { MediaUploadSigner } from "../../application/ports/media-upload-signer.js";
 import type { AcceptInvitationsUseCase } from "../../application/use-cases/accept-invitations.js";
 import type { ChangeMemberRoleUseCase } from "../../application/use-cases/change-member-role.js";
+import type { CreateCategoryUseCase } from "../../application/use-cases/create-category.js";
 import type { CreateCompanyUseCase } from "../../application/use-cases/create-company.js";
 import type { CreateCustomerUseCase } from "../../application/use-cases/create-customer.js";
 import type { CreateProductUseCase } from "../../application/use-cases/create-product.js";
 import type { CreateSupplierUseCase } from "../../application/use-cases/create-supplier.js";
+import type { DeleteCategoryUseCase } from "../../application/use-cases/delete-category.js";
 import type { DeleteCustomerUseCase } from "../../application/use-cases/delete-customer.js";
 import type { DeleteProductUseCase } from "../../application/use-cases/delete-product.js";
 import type { DeleteSupplierUseCase } from "../../application/use-cases/delete-supplier.js";
@@ -25,6 +27,7 @@ import type { GetMovementTrendUseCase } from "../../application/use-cases/get-mo
 import type { GetProductUseCase } from "../../application/use-cases/get-product.js";
 import type { InviteMemberUseCase } from "../../application/use-cases/invite-member.js";
 import type { LeaveCompanyUseCase } from "../../application/use-cases/leave-company.js";
+import type { ListCategoriesUseCase } from "../../application/use-cases/list-categories.js";
 import type { ListCompaniesUseCase } from "../../application/use-cases/list-companies.js";
 import type { ListCustomersUseCase } from "../../application/use-cases/list-customers.js";
 import type { ListMembersUseCase } from "../../application/use-cases/list-members.js";
@@ -45,6 +48,7 @@ import type { RestoreProductUseCase } from "../../application/use-cases/restore-
 import type { ResumeSessionUseCase } from "../../application/use-cases/resume-session.js";
 import type { RevokeMembershipUseCase } from "../../application/use-cases/revoke-membership.js";
 import type { StartSessionUseCase } from "../../application/use-cases/start-session.js";
+import type { UpdateCategoryUseCase } from "../../application/use-cases/update-category.js";
 import type { UpdateCustomerUseCase } from "../../application/use-cases/update-customer.js";
 import type { UpdateProductUseCase } from "../../application/use-cases/update-product.js";
 import type { UpdateSupplierUseCase } from "../../application/use-cases/update-supplier.js";
@@ -53,6 +57,7 @@ import {
 	type AuthCookieOptions,
 	createAuthController,
 } from "./controllers/auth-controller.js";
+import { createCategoryController } from "./controllers/category-controller.js";
 import { createCompanyController } from "./controllers/company-controller.js";
 import { createCustomerController } from "./controllers/customer-controller.js";
 import { createMeController } from "./controllers/me-controller.js";
@@ -170,6 +175,16 @@ export interface AppDependencies {
 		remove: DeleteSupplierUseCase;
 	};
 	/**
+	 * The category slice of S4. One field, not four, because the routes that
+	 * consume it are all mounted together on the company-scoped router.
+	 */
+	categories: {
+		list: ListCategoriesUseCase;
+		create: CreateCategoryUseCase;
+		update: UpdateCategoryUseCase;
+		remove: DeleteCategoryUseCase;
+	};
+	/**
 	 * The purchase lot slice of S6. One field, because the slice has one write and
 	 * the routes that consume it are all mounted together on the company-scoped
 	 * router.
@@ -219,6 +234,7 @@ export function buildApp(dependencies: AppDependencies): Express {
 			customers: createCustomerController(dependencies.customers),
 			movements: createStockMovementController(dependencies.movements),
 			suppliers: createSupplierController(dependencies.suppliers),
+			categories: createCategoryController(dependencies.categories),
 			lots: createLotController(dependencies.lots),
 			me: createMeController({
 				getCurrentUser: dependencies.getCurrentUser,

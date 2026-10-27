@@ -6,6 +6,7 @@ import { ListProductsUseCase } from "../src/application/use-cases/list-products.
 import { PurgeProductUseCase } from "../src/application/use-cases/purge-product.js";
 import { RestoreProductUseCase } from "../src/application/use-cases/restore-product.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
+import { Category } from "../src/domain/entities/category.js";
 import { Company } from "../src/domain/entities/company.js";
 import {
 	Membership,
@@ -14,6 +15,7 @@ import {
 import type { Product } from "../src/domain/entities/product.js";
 import { StockMovement } from "../src/domain/entities/stock-movement.js";
 import { User } from "../src/domain/entities/user.js";
+import { InMemoryCategoryRepository } from "../src/infrastructure/database/in-memory-category-repository.js";
 import { InMemoryCompanyRepository } from "../src/infrastructure/database/in-memory-company-repository.js";
 import { InMemoryMembershipRepository } from "../src/infrastructure/database/in-memory-membership-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
@@ -42,6 +44,9 @@ const MEMBER_SUB = "auth0|member";
 const OUTSIDER_SUB = "auth0|outsider";
 
 const MISSING_PRODUCT_ID = "12345678-1234-4123-8123-123456789012";
+const CATEGORY = "22222222-3333-4444-8555-666666666666";
+const OTHER_CATEGORY = "44444444-5555-4666-8777-888888888888";
+const MISSING_CATEGORY_ID = "77777777-8888-4999-8aaa-bbbbbbbbbbbb";
 
 describe("product endpoints", () => {
 	let issuer: LocalIssuer;
@@ -77,6 +82,11 @@ describe("product endpoints", () => {
 			stockMovementRepository,
 		);
 		const supplierRepository = new InMemorySupplierRepository();
+		// The category validation of a product write reads the very store the
+		// category endpoints serve, so both share one adapter.
+		const categoryRepository = new InMemoryCategoryRepository(
+			productRepository,
+		);
 
 		const owner = User.create({ auth0Sub: OWNER_SUB, email: "owner@x.com" });
 		const admin = User.create({ auth0Sub: ADMIN_SUB, email: "admin@x.com" });
@@ -142,17 +152,28 @@ describe("product endpoints", () => {
 				list: new ListProductsUseCase({
 					productRepository,
 					stockLotRepository,
+					categoryRepository,
 				}),
-				create: new CreateProductUseCase({ productRepository }),
+				create: new CreateProductUseCase({
+					productRepository,
+					categoryRepository,
+				}),
 				get: new GetProductUseCase({
 					productRepository,
 					stockLotRepository,
 					supplierRepository,
+					categoryRepository,
 				}),
 				units: {} as never,
-				update: new UpdateProductUseCase({ productRepository }),
+				update: new UpdateProductUseCase({
+					productRepository,
+					categoryRepository,
+				}),
 				remove: new DeleteProductUseCase({ productRepository }),
-				restore: new RestoreProductUseCase({ productRepository }),
+				restore: new RestoreProductUseCase({
+					productRepository,
+					categoryRepository,
+				}),
 				purge: new PurgeProductUseCase({
 					productRepository,
 					stockMovementRepository,
@@ -173,6 +194,7 @@ describe("product endpoints", () => {
 			mediaUploadSigner: {} as never,
 			movements: {} as never,
 			suppliers: {} as never,
+			categories: {} as never,
 			lots: {} as never,
 			authCookieOptions: {
 				httpOnly: true,
@@ -192,11 +214,15 @@ describe("product endpoints", () => {
 			outsider,
 			productRepository,
 			stockMovementRepository,
+			categoryRepository,
 			seedMembership,
 			seedRoster: () => {
 				seedMembership({ userId: owner.id, role: "OWNER" });
 				seedMembership({ userId: admin.id, role: "ADMIN" });
 				seedMembership({ userId: member.id, role: "MEMBER" });
+			},
+			seedCategory: (id: string, name: string, companyId = COMPANY) => {
+				categoryRepository.save(Category.create({ id, companyId, name }));
 			},
 		};
 	}
@@ -253,6 +279,7 @@ describe("product endpoints", () => {
 				lowStockThreshold: 0,
 				measureUnit: "KILOGRAM",
 				categoryId: null,
+				categoryName: null,
 				createdAt: expect.any(String),
 				updatedAt: expect.any(String),
 			});
@@ -293,19 +320,73 @@ describe("product endpoints", () => {
 			expect(response.body.price).toBe("1.50");
 		});
 
-		it("ignores stock, the low-stock threshold and the category in the body", async () => {
+		it("ignores stock and the low-stock threshold in the body", async () => {
 			const { app, seedRoster } = createTestApp();
 			seedRoster();
 
 			const body = await createProduct(app, {
 				stockQuantity: 99,
 				lowStockThreshold: 5,
-				categoryId: "22222222-3333-4444-8555-666666666666",
 			});
 
 			expect(body.stockQuantity).toBe(0);
 			expect(body.lowStockThreshold).toBe(0);
-			expect(body.categoryId).toBeNull();
+		});
+
+		it("creates a product with a category of the company and answers its name", async () => {
+			// S7: the category is validated in the same company and the read answers
+			// the name, so the client never joins a cached catalogue.
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(CATEGORY, "Bebidas");
+
+			const body = await createProduct(app, { categoryId: CATEGORY });
+
+			expect(body.categoryId).toBe(CATEGORY);
+			expect(body.categoryName).toBe("Bebidas");
+		});
+
+		it("answers 404 category_not_found for a category of another company and writes nothing", async () => {
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(OTHER_CATEGORY, "Bebidas", OTHER_COMPANY);
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({
+					name: "Cafe",
+					sku: "CAF-500",
+					price: "1500",
+					categoryId: OTHER_CATEGORY,
+				});
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("category_not_found");
+
+			const catalogue = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(catalogue.body).toEqual([]);
+		});
+
+		it("answers 404 category_not_found for a category that does not exist", async () => {
+			const { app, seedRoster } = createTestApp();
+			seedRoster();
+
+			const response = await request(app)
+				.post(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({
+					name: "Cafe",
+					sku: "CAF-500",
+					price: "1500",
+					categoryId: MISSING_CATEGORY_ID,
+				});
+
+			expect(response.status).toBe(404);
+			expect(response.body.error.code).toBe("category_not_found");
 		});
 
 		it("answers 403 insufficient_role for a MEMBER", async () => {
@@ -363,6 +444,7 @@ describe("product endpoints", () => {
 			["a photo url that is not http", { photoUrl: "ftp://example.com/a.png" }],
 			["a measure unit outside the closed list", { measureUnit: "POUND" }],
 			["a lowercased measure unit", { measureUnit: "kilogram" }],
+			["a category id that is not a uuid", { categoryId: "bebidas" }],
 		])("answers 400 with issues for %s", async (_label, overrides) => {
 			const { app, seedRoster } = createTestApp();
 			seedRoster();
@@ -437,6 +519,37 @@ describe("product endpoints", () => {
 						`${product.name}:${product.measureUnit}`,
 				),
 			).toEqual(["Cafe:KILOGRAM", "Pintura:LITRE"]);
+		});
+
+		it("names the category of every product and leaves it null without one", async () => {
+			// S5: the list resolves the name in one batch, so the dashboard shows
+			// the category without crossing a cached catalogue.
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(CATEGORY, "Bebidas");
+			await createProduct(app, {
+				name: "Cafe",
+				sku: "CAF-1",
+				categoryId: CATEGORY,
+			});
+			await createProduct(app, { name: "Azucar", sku: "SUGAR-1" });
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(
+				response.body.map(
+					(product: { name: string; categoryName: string | null }) => [
+						product.name,
+						product.categoryName,
+					],
+				),
+			).toEqual([
+				["Azucar", null],
+				["Cafe", "Bebidas"],
+			]);
 		});
 
 		it("searches by name or sku, case-insensitively", async () => {
@@ -620,6 +733,21 @@ describe("product endpoints", () => {
 			expect(response.body.measureUnit).toBe("METRE");
 		});
 
+		it("returns the category name of the product", async () => {
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(CATEGORY, "Bebidas");
+			const product = await createProduct(app, { categoryId: CATEGORY });
+
+			const response = await request(app)
+				.get(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(response.status).toBe(200);
+			expect(response.body.categoryId).toBe(CATEGORY);
+			expect(response.body.categoryName).toBe("Bebidas");
+		});
+
 		it("answers 404 product_not_found for another company's product", async () => {
 			const { app, seedRoster, seedMembership, owner } = createTestApp();
 			seedRoster();
@@ -748,6 +876,75 @@ describe("product endpoints", () => {
 			expect(response.status).toBe(200);
 			expect(response.body.description).toBeNull();
 			expect(response.body.photoUrl).toBeNull();
+		});
+
+		it("sets the category and clears it with an explicit null", async () => {
+			// S7: absent means "unchanged", an explicit `null` clears it.
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(CATEGORY, "Bebidas");
+			const product = await createProduct(app);
+
+			const set = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ categoryId: CATEGORY });
+
+			expect(set.status).toBe(200);
+			expect(set.body.categoryId).toBe(CATEGORY);
+			expect(set.body.categoryName).toBe("Bebidas");
+
+			const cleared = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ categoryId: null });
+
+			expect(cleared.status).toBe(200);
+			expect(cleared.body.categoryId).toBeNull();
+			expect(cleared.body.categoryName).toBeNull();
+		});
+
+		it("leaves the category untouched when the body does not name it", async () => {
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(CATEGORY, "Bebidas");
+			const product = await createProduct(app, { categoryId: CATEGORY });
+
+			const response = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ name: "Cafe en grano" });
+
+			expect(response.status).toBe(200);
+			expect(response.body.categoryId).toBe(CATEGORY);
+			expect(response.body.categoryName).toBe("Bebidas");
+		});
+
+		it("answers 404 category_not_found for a foreign or unknown category and touches nothing", async () => {
+			const { app, seedRoster, seedCategory } = createTestApp();
+			seedRoster();
+			seedCategory(OTHER_CATEGORY, "Bebidas", OTHER_COMPANY);
+			const product = await createProduct(app);
+
+			const foreign = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ categoryId: OTHER_CATEGORY });
+			const missing = await request(app)
+				.patch(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(OWNER_SUB))
+				.send({ categoryId: MISSING_CATEGORY_ID });
+
+			expect(foreign.status).toBe(404);
+			expect(foreign.body.error.code).toBe("category_not_found");
+			expect(missing.status).toBe(404);
+			expect(missing.body.error.code).toBe("category_not_found");
+
+			const read = await request(app)
+				.get(`/companies/${COMPANY}/products/${product.id}`)
+				.set("authorization", authorization(MEMBER_SUB));
+
+			expect(read.body.categoryId).toBeNull();
 		});
 
 		it("never moves the stock, even if the body tries to", async () => {
@@ -930,6 +1127,8 @@ describe("product endpoints", () => {
 				.set("authorization", authorization(ADMIN_SUB));
 
 			expect(restored.status).toBe(200);
+			// The restore answers the same product write contract as the create and
+			// the update, so the resolved category name travels with it too.
 			expect(restored.body).toEqual({
 				...product,
 				updatedAt: expect.any(String),

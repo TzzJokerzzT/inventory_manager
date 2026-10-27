@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
+import { useCategories } from "@/src/features/category/api/use-categories";
 import { useActiveCompany } from "@/src/features/company/store/company-selectors";
 import { useCreateProduct } from "../api/use-create-product";
 import { useProduct } from "../api/use-product";
@@ -32,6 +33,10 @@ jest.mock("../api/use-upload-product-photo", () => ({
 	useUploadProductPhoto: jest.fn(),
 }));
 
+jest.mock("@/src/features/category/api/use-categories", () => ({
+	useCategories: jest.fn(),
+}));
+
 const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
 const useActiveCompanyMock = useActiveCompany as jest.MockedFunction<
 	typeof useActiveCompany
@@ -45,6 +50,9 @@ const useUpdateProductMock = useUpdateProduct as jest.MockedFunction<
 >;
 const useUploadProductPhotoMock = useUploadProductPhoto as jest.MockedFunction<
 	typeof useUploadProductPhoto
+>;
+const useCategoriesMock = useCategories as jest.MockedFunction<
+	typeof useCategories
 >;
 
 function stubMutation() {
@@ -83,6 +91,7 @@ function setup(productState: Record<string, unknown> = {}) {
 			lowStockThreshold: 0,
 			measureUnit: "KILOGRAM",
 			categoryId: null,
+			categoryName: null,
 			createdAt: "2026-10-20T12:00:00.000Z",
 			updatedAt: "2026-10-20T12:00:00.000Z",
 		},
@@ -101,6 +110,12 @@ function setup(productState: Record<string, unknown> = {}) {
 	useUploadProductPhotoMock.mockReturnValue(
 		stubMutation() as unknown as ReturnType<typeof useUploadProductPhoto>,
 	);
+	useCategoriesMock.mockReturnValue({
+		data: [],
+		isPending: false,
+		isError: false,
+		error: undefined,
+	} as unknown as ReturnType<typeof useCategories>);
 }
 
 describe("EditProduct", () => {

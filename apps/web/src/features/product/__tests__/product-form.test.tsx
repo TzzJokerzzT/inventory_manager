@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
-import type { Product as ProductModel } from "@/lib/api/schemas";
+import type { Category, Product as ProductModel } from "@/lib/api/schemas";
+import { useCategories } from "@/src/features/category/api/use-categories";
 import { useCreateProduct } from "../api/use-create-product";
 import { useUpdateProduct } from "../api/use-update-product";
 import { useUploadProductPhoto } from "../api/use-upload-product-photo";
@@ -23,6 +24,10 @@ jest.mock("../api/use-upload-product-photo", () => ({
 	useUploadProductPhoto: jest.fn(),
 }));
 
+jest.mock("@/src/features/category/api/use-categories", () => ({
+	useCategories: jest.fn(),
+}));
+
 const useRouterMock = useRouter as jest.MockedFunction<typeof useRouter>;
 const useCreateProductMock = useCreateProduct as jest.MockedFunction<
 	typeof useCreateProduct
@@ -32,6 +37,9 @@ const useUpdateProductMock = useUpdateProduct as jest.MockedFunction<
 >;
 const useUploadProductPhotoMock = useUploadProductPhoto as jest.MockedFunction<
 	typeof useUploadProductPhoto
+>;
+const useCategoriesMock = useCategories as jest.MockedFunction<
+	typeof useCategories
 >;
 
 const createMutate = jest.fn();
@@ -55,6 +63,7 @@ function mockHooks(
 		create?: Record<string, unknown>;
 		update?: Record<string, unknown>;
 		upload?: Record<string, unknown>;
+		categories?: Record<string, unknown>;
 	} = {},
 ) {
 	useRouterMock.mockReturnValue({
@@ -80,6 +89,23 @@ function mockHooks(
 			typeof useUploadProductPhoto
 		>,
 	);
+	useCategoriesMock.mockReturnValue({
+		data: [category("ca1", "Bebidas"), category("ca2", "Café")],
+		isPending: false,
+		isError: false,
+		error: undefined,
+		...state.categories,
+	} as unknown as ReturnType<typeof useCategories>);
+}
+
+function category(id: string, name: string): Category {
+	return {
+		id,
+		companyId: "c1",
+		name,
+		createdAt: "2026-10-22T12:00:00.000Z",
+		updatedAt: "2026-10-22T12:00:00.000Z",
+	};
 }
 
 function product(overrides: Partial<ProductModel> = {}): ProductModel {
@@ -95,6 +121,7 @@ function product(overrides: Partial<ProductModel> = {}): ProductModel {
 		lowStockThreshold: 0,
 		measureUnit: "KILOGRAM",
 		categoryId: null,
+		categoryName: null,
 		createdAt: "2026-10-20T12:00:00.000Z",
 		updatedAt: "2026-10-20T12:00:00.000Z",
 		...overrides,
@@ -172,7 +199,81 @@ describe("ProductForm (create)", () => {
 				description: "Molido medio",
 				photoUrl: null,
 				measureUnit: "KILOGRAM",
+				categoryId: null,
 			},
+			expect.any(Object),
+		);
+	});
+
+	it("offers the optional category with the company's categories", () => {
+		// S7: "Sin categoría" es una elección, no un campo vacío.
+		render(<ProductForm companyId="c1" />);
+
+		expect(screen.getByLabelText("Categoría").textContent).toContain(
+			"Sin categoría",
+		);
+
+		fireEvent.click(screen.getByLabelText("Categoría"));
+
+		expect(screen.getByRole("option", { name: "Bebidas" })).toBeTruthy();
+		expect(screen.getByRole("option", { name: "Café" })).toBeTruthy();
+	});
+
+	it("creates the product without a category by default", () => {
+		render(<ProductForm companyId="c1" />);
+		fill("Nombre del producto", "Café molido 500g");
+		fill("Código SKU", "CAF-500");
+		fill("Precio unitario", "1500");
+
+		submit("Crear producto");
+
+		expect(createMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ categoryId: null }),
+			expect.any(Object),
+		);
+	});
+
+	it("sends the category the person picks", () => {
+		render(<ProductForm companyId="c1" />);
+		fill("Nombre del producto", "Café molido 500g");
+		fill("Código SKU", "CAF-500");
+		fill("Precio unitario", "1500");
+
+		chooseOption("Categoría", "Bebidas");
+		submit("Crear producto");
+
+		expect(createMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ categoryId: "ca1" }),
+			expect.any(Object),
+		);
+	});
+
+	it("disables the category selector while the categories are loading", () => {
+		mockHooks({ categories: { data: undefined, isPending: true } });
+
+		render(<ProductForm companyId="c1" />);
+
+		expect(screen.getByLabelText("Categoría").hasAttribute("disabled")).toBe(
+			true,
+		);
+	});
+
+	it("keeps the form usable and notes the failure when categories cannot be read", () => {
+		mockHooks({
+			categories: { data: undefined, isError: true, error: new ApiError("x") },
+		});
+
+		render(<ProductForm companyId="c1" />);
+
+		expect(screen.getByText("No pudimos cargar las categorías.")).toBeTruthy();
+
+		fill("Nombre del producto", "Café molido 500g");
+		fill("Código SKU", "CAF-500");
+		fill("Precio unitario", "1500");
+		submit("Crear producto");
+
+		expect(createMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ categoryId: null }),
 			expect.any(Object),
 		);
 	});
@@ -282,12 +383,13 @@ describe("ProductForm (edit)", () => {
 				description: null,
 				photoUrl: null,
 				measureUnit: "KILOGRAM",
+				categoryId: null,
 			},
 			expect.any(Object),
 		);
 	});
 
-	it("prefills the measure unit of the product and sends a change to it", () => {
+	it("preloads the measure unit of the product and sends a change to it", () => {
 		render(
 			<ProductForm
 				companyId="c1"
@@ -304,6 +406,26 @@ describe("ProductForm (edit)", () => {
 
 		expect(updateMutate).toHaveBeenCalledWith(
 			expect.objectContaining({ measureUnit: "LITRE" }),
+			expect.any(Object),
+		);
+	});
+
+	it("preloads the stored category and sends the chosen one", () => {
+		// S7: editar empieza en la categoría guardada, y elegir otra la cambia.
+		render(
+			<ProductForm
+				companyId="c1"
+				product={product({ categoryId: "ca2", categoryName: "Café" })}
+			/>,
+		);
+
+		expect(screen.getByLabelText("Categoría").textContent).toContain("Café");
+
+		chooseOption("Categoría", "Bebidas");
+		submit("Guardar cambios");
+
+		expect(updateMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ categoryId: "ca1" }),
 			expect.any(Object),
 		);
 	});

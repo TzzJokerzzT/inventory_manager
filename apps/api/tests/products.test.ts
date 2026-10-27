@@ -5,9 +5,11 @@ import { ListProductsUseCase } from "../src/application/use-cases/list-products.
 import { PurgeProductUseCase } from "../src/application/use-cases/purge-product.js";
 import { RestoreProductUseCase } from "../src/application/use-cases/restore-product.js";
 import { UpdateProductUseCase } from "../src/application/use-cases/update-product.js";
+import { Category } from "../src/domain/entities/category.js";
 import type { MembershipRole } from "../src/domain/entities/membership.js";
 import { Product } from "../src/domain/entities/product.js";
 import { StockMovement } from "../src/domain/entities/stock-movement.js";
+import { CategoryNotFoundError } from "../src/domain/errors/category-not-found-error.js";
 import { DomainError } from "../src/domain/errors/domain-error.js";
 import { InsufficientRoleError } from "../src/domain/errors/insufficient-role-error.js";
 import { ProductHasMovementsError } from "../src/domain/errors/product-has-movements-error.js";
@@ -16,6 +18,7 @@ import { ProductNotFoundError } from "../src/domain/errors/product-not-found-err
 import { SkuAlreadyExistsError } from "../src/domain/errors/sku-already-exists-error.js";
 import type { ProductRepository } from "../src/domain/repositories/product-repository.js";
 import type { StockMovementRepository } from "../src/domain/repositories/stock-movement-repository.js";
+import { InMemoryCategoryRepository } from "../src/infrastructure/database/in-memory-category-repository.js";
 import { InMemoryProductRepository } from "../src/infrastructure/database/in-memory-product-repository.js";
 import { InMemoryStockLotRepository } from "../src/infrastructure/database/in-memory-stock-lot-repository.js";
 import { InMemoryStockMovementRepository } from "../src/infrastructure/database/in-memory-stock-movement-repository.js";
@@ -33,6 +36,7 @@ interface SeedInput {
 	description?: string | null;
 	photoUrl?: string | null;
 	stockQuantity?: number;
+	categoryId?: string | null;
 	deleted?: boolean;
 }
 
@@ -49,6 +53,7 @@ function seed(
 		description: input.description ?? null,
 		photoUrl: input.photoUrl ?? null,
 		stockQuantity: input.stockQuantity ?? 0,
+		categoryId: input.categoryId ?? null,
 		deletedAt: input.deleted ? new Date("2026-10-22T12:00:00.000Z") : null,
 	});
 
@@ -61,13 +66,38 @@ function repository(): InMemoryProductRepository {
 	return new InMemoryProductRepository();
 }
 
+/**
+ * Seeds a category through the adapter's `save`, which is the same door the
+ * suite uses for products: the tests need a store with rows, not a CRUD flow.
+ */
+function seedCategory(
+	categories: InMemoryCategoryRepository,
+	input: { id: string; name?: string; companyId?: string },
+): Category {
+	const category = Category.create({
+		id: input.id,
+		companyId: input.companyId ?? COMPANY,
+		name: input.name ?? `Category ${input.id}`,
+	});
+
+	categories.save(category);
+
+	return category;
+}
+
 function context(actorRole: MembershipRole = "OWNER") {
 	return { companyId: COMPANY, actorRole };
 }
 
 describe("CreateProductUseCase", () => {
-	function createProduct(repository_: InMemoryProductRepository) {
-		return new CreateProductUseCase({ productRepository: repository_ });
+	function createProduct(
+		repository_: InMemoryProductRepository,
+		categoryRepository = new InMemoryCategoryRepository(repository_),
+	) {
+		return new CreateProductUseCase({
+			productRepository: repository_,
+			categoryRepository,
+		});
 	}
 
 	it("creates the product as an OWNER", async () => {
@@ -107,14 +137,14 @@ describe("CreateProductUseCase", () => {
 			context("OWNER"),
 		);
 
-		await expect(repository_.findActiveById(COMPANY, created.id)).resolves.toBe(
-			created,
-		);
+		await expect(
+			repository_.findActiveById(COMPANY, created.id),
+		).resolves.toMatchObject({ id: created.id, categoryId: null });
 	});
 
-	it("never accepts stock, the low-stock threshold or a category from the body", async () => {
-		// S1/L4: stock is moved by the stock movements of MI-8, the threshold
-		// belongs to NOTIF-01, and categories have no feature yet.
+	it("never accepts stock or the low-stock threshold from the body", async () => {
+		// S1/L4: stock is moved by the stock movements of MI-8 and the threshold
+		// belongs to NOTIF-01. The category is writable since S7.
 		const created = await createProduct(repository()).execute(
 			{
 				name: "Cafe",
@@ -122,14 +152,88 @@ describe("CreateProductUseCase", () => {
 				price: "1500",
 				stockQuantity: 99,
 				lowStockThreshold: 5,
-				categoryId: "category-1",
 			} as never,
 			context("OWNER"),
 		);
 
 		expect(created.stockQuantity).toBe(0);
 		expect(created.lowStockThreshold).toBe(0);
-		expect(created.categoryId).toBeNull();
+	});
+
+	it("persists the category the body names, when it belongs to the company", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", name: "Bebidas" });
+
+		const created = await createProduct(repository_, categories).execute(
+			{ name: "Cafe", sku: "CAF-500", price: "1500", categoryId: "category-1" },
+			context("OWNER"),
+		);
+
+		expect(created).toMatchObject({
+			categoryId: "category-1",
+			categoryName: "Bebidas",
+		});
+		await expect(
+			repository_.findActiveById(COMPANY, created.id),
+		).resolves.toMatchObject({ categoryId: "category-1" });
+	});
+
+	it("creates an uncategorized product when no category is named", async () => {
+		const repository_ = repository();
+
+		const absent = await createProduct(repository_).execute(
+			{ name: "Cafe", sku: "CAF-500", price: "1500" },
+			context("OWNER"),
+		);
+		const explicitNull = await createProduct(repository_).execute(
+			{ name: "Azucar", sku: "SUGAR-1", price: "1500", categoryId: null },
+			context("OWNER"),
+		);
+
+		expect(absent).toMatchObject({ categoryId: null, categoryName: null });
+		expect(explicitNull).toMatchObject({
+			categoryId: null,
+			categoryName: null,
+		});
+	});
+
+	it("answers CategoryNotFoundError for another company's category and writes nothing", async () => {
+		// S7: the category has to belong to the company the caller has context
+		// for, and a foreign one answers the same 404 as an absent one.
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", companyId: OTHER_COMPANY });
+
+		await expect(
+			createProduct(repository_, categories).execute(
+				{
+					name: "Cafe",
+					sku: "CAF-500",
+					price: "1500",
+					categoryId: "category-1",
+				},
+				context("OWNER"),
+			),
+		).rejects.toThrow(CategoryNotFoundError);
+		await expect(repository_.list(COMPANY)).resolves.toEqual([]);
+	});
+
+	it("answers CategoryNotFoundError for a category that does not exist", async () => {
+		const repository_ = repository();
+
+		await expect(
+			createProduct(repository_).execute(
+				{
+					name: "Cafe",
+					sku: "CAF-500",
+					price: "1500",
+					categoryId: "category-404",
+				},
+				context("OWNER"),
+			),
+		).rejects.toThrow(CategoryNotFoundError);
+		await expect(repository_.list(COMPANY)).resolves.toEqual([]);
 	});
 
 	it("rejects a MEMBER with InsufficientRoleError, before validating anything", async () => {
@@ -196,12 +300,16 @@ describe("CreateProductUseCase", () => {
 });
 
 describe("ListProductsUseCase", () => {
-	function listProducts(repository_: InMemoryProductRepository) {
+	function listProducts(
+		repository_: InMemoryProductRepository,
+		categoryRepository = new InMemoryCategoryRepository(repository_),
+	) {
 		return new ListProductsUseCase({
 			productRepository: repository_,
 			stockLotRepository: new InMemoryStockLotRepository(
 				new InMemoryStockMovementRepository(new Map()),
 			),
+			categoryRepository,
 		});
 	}
 
@@ -318,16 +426,95 @@ describe("ListProductsUseCase", () => {
 			),
 		).resolves.toEqual([]);
 	});
+
+	it("names the category of every row and leaves it null without one", async () => {
+		// S5/S7: the read resolves the name so the client never joins a cached
+		// catalogue, and an uncategorized product answers `null`.
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", name: "Bebidas" });
+		seed(repository_, {
+			id: "product-1",
+			name: "Cafe",
+			categoryId: "category-1",
+		});
+		seed(repository_, { id: "product-2", name: "Azucar" });
+
+		const listed = await listProducts(repository_, categories).execute(
+			{},
+			{ companyId: COMPANY },
+		);
+
+		// Same order as the catalogue: name, then id ("Azucar" first).
+		expect(listed.map((row) => [row.id, row.categoryName])).toEqual([
+			["product-2", null],
+			["product-1", "Bebidas"],
+		]);
+	});
+
+	it("resolves the categories of the page in one deduplicated batch read", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", name: "Bebidas" });
+		seedCategory(categories, { id: "category-2", name: "Almacén" });
+		seed(repository_, {
+			id: "product-1",
+			name: "Cafe",
+			categoryId: "category-1",
+		});
+		seed(repository_, {
+			id: "product-2",
+			name: "Azucar",
+			categoryId: "category-1",
+		});
+		seed(repository_, {
+			id: "product-3",
+			name: "Yerba",
+			categoryId: "category-2",
+		});
+		seed(repository_, { id: "product-4", name: "Harina" });
+		const findByIds = jest.spyOn(categories, "findByIds");
+
+		await listProducts(repository_, categories).execute(
+			{},
+			{ companyId: COMPANY },
+		);
+
+		// One read for the whole page, and the repeated category costs one id.
+		expect(findByIds).toHaveBeenCalledTimes(1);
+		expect(findByIds).toHaveBeenCalledWith(COMPANY, [
+			"category-1",
+			"category-2",
+		]);
+	});
+
+	it("does not read categories when no row carries one", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seed(repository_, { id: "product-1" });
+		const findByIds = jest.spyOn(categories, "findByIds");
+
+		await listProducts(repository_, categories).execute(
+			{},
+			{ companyId: COMPANY },
+		);
+
+		expect(findByIds).not.toHaveBeenCalled();
+	});
 });
 
 describe("GetProductUseCase", () => {
-	function getProduct(repository_: InMemoryProductRepository) {
+	function getProduct(
+		repository_: InMemoryProductRepository,
+		categoryRepository = new InMemoryCategoryRepository(repository_),
+	) {
 		return new GetProductUseCase({
 			productRepository: repository_,
 			stockLotRepository: new InMemoryStockLotRepository(
 				new InMemoryStockMovementRepository(new Map()),
 			),
 			supplierRepository: new InMemorySupplierRepository(),
+			categoryRepository,
 		});
 	}
 
@@ -347,8 +534,41 @@ describe("GetProductUseCase", () => {
 			costPerMeasure: null,
 			unitCost: null,
 			marginPerUnit: null,
+			categoryName: null,
 			lots: [],
 		});
+	});
+
+	it("resolves the name of the product's category in one batch read", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", name: "Bebidas" });
+		seed(repository_, { id: "product-1", categoryId: "category-1" });
+		const findByIds = jest.spyOn(categories, "findByIds");
+
+		const read = await getProduct(repository_, categories).execute(
+			{ productId: "product-1" },
+			{ companyId: COMPANY },
+		);
+
+		expect(read.categoryName).toBe("Bebidas");
+		expect(findByIds).toHaveBeenCalledTimes(1);
+		expect(findByIds).toHaveBeenCalledWith(COMPANY, ["category-1"]);
+	});
+
+	it("answers a null category name for an uncategorized product", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seed(repository_, { id: "product-1" });
+		const findByIds = jest.spyOn(categories, "findByIds");
+
+		const read = await getProduct(repository_, categories).execute(
+			{ productId: "product-1" },
+			{ companyId: COMPANY },
+		);
+
+		expect(read.categoryName).toBeNull();
+		expect(findByIds).not.toHaveBeenCalled();
 	});
 
 	it("answers ProductNotFoundError for another company's product", async () => {
@@ -386,8 +606,14 @@ describe("GetProductUseCase", () => {
 });
 
 describe("UpdateProductUseCase", () => {
-	function updateProduct(repository_: InMemoryProductRepository) {
-		return new UpdateProductUseCase({ productRepository: repository_ });
+	function updateProduct(
+		repository_: InMemoryProductRepository,
+		categoryRepository = new InMemoryCategoryRepository(repository_),
+	) {
+		return new UpdateProductUseCase({
+			productRepository: repository_,
+			categoryRepository,
+		});
 	}
 
 	it("updates the given fields and preserves the untouched ones", async () => {
@@ -543,6 +769,83 @@ describe("UpdateProductUseCase", () => {
 			),
 		).rejects.toThrow(DomainError);
 	});
+
+	it("sets the category the body names and answers its name", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", name: "Bebidas" });
+		seed(repository_, { id: "product-1" });
+
+		const updated = await updateProduct(repository_, categories).execute(
+			{ productId: "product-1", categoryId: "category-1" },
+			context("OWNER"),
+		);
+
+		expect(updated).toMatchObject({
+			categoryId: "category-1",
+			categoryName: "Bebidas",
+		});
+		await expect(
+			repository_.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ categoryId: "category-1" });
+	});
+
+	it("clears the category when null is sent explicitly", async () => {
+		const repository_ = repository();
+		seed(repository_, { id: "product-1", categoryId: "category-1" });
+
+		const updated = await updateProduct(repository_).execute(
+			{ productId: "product-1", categoryId: null },
+			context("OWNER"),
+		);
+
+		expect(updated).toMatchObject({ categoryId: null, categoryName: null });
+		await expect(
+			repository_.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ categoryId: null });
+	});
+
+	it("keeps the stored category and its name when the body does not name it", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", name: "Bebidas" });
+		seed(repository_, { id: "product-1", categoryId: "category-1" });
+
+		const updated = await updateProduct(repository_, categories).execute(
+			{ productId: "product-1", name: "Cafe en grano" },
+			context("OWNER"),
+		);
+
+		expect(updated).toMatchObject({
+			categoryId: "category-1",
+			categoryName: "Bebidas",
+		});
+	});
+
+	it("answers CategoryNotFoundError for a foreign or unknown category without touching the row", async () => {
+		const repository_ = repository();
+		const categories = new InMemoryCategoryRepository(repository_);
+		seedCategory(categories, { id: "category-1", companyId: OTHER_COMPANY });
+		seed(repository_, { id: "product-1", categoryId: null });
+
+		await expect(
+			updateProduct(repository_, categories).execute(
+				{ productId: "product-1", categoryId: "category-1" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(CategoryNotFoundError);
+
+		await expect(
+			updateProduct(repository_, categories).execute(
+				{ productId: "product-1", categoryId: "category-404" },
+				context("OWNER"),
+			),
+		).rejects.toThrow(CategoryNotFoundError);
+
+		await expect(
+			repository_.findActiveById(COMPANY, "product-1"),
+		).resolves.toMatchObject({ categoryId: null });
+	});
 });
 
 describe("DeleteProductUseCase", () => {
@@ -640,7 +943,10 @@ function racedRepository(reads: (Product | undefined)[]): ProductRepository {
 
 describe("RestoreProductUseCase", () => {
 	function restoreProduct(productRepository: ProductRepository) {
-		return new RestoreProductUseCase({ productRepository });
+		return new RestoreProductUseCase({
+			productRepository,
+			categoryRepository: new InMemoryCategoryRepository(productRepository),
+		});
 	}
 
 	it("brings the product back with its own id and sku", async () => {
@@ -659,10 +965,11 @@ describe("RestoreProductUseCase", () => {
 			companyId: COMPANY,
 			sku: "CAF-500",
 		});
-		expect(restored.deletedAt).toBeNull();
+		// The row is active again, and the answer carries the resolved category
+		// name (null here) like every other product write.
 		await expect(
 			repository_.findActiveById(COMPANY, "product-1"),
-		).resolves.toBe(restored);
+		).resolves.toMatchObject({ id: "product-1" });
 	});
 
 	it("leaves the stock and the history of the row untouched", async () => {

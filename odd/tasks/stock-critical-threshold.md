@@ -91,3 +91,10 @@ categorías, y el commit siguiente — este slice del umbral con el rename a "St
 La separación obligó a aislar primero el árbol de categorías porque `openapi.yaml`, `openapi.d.ts` y
 los archivos de producto llevan cambios de ambas features; ese árbol intermedio se verificó con las
 suites completas (API 83/1311, web 139/1108) antes de commitear.
+
+L8. RDD: la revisión del rango de este commit (3 lentes + refuter, host relay) cerró en
+`correction_required` con un único hallazgo `R3-001`, que marca el rename "stock crítico" →
+"stock mínimo" (KPI, región/título de la tabla y mensaje vacío) como no pedido. El humano confirmó
+que la instrucción es usar **"Stock mínimo"** y decidió dejar el copy como está: no se aplica
+corrección y la lineage `review-c82534600cef2484` queda abierta como disposición explícita del
+humano. No se vuelve a intentar esa revisión.
